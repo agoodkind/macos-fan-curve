@@ -14,8 +14,13 @@ struct FanCurveEditor: View {
   @State private var hoveredIndex: Int?
   @State private var mouseLocation: CGPoint?
 
-  private let margin: CGFloat = 50
+  // Animated current position
+  @State private var animatedTemp: Double = 0
+  @State private var animatedPercent: Double = 0
+
+  private let margin: CGFloat = 56
   private let tempRange: ClosedRange<Double> = 20...110
+  private let curveColor = Color(nsColor: .systemCyan)
 
   private var rpmRange: (min: Float, max: Float) {
     guard let fan = sensorState.fans.first else { return (0, 8000) }
@@ -31,8 +36,10 @@ struct FanCurveEditor: View {
           drawGrid(context: context, size: canvasSize)
           drawCurve(context: context, size: canvasSize)
           drawHoverLine(context: context, size: canvasSize)
-          drawCurrentPosition(context: context, size: canvasSize)
         }
+
+        // Animated current position overlay (not in Canvas so it animates smoothly)
+        currentPositionOverlay(size: size)
 
         controlPointsOverlay(size: size)
       }
@@ -44,22 +51,52 @@ struct FanCurveEditor: View {
       }
     }
     .background(Color(nsColor: .windowBackgroundColor))
-    .clipShape(RoundedRectangle(cornerRadius: 8))
-    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.06)))
-    .onAppear {
-      // Default to smooth curves
-      if model.interpolationMode == .linear {
-        model.interpolationMode = .catmullRom
-        model.save()
+    .clipShape(RoundedRectangle(cornerRadius: 10))
+    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.05)))
+    .onChange(of: sensorState.governingTemperature) { newTemp in
+      withAnimation(.easeInOut(duration: 0.8)) {
+        animatedTemp = newTemp
+        animatedPercent = model.evaluate(at: newTemp)
       }
+    }
+  }
+
+  // MARK: - Current Position (SwiftUI overlay for smooth animation)
+
+  @ViewBuilder
+  private func currentPositionOverlay(size: CGSize) -> some View {
+    if animatedTemp > 0 {
+      let pos = dataToPixel(temp: animatedTemp, percent: animatedPercent, in: size)
+      let rpm = Int(rpmRange.min + Float(animatedPercent) * (rpmRange.max - rpmRange.min))
+      let zeroY = dataToPixel(temp: 20, percent: 0, in: size).y
+
+      // Dashed vertical line
+      Path { path in
+        path.move(to: CGPoint(x: pos.x, y: pos.y + 8))
+        path.addLine(to: CGPoint(x: pos.x, y: zeroY))
+      }
+      .stroke(Color(nsColor: .systemOrange).opacity(0.15), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+
+      // Glowing dot
+      Circle()
+        .fill(Color(nsColor: .systemOrange))
+        .frame(width: 10, height: 10)
+        .shadow(color: Color(nsColor: .systemOrange).opacity(0.5), radius: 6)
+        .position(pos)
+
+      // Label
+      Text("\(Int(animatedTemp))° \(rpm) RPM")
+        .font(.system(.caption, design: .monospaced))
+        .foregroundColor(Color(nsColor: .systemOrange).opacity(0.9))
+        .position(x: pos.x, y: pos.y - 16)
     }
   }
 
   // MARK: - Grid
 
   private func drawGrid(context: GraphicsContext, size: CGSize) {
-    let gridColor = Color.primary.opacity(0.04)
-    let labelColor = Color.primary.opacity(0.3)
+    let gridColor = Color.primary.opacity(0.035)
+    let labelColor = Color.primary.opacity(0.25)
 
     for temp in stride(from: 20.0, through: 110.0, by: 10.0) {
       let x = dataToPixel(temp: temp, percent: 0, in: size).x
@@ -70,10 +107,8 @@ struct FanCurveEditor: View {
 
       if Int(temp) % 20 == 0 {
         context.draw(
-          Text("\(Int(temp))°")
-            .font(.system(size: 9, weight: .light, design: .monospaced))
-            .foregroundColor(labelColor),
-          at: CGPoint(x: x, y: size.height - margin + 14))
+          Text("\(Int(temp))°").font(.system(.caption2, design: .monospaced)).foregroundColor(labelColor),
+          at: CGPoint(x: x, y: size.height - margin + 16))
       }
     }
 
@@ -86,12 +121,12 @@ struct FanCurveEditor: View {
 
       if Int(pct * 100) % 20 == 0 {
         let rpm = Int(rpmRange.min + Float(pct) * (rpmRange.max - rpmRange.min))
-        let label = "\(Int(pct * 100))%  \(rpm)"
         context.draw(
-          Text(label)
-            .font(.system(size: 8, weight: .light, design: .monospaced))
-            .foregroundColor(labelColor),
-          at: CGPoint(x: margin - 28, y: y))
+          Text("\(Int(pct * 100))%").font(.system(.caption2, design: .monospaced)).foregroundColor(labelColor),
+          at: CGPoint(x: margin - 22, y: y - 6))
+        context.draw(
+          Text("\(rpm)").font(.system(size: 9, weight: .light, design: .monospaced)).foregroundColor(labelColor.opacity(0.6)),
+          at: CGPoint(x: margin - 22, y: y + 6))
       }
     }
   }
@@ -107,7 +142,7 @@ struct FanCurveEditor: View {
     let firstPt = dataToPixel(temp: pathPoints[0].0, percent: pathPoints[0].1, in: size)
     let zeroY = dataToPixel(temp: 20, percent: 0, in: size).y
 
-    // Gradient fill
+    // Fill
     var fillPath = Path()
     fillPath.move(to: CGPoint(x: firstPt.x, y: zeroY))
     fillPath.addLine(to: firstPt)
@@ -118,59 +153,27 @@ struct FanCurveEditor: View {
     fillPath.addLine(to: CGPoint(x: lastPt.x, y: zeroY))
     fillPath.closeSubpath()
 
-    let curveColor = Color(nsColor: .systemCyan)
     context.fill(
       fillPath,
       with: .linearGradient(
-        Gradient(colors: [curveColor.opacity(0.12), curveColor.opacity(0.01)]),
+        Gradient(colors: [curveColor.opacity(0.1), curveColor.opacity(0.005)]),
         startPoint: CGPoint(x: 0, y: margin),
         endPoint: CGPoint(x: 0, y: size.height - margin)))
 
-    // Glow line (wider, faint)
-    var glowPath = Path()
-    glowPath.move(to: firstPt)
+    // Glow
+    var linePath = Path()
+    linePath.move(to: firstPt)
     for point in pathPoints.dropFirst() {
-      glowPath.addLine(to: dataToPixel(temp: point.0, percent: point.1, in: size))
+      linePath.addLine(to: dataToPixel(temp: point.0, percent: point.1, in: size))
     }
     context.stroke(
-      glowPath, with: .color(curveColor.opacity(0.15)),
-      style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
+      linePath, with: .color(curveColor.opacity(0.12)),
+      style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
 
-    // Main curve line
+    // Main line
     context.stroke(
-      glowPath, with: .color(curveColor),
+      linePath, with: .color(curveColor),
       style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-  }
-
-  // MARK: - Current Position
-
-  private func drawCurrentPosition(context: GraphicsContext, size: CGSize) {
-    let temp = sensorState.governingTemperature
-    guard temp > 0 else { return }
-
-    let percent = model.evaluate(at: temp)
-    let pos = dataToPixel(temp: temp, percent: percent, in: size)
-
-    // Subtle vertical line
-    let zeroY = dataToPixel(temp: 20, percent: 0, in: size).y
-    var vLine = Path()
-    vLine.move(to: CGPoint(x: pos.x, y: pos.y))
-    vLine.addLine(to: CGPoint(x: pos.x, y: zeroY))
-    context.stroke(vLine, with: .color(Color.primary.opacity(0.08)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-
-    // Small dot
-    let dotRect = CGRect(x: pos.x - 4, y: pos.y - 4, width: 8, height: 8)
-    context.fill(Circle().path(in: dotRect), with: .color(Color(nsColor: .systemOrange)))
-    let outerRect = CGRect(x: pos.x - 6, y: pos.y - 6, width: 12, height: 12)
-    context.stroke(Circle().path(in: outerRect), with: .color(Color(nsColor: .systemOrange).opacity(0.3)), lineWidth: 2)
-
-    // Minimal label
-    let rpm = Int(rpmRange.min + Float(percent) * (rpmRange.max - rpmRange.min))
-    context.draw(
-      Text("\(Int(temp))° \(rpm) RPM")
-        .font(.system(size: 9, weight: .medium, design: .monospaced))
-        .foregroundColor(Color(nsColor: .systemOrange).opacity(0.8)),
-      at: CGPoint(x: pos.x, y: pos.y - 14))
   }
 
   // MARK: - Hover
@@ -178,7 +181,9 @@ struct FanCurveEditor: View {
   private func drawHoverLine(context: GraphicsContext, size: CGSize) {
     guard let mouse = mouseLocation, hoveredIndex == nil else { return }
     let data = pixelToData(mouse, in: size)
-    guard data.x >= tempRange.lowerBound, data.x <= tempRange.upperBound else { return }
+    guard data.x >= tempRange.lowerBound, data.x <= tempRange.upperBound,
+      data.y >= 0, data.y <= 1
+    else { return }
 
     let percent = model.evaluate(at: data.x)
     let curvePos = dataToPixel(temp: data.x, percent: percent, in: size)
@@ -186,17 +191,17 @@ struct FanCurveEditor: View {
     var line = Path()
     line.move(to: CGPoint(x: mouse.x, y: margin))
     line.addLine(to: CGPoint(x: mouse.x, y: size.height - margin))
-    context.stroke(line, with: .color(Color.primary.opacity(0.06)), lineWidth: 0.5)
+    context.stroke(line, with: .color(Color.primary.opacity(0.05)), lineWidth: 0.5)
 
     let dotRect = CGRect(x: curvePos.x - 3, y: curvePos.y - 3, width: 6, height: 6)
-    context.fill(Circle().path(in: dotRect), with: .color(Color(nsColor: .systemCyan).opacity(0.5)))
+    context.fill(Circle().path(in: dotRect), with: .color(curveColor.opacity(0.4)))
 
     let rpm = Int(rpmRange.min + Float(percent) * (rpmRange.max - rpmRange.min))
     context.draw(
       Text("\(Int(data.x))° \(Int(percent * 100))% \(rpm)")
-        .font(.system(size: 9, weight: .light, design: .monospaced))
-        .foregroundColor(Color.primary.opacity(0.4)),
-      at: CGPoint(x: curvePos.x, y: curvePos.y - 12))
+        .font(.system(.caption2, design: .monospaced))
+        .foregroundColor(Color.primary.opacity(0.3)),
+      at: CGPoint(x: curvePos.x, y: curvePos.y - 14))
   }
 
   // MARK: - Control Points
@@ -212,35 +217,40 @@ struct FanCurveEditor: View {
     let pos = dataToPixel(temp: point.temperature, percent: point.fanPercent, in: size)
     let isHovered = hoveredIndex == index
     let rpm = Int(rpmRange.min + Float(point.fanPercent) * (rpmRange.max - rpmRange.min))
-    let curveColor = Color(nsColor: .systemCyan)
 
     return ZStack {
       if isHovered {
-        Circle()
-          .fill(curveColor.opacity(0.1))
-          .frame(width: 32, height: 32)
-
-        Text("\(Int(point.temperature))° / \(Int(point.fanPercent * 100))% / \(rpm) RPM")
-          .font(.system(size: 10, weight: .medium, design: .monospaced))
-          .padding(.horizontal, 8)
-          .padding(.vertical, 4)
-          .background(.ultraThinMaterial)
-          .clipShape(RoundedRectangle(cornerRadius: 6))
-          .offset(y: -26)
+        tooltipView(temp: Int(point.temperature), percent: Int(point.fanPercent * 100), rpm: rpm)
+          .offset(y: -30)
       }
 
       Circle()
         .fill(Color(nsColor: .windowBackgroundColor))
         .frame(width: isHovered ? 14 : 10, height: isHovered ? 14 : 10)
-        .overlay(Circle().stroke(curveColor, lineWidth: isHovered ? 2.5 : 2))
-        .shadow(color: curveColor.opacity(0.4), radius: isHovered ? 8 : 4)
+        .overlay(Circle().stroke(curveColor, lineWidth: isHovered ? 2.5 : 1.5))
+        .shadow(color: curveColor.opacity(0.3), radius: isHovered ? 8 : 3)
     }
     .position(pos)
-    .animation(.easeOut(duration: 0.15), value: isHovered)
-    .onHover { over in
-      hoveredIndex = over ? index : nil
-    }
+    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHovered)
+    .onHover { over in hoveredIndex = over ? index : nil }
     .gesture(dragGesture(index: index, size: size))
+  }
+
+  @ViewBuilder
+  private func tooltipView(temp: Int, percent: Int, rpm: Int) -> some View {
+    let text = Text("\(temp)° / \(percent)% / \(rpm) RPM")
+      .font(.system(.caption, design: .monospaced))
+      .padding(.horizontal, 10)
+      .padding(.vertical, 6)
+
+    if #available(macOS 26.0, *) {
+      text
+        .glassEffect(.regular, in: .capsule)
+    } else {
+      text
+        .background(.ultraThinMaterial)
+        .clipShape(Capsule())
+    }
   }
 
   // MARK: - Gestures

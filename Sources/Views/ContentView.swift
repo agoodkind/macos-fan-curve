@@ -19,29 +19,14 @@ struct ContentView: View {
       // Curve editor
       VStack(spacing: 0) {
         if case .error(let msg) = xpcClient.state {
-          HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
-              .foregroundColor(.orange)
-              .font(.system(size: 11))
-            Text(msg)
-              .font(.system(size: 11))
-              .lineLimit(1)
-            Spacer()
-            Button("Reconnect") { xpcClient.connect() }
-              .font(.system(size: 10))
-              .buttonStyle(.plain)
-              .foregroundColor(.accentColor)
-          }
-          .padding(.horizontal, 16)
-          .padding(.vertical, 8)
-          .background(.orange.opacity(0.08))
+          errorBanner(msg)
         }
 
         FanCurveEditor(model: curveModel, sensorState: sensorState)
-          .padding(12)
+          .padding(16)
       }
 
-      Divider().opacity(0.3)
+      Divider().opacity(0.15)
 
       if let controller {
         SensorDashboard(
@@ -51,7 +36,7 @@ struct ContentView: View {
         )
       }
     }
-    .frame(minWidth: 750, idealWidth: 900, minHeight: 420, idealHeight: 500)
+    .frame(minWidth: 800, idealWidth: 960, minHeight: 480, idealHeight: 560)
     .background(Color(nsColor: .windowBackgroundColor))
     .onAppear {
       let ctrl = FanCurveController(
@@ -63,5 +48,24 @@ struct ContentView: View {
     .onDisappear {
       controller?.stop()
     }
+  }
+
+  private func errorBanner(_ msg: String) -> some View {
+    HStack(spacing: 8) {
+      Image(systemName: "exclamationmark.triangle.fill")
+        .foregroundColor(.orange)
+        .font(.body)
+      Text(msg)
+        .font(.callout)
+        .lineLimit(1)
+      Spacer()
+      Button("Reconnect") { xpcClient.connect() }
+        .font(.callout)
+        .buttonStyle(.plain)
+        .foregroundColor(.accentColor)
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 10)
+    .background(.orange.opacity(0.06))
   }
 }
