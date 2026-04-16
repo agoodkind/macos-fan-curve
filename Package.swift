@@ -18,8 +18,16 @@ let package = Package(
         .package(url: "https://github.com/xcode-actions/json-logger.git", from: "1.0.0"),
     ],
     targets: [
+        .target(
+            name: "FanCurveModels",
+            path: "Sources/Models",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
         .testTarget(
             name: "ModelTests",
+            dependencies: ["FanCurveModels"],
             path: "Tests/ModelTests",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
