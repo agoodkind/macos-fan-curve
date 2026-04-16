@@ -10,72 +10,53 @@ import SwiftUI
 
 struct ContentView: View {
   @EnvironmentObject var xpcClient: XPCClient
-  @State private var fanInfos: [String] = []
-  @State private var errorMessage: String?
+  @StateObject private var curveModel = FanCurveModel()
+  @StateObject private var sensorState = SensorState()
+  @State private var controller: FanCurveController?
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack {
-        Circle()
-          .fill(statusColor)
-          .frame(width: 8, height: 8)
-        Text(statusText)
-          .font(.caption)
-          .foregroundColor(.secondary)
+    HStack(spacing: 0) {
+      // Curve editor (main area)
+      VStack(spacing: 0) {
+        if case .error(let msg) = xpcClient.state {
+          HStack {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .foregroundColor(.orange)
+            Text(msg)
+              .font(.caption)
+            Spacer()
+          }
+          .padding(8)
+          .background(.orange.opacity(0.1))
+        }
+
+        FanCurveEditor(model: curveModel, sensorState: sensorState)
+          .padding(16)
       }
 
-      if let error = errorMessage {
-        Text(error)
-          .foregroundColor(.red)
-          .font(.caption)
-      }
+      Divider()
 
-      ForEach(fanInfos, id: \.self) { info in
-        Text(info)
-          .font(.system(.body, design: .monospaced))
-      }
-
-      Button("Refresh") {
-        Task { await refresh() }
-      }
-
-      Spacer()
-    }
-    .padding()
-    .frame(minWidth: 500, minHeight: 300)
-    .task { await refresh() }
-  }
-
-  private var statusColor: Color {
-    switch xpcClient.state {
-    case .connected: return .green
-    case .disconnected: return .gray
-    case .error: return .red
-    }
-  }
-
-  private var statusText: String {
-    switch xpcClient.state {
-    case .connected: return "Connected to helper"
-    case .disconnected: return "Disconnected"
-    case .error(let msg): return "Error: \(msg)"
-    }
-  }
-
-  private func refresh() async {
-    do {
-      let count = try await xpcClient.getFanCount()
-      var infos: [String] = ["Fans: \(count)"]
-      for i in 0..<count {
-        let info = try await xpcClient.getFanInfo(i)
-        infos.append(
-          "Fan \(i): \(Int(info.actualRPM)) RPM (Target: \(Int(info.targetRPM)), Mode: \(info.manualMode ? "Manual" : "Auto"))"
+      // Sidebar
+      if let controller {
+        SensorDashboard(
+          sensorState: sensorState,
+          curveModel: curveModel,
+          controller: controller
         )
       }
-      fanInfos = infos
-      errorMessage = nil
-    } catch {
-      errorMessage = error.localizedDescription
+    }
+    .frame(minWidth: 700, minHeight: 400)
+    .onAppear {
+      let ctrl = FanCurveController(
+        xpcClient: xpcClient, curveModel: curveModel, sensorState: sensorState)
+      controller = ctrl
+      // Start polling for sensor data (display only, not controlling fans)
+      ctrl.start()
+      // Don't activate curve control by default
+      curveModel.isActive = false
+    }
+    .onDisappear {
+      controller?.stop()
     }
   }
 }
