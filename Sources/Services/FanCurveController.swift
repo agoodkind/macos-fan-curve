@@ -6,6 +6,7 @@
 //  Copyright © 2026
 //
 
+import AppKit
 import Foundation
 import SMCFanKit
 
@@ -19,20 +20,48 @@ class FanCurveController: ObservableObject, @unchecked Sendable {
     .filter { $0.type == .temperature && $0.group == .cpu }
 
   @Published var isRunning = false
+  private var isAppActive = true
+
+  private var pollInterval: TimeInterval {
+    isAppActive ? 0.5 : 2.0
+  }
 
   init(xpcClient: XPCClient, curveModel: FanCurveModel, sensorState: SensorState) {
     self.xpcClient = xpcClient
     self.curveModel = curveModel
     self.sensorState = sensorState
+
+    NotificationCenter.default.addObserver(
+      forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      self?.isAppActive = true
+      self?.rescheduleTimer()
+    }
+    NotificationCenter.default.addObserver(
+      forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      self?.isAppActive = false
+      self?.rescheduleTimer()
+    }
   }
 
   func start() {
     guard !isRunning else { return }
     isRunning = true
-    timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+    scheduleTimer()
+    Log.info("Fan curve controller started (\(pollInterval)s poll interval)")
+  }
+
+  private func scheduleTimer() {
+    timer?.invalidate()
+    timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
       Task { await self?.tick() }
     }
-    Log.info("Fan curve controller started (1s poll interval)")
+  }
+
+  private func rescheduleTimer() {
+    guard isRunning else { return }
+    scheduleTimer()
   }
 
   func stop() {
