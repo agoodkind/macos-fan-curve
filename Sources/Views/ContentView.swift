@@ -16,27 +16,33 @@ struct ContentView: View {
 
   var body: some View {
     HStack(spacing: 0) {
-      // Curve editor (main area)
+      // Curve editor
       VStack(spacing: 0) {
         if case .error(let msg) = xpcClient.state {
-          HStack {
+          HStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
               .foregroundColor(.orange)
+              .font(.system(size: 11))
             Text(msg)
-              .font(.caption)
+              .font(.system(size: 11))
+              .lineLimit(1)
             Spacer()
+            Button("Reconnect") { xpcClient.connect() }
+              .font(.system(size: 10))
+              .buttonStyle(.plain)
+              .foregroundColor(.accentColor)
           }
-          .padding(8)
-          .background(.orange.opacity(0.1))
+          .padding(.horizontal, 16)
+          .padding(.vertical, 8)
+          .background(.orange.opacity(0.08))
         }
 
         FanCurveEditor(model: curveModel, sensorState: sensorState)
-          .padding(16)
+          .padding(12)
       }
 
-      Divider()
+      Divider().opacity(0.3)
 
-      // Sidebar
       if let controller {
         SensorDashboard(
           sensorState: sensorState,
@@ -45,14 +51,13 @@ struct ContentView: View {
         )
       }
     }
-    .frame(minWidth: 700, minHeight: 400)
+    .frame(minWidth: 750, idealWidth: 900, minHeight: 420, idealHeight: 500)
+    .background(Color(nsColor: .windowBackgroundColor))
     .onAppear {
       let ctrl = FanCurveController(
         xpcClient: xpcClient, curveModel: curveModel, sensorState: sensorState)
       controller = ctrl
-      // Start polling for sensor data (display only, not controlling fans)
       ctrl.start()
-      // Don't activate curve control by default
       curveModel.isActive = false
     }
     .onDisappear {
