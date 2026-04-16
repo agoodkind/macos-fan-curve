@@ -46,13 +46,11 @@ struct SensorDashboard: View {
       VStack(alignment: .leading, spacing: 16) {
         Toggle(isOn: $curveModel.isActive) {
           VStack(alignment: .leading, spacing: 2) {
-            Text("Apply Curve")
+            Text("Fan Control")
               .font(.body)
-            if curveModel.isActive {
-              Text("Controlling fans")
-                .font(.caption)
-                .foregroundColor(Color(nsColor: .systemCyan))
-            }
+            Text(curveModel.isActive ? "Curve active" : "Off")
+              .font(.caption)
+              .foregroundColor(curveModel.isActive ? Color(nsColor: .systemCyan) : .secondary)
           }
         }
         .toggleStyle(.switch)
@@ -81,22 +79,12 @@ struct SensorDashboard: View {
       Spacer()
 
       // Footer
-      HStack {
-        Button(action: { curveModel.resetToDefault() }) {
-          Label("Reset", systemImage: "arrow.counterclockwise")
-            .font(.callout)
-            .foregroundColor(.secondary)
-        }
-        .buttonStyle(.plain)
-
-        Spacer()
-
-        if sensorState.lastUpdate != nil {
-          Image(systemName: "circle.fill")
-            .font(.system(size: 6))
-            .foregroundColor(.green)
-        }
+      Button(action: { curveModel.resetToDefault() }) {
+        Label("Reset Curve", systemImage: "arrow.counterclockwise")
+          .font(.callout)
+          .foregroundColor(.secondary)
       }
+      .buttonStyle(.plain)
     }
     .padding(20)
     .frame(width: 240)
