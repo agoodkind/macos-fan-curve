@@ -1,0 +1,58 @@
+name: FanCurveApp
+options:
+  bundleIdPrefix: io.goodkind
+  deploymentTarget:
+    macOS: "13"
+  createIntermediateGroups: true
+
+configFiles:
+  Debug: Config/debug.xcconfig
+  Release: Config/release.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+
+packages:
+  FanCurve:
+    path: .
+
+targetTemplates:
+  CommonConfig:
+    preBuildScripts:
+      - script: "${SRCROOT}/Scripts/generate-config.sh"
+        name: "Generate Config from xcconfig"
+        outputFiles:
+          - "$(DERIVED_FILE_DIR)/Generated/Config.generated.swift"
+          - "$(DERIVED_FILE_DIR)/Generated/App-Info.plist"
+
+targets:
+  FanCurve:
+    type: application
+    platform: macOS
+    templates:
+      - CommonConfig
+    sources:
+      - path: Sources/App
+      - path: Sources/Models
+      - path: Sources/Views
+      - path: Sources/Services
+      - path: Sources/Common
+      - path: "${DERIVED_FILE_DIR}/Generated/Config.generated.swift"
+        optional: true
+        buildPhase: sources
+        type: file
+    dependencies:
+      - package: FanCurve
+        product: SMCFanKit
+      - package: FanCurve
+        product: SMCFanLogging
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID)
+        PRODUCT_NAME: FanCurve
+        INFOPLIST_FILE: $(DERIVED_FILE_DIR)/Generated/App-Info.plist
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: $(CODE_SIGN_IDENTITY)
+        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)

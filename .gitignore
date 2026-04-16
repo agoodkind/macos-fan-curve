@@ -1,0 +1,25 @@
+# Build artifacts
+Products/
+build/
+
+# Xcode
+xcuserdata/
+*.xcodeproj
+DerivedData/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+.DS_Store
+
+# Local configuration (developer-specific)
+App/Config/local.xcconfig
+
+# Misc
+*.profraw
+.mypy_cache/
+.swift-version
+
+# Research files
+research/
