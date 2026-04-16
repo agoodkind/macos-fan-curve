@@ -75,6 +75,11 @@ class FanCurveController: ObservableObject, @unchecked Sendable {
     Log.info("Fan curve controller stopped, fans reset to auto")
   }
 
+  func resetFans() async {
+    await resetAllFansToAuto()
+    Log.info("Fans reset to auto (curve control disabled)")
+  }
+
   private func tick() async {
     do {
       // Read fan info
@@ -127,13 +132,24 @@ class FanCurveController: ObservableObject, @unchecked Sendable {
       // Apply curve if active
       if curveModel.isActive, maxCPUTemp > 0 {
         let percent = curveModel.evaluate(at: maxCPUTemp)
+        Log.debug("curve eval: temp=\(Int(maxCPUTemp))C percent=\(Int(percent * 100))%")
         for fan in fans {
           let rpm = curveModel.rpmForFan(
             percent: percent, minRPM: fan.minRPM, maxRPM: fan.maxRPM)
           if percent <= 0 {
-            try? await xpcClient.setFanAuto(UInt(fan.id))
+            do {
+              try await xpcClient.setFanAuto(UInt(fan.id))
+              Log.debug("fan \(fan.id) set to auto (curve says 0%)")
+            } catch {
+              Log.debug("fan \(fan.id) setAuto failed: \(error)")
+            }
           } else {
-            try? await xpcClient.setFanRPM(UInt(fan.id), rpm: rpm)
+            do {
+              try await xpcClient.setFanRPM(UInt(fan.id), rpm: rpm)
+              Log.debug("fan \(fan.id) set to \(Int(rpm)) RPM (curve=\(Int(percent * 100))%)")
+            } catch {
+              Log.debug("fan \(fan.id) setRPM failed: \(error)")
+            }
           }
         }
       }

@@ -57,8 +57,10 @@ struct SensorDashboard: View {
         .controlSize(.regular)
         .tint(Color(nsColor: .systemCyan))
         .onChange(of: curveModel.isActive) { active in
-          if active { controller.start() }
-          else { controller.stop() }
+          if !active {
+            // Reset fans to auto when turning off, but don't stop monitoring
+            Task { await controller.resetFans() }
+          }
         }
 
         VStack(alignment: .leading, spacing: 8) {
