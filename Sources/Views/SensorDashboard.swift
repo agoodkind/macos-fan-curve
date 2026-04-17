@@ -11,6 +11,7 @@ import SwiftUI
 struct SensorDashboard: View {
   @ObservedObject var sensorState: SensorState
   @ObservedObject var curveModel: FanCurveModel
+  @ObservedObject var installState: InstallationState
 
   var body: some View {
     VStack(alignment: .leading, spacing: 24) {
@@ -42,45 +43,72 @@ struct SensorDashboard: View {
       Divider().opacity(0.15)
 
       // Controls
-      VStack(alignment: .leading, spacing: 16) {
-        Toggle(isOn: $curveModel.isActive) {
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Fan Control")
-              .font(.body)
-            Text(curveModel.isActive ? "Curve active" : "Off")
-              .font(.caption)
-              .foregroundColor(curveModel.isActive ? Color(nsColor: .systemCyan) : .secondary)
-          }
-        }
-        .toggleStyle(.switch)
-        .controlSize(.regular)
-        .tint(Color(nsColor: .systemCyan))
-
-        VStack(alignment: .leading, spacing: 8) {
-          Text("Interpolation")
-            .font(.subheadline)
-            .foregroundColor(.secondary)
-          Picker("", selection: $curveModel.interpolationMode) {
-            Text("Linear").tag(InterpolationMode.linear)
-            Text("Smooth").tag(InterpolationMode.catmullRom)
-          }
-          .pickerStyle(.segmented)
+      Toggle(isOn: $curveModel.isActive) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Fan Control")
+            .font(.body)
+          Text(curveModel.isActive ? "Curve active" : "Off")
+            .font(.caption)
+            .foregroundColor(curveModel.isActive ? Color(nsColor: .systemCyan) : .secondary)
         }
       }
+      .toggleStyle(.switch)
+      .controlSize(.regular)
+      .tint(Color(nsColor: .systemCyan))
 
       Spacer()
 
-      // Footer
-      Button(action: { curveModel.resetToDefault() }) {
-        Label("Reset Curve", systemImage: "arrow.counterclockwise")
-          .font(.callout)
-          .foregroundColor(.secondary)
-      }
-      .buttonStyle(.plain)
+      // Status line stays at the bottom and mirrors the health of the
+      // helper daemon plus the background agent.
+      systemStatusRow
     }
     .padding(20)
     .frame(width: 240)
   }
+
+  // MARK: - Status
+
+  private enum SystemStatus { case green, orange, red }
+
+  private var systemStatus: SystemStatus {
+    switch (installState.helperReachable, installState.agentEnabled) {
+    case (true, true): return .green
+    case (false, true): return .orange
+    default: return .red
+    }
+  }
+
+  private var statusLabel: String {
+    switch systemStatus {
+    case .green: return "All systems go"
+    case .orange: return "Helper offline"
+    case .red: return "Not connected"
+    }
+  }
+
+  private var statusColor: Color {
+    switch systemStatus {
+    case .green: return Color(nsColor: .systemGreen)
+    case .orange: return Color(nsColor: .systemOrange)
+    case .red: return Color(nsColor: .systemRed)
+    }
+  }
+
+  @ViewBuilder
+  private var systemStatusRow: some View {
+    HStack(spacing: 8) {
+      Circle()
+        .fill(statusColor)
+        .frame(width: 8, height: 8)
+        .shadow(color: statusColor.opacity(0.6), radius: 3)
+      Text(statusLabel)
+        .font(.caption)
+        .foregroundColor(.secondary)
+      Spacer()
+    }
+  }
+
+  // MARK: - Rows
 
   private func fanRow(_ fan: FanReading) -> some View {
     HStack {

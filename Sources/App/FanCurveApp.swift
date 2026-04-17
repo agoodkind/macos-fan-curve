@@ -17,5 +17,10 @@ struct FanCurveApp: App {
       ContentView()
         .environmentObject(xpcClient)
     }
+
+    Settings {
+      SettingsView()
+        .environmentObject(xpcClient)
+    }
   }
 }
