@@ -15,6 +15,8 @@ find "${TEMPLATES_DIR}" -name '*.template' | while read -r template; do
   sed \
     -e "s|@@HELPER_BUNDLE_ID@@|${HELPER_BUNDLE_ID}|g" \
     -e "s|@@APP_BUNDLE_ID@@|${APP_BUNDLE_ID}|g" \
+    -e "s|@@AGENT_BUNDLE_ID@@|${AGENT_BUNDLE_ID}|g" \
+    -e "s|@@SHARED_SUITE_ID@@|${SHARED_SUITE_ID}|g" \
     -e "s|@@DEVELOPMENT_TEAM@@|${DEVELOPMENT_TEAM}|g" \
     -e "s|@@BUNDLE_ID_PREFIX@@|${BUNDLE_ID_PREFIX}|g" \
     -e "s|@@GIT_COMMIT@@|${GIT_COMMIT}|g" \

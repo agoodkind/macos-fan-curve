@@ -11,7 +11,6 @@ import SwiftUI
 struct SensorDashboard: View {
   @ObservedObject var sensorState: SensorState
   @ObservedObject var curveModel: FanCurveModel
-  @ObservedObject var controller: FanCurveController
 
   var body: some View {
     VStack(alignment: .leading, spacing: 24) {
@@ -56,12 +55,6 @@ struct SensorDashboard: View {
         .toggleStyle(.switch)
         .controlSize(.regular)
         .tint(Color(nsColor: .systemCyan))
-        .onChange(of: curveModel.isActive) { active in
-          if !active {
-            // Reset fans to auto when turning off, but don't stop monitoring
-            Task { await controller.resetFans() }
-          }
-        }
 
         VStack(alignment: .leading, spacing: 8) {
           Text("Interpolation")
@@ -72,9 +65,6 @@ struct SensorDashboard: View {
             Text("Smooth").tag(InterpolationMode.catmullRom)
           }
           .pickerStyle(.segmented)
-          .onChange(of: curveModel.interpolationMode) { _ in
-            curveModel.save()
-          }
         }
       }
 

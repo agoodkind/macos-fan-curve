@@ -100,7 +100,7 @@ struct FanCurveEditor: View {
 
   private func drawGrid(context: GraphicsContext, size: CGSize) {
     let gridColor = Color.primary.opacity(0.035)
-    let labelColor = Color.primary.opacity(0.25)
+    let labelColor = Color.primary.opacity(0.45)
 
     for temp in stride(from: 20.0, through: 110.0, by: 10.0) {
       let x = dataToPixel(temp: temp, percent: 0, in: size).x
@@ -212,7 +212,7 @@ struct FanCurveEditor: View {
     context.draw(
       Text("\(Int(data.x))°C  \(Int(percent * 100))%  \(rpm) RPM")
         .font(.system(.caption, design: .monospaced).weight(.medium))
-        .foregroundColor(Color.primary.opacity(0.55)),
+        .foregroundColor(Color.primary.opacity(0.7)),
       at: CGPoint(x: curvePos.x, y: tooltipY))
   }
 
