@@ -6,6 +6,7 @@
 //  Copyright © 2026
 //
 
+import Combine
 import Foundation
 
 struct CurvePoint: Identifiable, Codable, Sendable {
@@ -25,10 +26,33 @@ enum InterpolationMode: String, Codable, Sendable {
   case catmullRom
 }
 
+/// Shared UserDefaults keys. Both GUI and Agent read/write via the shared suite.
+enum SharedConfigKeys {
+  static let curvePoints = "curvePoints"
+  static let interpolationMode = "interpolationMode"
+  static let curveActive = "curveActive"
+  static let agentPID = "agentPID"
+  static let agentLastTick = "agentLastTick"
+}
+
+/// Access the shared UserDefaults suite used by GUI + Agent.
+/// Persists to ~/Library/Preferences/<SHARED_SUITE_ID>.plist
+func sharedDefaults() -> UserDefaults {
+  UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+}
+
 class FanCurveModel: ObservableObject {
-  @Published var controlPoints: [CurvePoint]
-  @Published var interpolationMode: InterpolationMode
-  @Published var isActive: Bool
+  @Published var controlPoints: [CurvePoint] {
+    didSet { save() }
+  }
+  @Published var interpolationMode: InterpolationMode {
+    didSet { save() }
+  }
+  @Published var isActive: Bool {
+    didSet {
+      sharedDefaults().set(isActive, forKey: SharedConfigKeys.curveActive)
+    }
+  }
 
   static let defaultCurve: [CurvePoint] = [
     CurvePoint(temperature: 30, fanPercent: 0.0),
@@ -46,7 +70,7 @@ class FanCurveModel: ObservableObject {
   init() {
     self.controlPoints = Self.load() ?? Self.defaultCurve
     self.interpolationMode = Self.loadMode()
-    self.isActive = false
+    self.isActive = sharedDefaults().bool(forKey: SharedConfigKeys.curveActive)
   }
 
   func evaluate(at temperature: Double) -> Double {
@@ -60,18 +84,18 @@ class FanCurveModel: ObservableObject {
 
   func resetToDefault() {
     controlPoints = Self.defaultCurve
-    save()
   }
 
   func save() {
+    let defaults = sharedDefaults()
     if let data = try? JSONEncoder().encode(controlPoints) {
-      UserDefaults.standard.set(data, forKey: "fanCurvePoints")
+      defaults.set(data, forKey: SharedConfigKeys.curvePoints)
     }
-    UserDefaults.standard.set(interpolationMode.rawValue, forKey: "interpolationMode")
+    defaults.set(interpolationMode.rawValue, forKey: SharedConfigKeys.interpolationMode)
   }
 
   private static func load() -> [CurvePoint]? {
-    guard let data = UserDefaults.standard.data(forKey: "fanCurvePoints"),
+    guard let data = sharedDefaults().data(forKey: SharedConfigKeys.curvePoints),
       let points = try? JSONDecoder().decode([CurvePoint].self, from: data),
       points.count >= 2
     else { return nil }
@@ -79,9 +103,9 @@ class FanCurveModel: ObservableObject {
   }
 
   private static func loadMode() -> InterpolationMode {
-    guard let raw = UserDefaults.standard.string(forKey: "interpolationMode"),
+    guard let raw = sharedDefaults().string(forKey: SharedConfigKeys.interpolationMode),
       let mode = InterpolationMode(rawValue: raw)
-    else { return .linear }
+    else { return .catmullRom }
     return mode
   }
 }

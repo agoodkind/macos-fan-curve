@@ -26,6 +26,7 @@ targetTemplates:
         outputFiles:
           - "$(DERIVED_FILE_DIR)/Generated/Config.generated.swift"
           - "$(DERIVED_FILE_DIR)/Generated/App-Info.plist"
+          - "$(DERIVED_FILE_DIR)/Generated/agent-launchd.plist"
 
 targets:
   FanCurve:
@@ -48,6 +49,8 @@ targets:
         product: SMCFanKit
       - package: FanCurve
         product: SMCFanLogging
+      - target: FanCurveAgent
+        embed: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID)
@@ -56,3 +59,42 @@ targets:
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: $(CODE_SIGN_IDENTITY)
         DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
+    postCompileScripts:
+      - name: "Bundle agent into app"
+        script: |
+          set -euo pipefail
+          AGENT_SRC="${BUILT_PRODUCTS_DIR}/${AGENT_BUNDLE_ID}"
+          APP_DIR="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app"
+          AGENTS_DIR="${APP_DIR}/Contents/Library/LaunchAgents"
+          MACOS_DIR="${APP_DIR}/Contents/MacOS"
+          mkdir -p "${AGENTS_DIR}"
+          cp "${AGENT_SRC}" "${MACOS_DIR}/"
+          cp "${DERIVED_FILE_DIR}/Generated/agent-launchd.plist" \
+             "${AGENTS_DIR}/${AGENT_BUNDLE_ID}.plist"
+
+  FanCurveAgent:
+    type: tool
+    platform: macOS
+    templates:
+      - CommonConfig
+    sources:
+      - path: Sources/Agent
+      - path: Sources/Models
+      - path: Sources/Services/XPCClient.swift
+      - path: Sources/Common
+      - path: "${DERIVED_FILE_DIR}/Generated/Config.generated.swift"
+        optional: true
+        buildPhase: sources
+        type: file
+    dependencies:
+      - package: FanCurve
+        product: SMCFanKit
+      - package: FanCurve
+        product: SMCFanLogging
+    settings:
+      base:
+        PRODUCT_NAME: $(AGENT_BUNDLE_ID)
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: $(CODE_SIGN_IDENTITY)
+        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
+        SKIP_INSTALL: YES

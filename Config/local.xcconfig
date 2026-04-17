@@ -3,3 +3,5 @@ DEVELOPMENT_TEAM = H3BMXM4W7H
 BUNDLE_ID_PREFIX = io.goodkind
 HELPER_BUNDLE_ID = io.goodkind.smcfanhelper
 APP_BUNDLE_ID = io.goodkind.fancurve
+AGENT_BUNDLE_ID = io.goodkind.fancurveagent
+SHARED_SUITE_ID = io.goodkind.fancurve.shared

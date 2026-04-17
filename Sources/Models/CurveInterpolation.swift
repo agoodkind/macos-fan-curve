@@ -40,39 +40,81 @@ enum CurveInterpolation {
     return max(0, min(1, sorted.last!.fanPercent))
   }
 
+  /// Monotone cubic interpolation (Fritsch-Carlson). Smooth curves that never
+  /// overshoot between control points, which is critical for fan curves where
+  /// you never want the speed to dip below a control point's value.
   static func catmullRom(at temperature: Double, points: [CurvePoint]) -> Double {
     guard points.count >= 2 else { return linear(at: temperature, points: points) }
     let sorted = points.sorted { $0.temperature < $1.temperature }
+    let n = sorted.count
 
-    if temperature <= sorted.first!.temperature { return max(0, sorted.first!.fanPercent) }
-    if temperature >= sorted.last!.temperature { return min(1, sorted.last!.fanPercent) }
+    if temperature <= sorted[0].temperature { return max(0, sorted[0].fanPercent) }
+    if temperature >= sorted[n - 1].temperature { return min(1, sorted[n - 1].fanPercent) }
 
-    // Find the bracketing segment
-    var segIdx = 0
-    for i in 0..<(sorted.count - 1) {
+    // Compute slopes (Fritsch-Carlson monotone method)
+    var dx = [Double](repeating: 0, count: n - 1)
+    var dy = [Double](repeating: 0, count: n - 1)
+    var slopes = [Double](repeating: 0, count: n - 1)
+
+    for i in 0..<(n - 1) {
+      dx[i] = sorted[i + 1].temperature - sorted[i].temperature
+      dy[i] = sorted[i + 1].fanPercent - sorted[i].fanPercent
+      slopes[i] = dx[i] != 0 ? dy[i] / dx[i] : 0
+    }
+
+    // Compute tangents with monotonicity constraint
+    var tangents = [Double](repeating: 0, count: n)
+    tangents[0] = slopes[0]
+    tangents[n - 1] = slopes[n - 2]
+
+    for i in 1..<(n - 1) {
+      if slopes[i - 1] * slopes[i] <= 0 {
+        tangents[i] = 0
+      } else {
+        tangents[i] = (slopes[i - 1] + slopes[i]) / 2.0
+      }
+    }
+
+    // Fritsch-Carlson monotonicity fix
+    for i in 0..<(n - 1) {
+      if slopes[i] == 0 {
+        tangents[i] = 0
+        tangents[i + 1] = 0
+      } else {
+        let alpha = tangents[i] / slopes[i]
+        let beta = tangents[i + 1] / slopes[i]
+        let sum = alpha * alpha + beta * beta
+        if sum > 9 {
+          let tau = 3.0 / sum.squareRoot()
+          tangents[i] = tau * alpha * slopes[i]
+          tangents[i + 1] = tau * beta * slopes[i]
+        }
+      }
+    }
+
+    // Find segment and interpolate
+    var seg = 0
+    for i in 0..<(n - 1) {
       if temperature >= sorted[i].temperature && temperature <= sorted[i + 1].temperature {
-        segIdx = i
+        seg = i
         break
       }
     }
 
-    // Get 4 points for Catmull-Rom (with virtual endpoints)
-    let p0 = segIdx > 0 ? sorted[segIdx - 1] : sorted[segIdx]
-    let p1 = sorted[segIdx]
-    let p2 = sorted[segIdx + 1]
-    let p3 = segIdx + 2 < sorted.count ? sorted[segIdx + 2] : sorted[segIdx + 1]
-
-    let t = (temperature - p1.temperature) / (p2.temperature - p1.temperature)
+    let h = dx[seg]
+    let t = (temperature - sorted[seg].temperature) / h
     let t2 = t * t
     let t3 = t2 * t
 
-    // Catmull-Rom matrix multiplication
-    let v = 0.5 * (
-      (2.0 * p1.fanPercent)
-        + (-p0.fanPercent + p2.fanPercent) * t
-        + (2.0 * p0.fanPercent - 5.0 * p1.fanPercent + 4.0 * p2.fanPercent - p3.fanPercent) * t2
-        + (-p0.fanPercent + 3.0 * p1.fanPercent - 3.0 * p2.fanPercent + p3.fanPercent) * t3
-    )
+    let h00 = 2 * t3 - 3 * t2 + 1
+    let h10 = t3 - 2 * t2 + t
+    let h01 = -2 * t3 + 3 * t2
+    let h11 = t3 - t2
+
+    let v = h00 * sorted[seg].fanPercent
+      + h10 * h * tangents[seg]
+      + h01 * sorted[seg + 1].fanPercent
+      + h11 * h * tangents[seg + 1]
 
     return max(0, min(1, v))
   }

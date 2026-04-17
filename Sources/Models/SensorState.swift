@@ -6,6 +6,7 @@
 //  Copyright © 2026
 //
 
+import Combine
 import Foundation
 
 struct SensorReading: Identifiable, Sendable {
