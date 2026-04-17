@@ -15,6 +15,16 @@ struct FanCurveEditor: View {
   @State private var mouseLocation: CGPoint?
   @State private var draggedCurveID: UUID?
 
+  @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
+
+  private var unit: TemperatureUnit {
+    TemperatureUnit(rawValue: unitRaw) ?? .celsius
+  }
+
+  private func displayTemp(_ celsius: Double) -> Int {
+    Int(unit.convert(fromCelsius: celsius).rounded())
+  }
+
   @State private var animatedTemp: Double = 0
   @State private var animatedActualPercent: Double = 0
 
@@ -222,7 +232,7 @@ struct FanCurveEditor: View {
       context.stroke(line, with: .color(gridColor), lineWidth: 0.5)
 
       if Int(temp) % 20 == 0 {
-        let text = Text("\(Int(temp))°C")
+        let text = Text("\(displayTemp(temp))\(unit.symbol)")
           .font(.system(.caption2, design: .rounded))
           .foregroundColor(labelColor)
         context.draw(text, at: CGPoint(x: x, y: plotBottom + 14), anchor: .center)
@@ -233,7 +243,7 @@ struct FanCurveEditor: View {
   private func drawAxisTitles(context: GraphicsContext, size: CGSize) {
     let titleColor = Color.secondary.opacity(0.8)
 
-    let xTitle = Text("Temperature (°C)")
+    let xTitle = Text("Temperature (\(unit.symbol))")
       .font(.system(.caption2, design: .rounded).weight(.medium))
       .foregroundColor(titleColor)
     context.draw(
@@ -343,7 +353,7 @@ struct FanCurveEditor: View {
         let rpm = Int(rpmRange.min + Float(percent) * (rpmRange.max - rpmRange.min))
         let tooltipY = pos.y > topPad + 32 ? pos.y - 26 : pos.y + 26
 
-        Text("\(Int(data.x))°C  \(Int(percent * 100))%  \(rpm.formatted()) RPM")
+        Text("\(displayTemp(data.x))\(unit.symbol)  \(Int(percent * 100))%  \(rpm.formatted()) RPM")
           .font(.system(.caption2, design: .rounded).weight(.medium))
           .foregroundColor(Color.primary.opacity(0.95))
           .padding(.horizontal, 7)

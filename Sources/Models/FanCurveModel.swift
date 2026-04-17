@@ -31,9 +31,15 @@ enum SharedConfigKeys {
   static let curvePoints = "curvePoints"
   static let interpolationMode = "interpolationMode"
   static let curveActive = "curveActive"
+  static let overdriveEnabled = "overdriveEnabled"
   static let agentPID = "agentPID"
   static let agentLastTick = "agentLastTick"
 }
+
+/// When Overdrive is on, 100% on the curve maps to this value instead of the
+/// firmware reported max. Firmware accepts it and the fan spins to its
+/// physical limit. Verified on M4 Max and M5 Max.
+let overdriveTargetRPM: Float = 10000
 
 /// Access the shared UserDefaults suite used by GUI + Agent.
 /// Persists to ~/Library/Preferences/<SHARED_SUITE_ID>.plist
@@ -77,9 +83,21 @@ class FanCurveModel: ObservableObject {
     CurveInterpolation.evaluate(at: temperature, points: controlPoints, mode: interpolationMode)
   }
 
+  /// Map a curve percent (0...1) to an RPM target for a specific fan.
+  ///
+  /// Zero percent writes zero so the helper can fall back to auto mode.
+  /// Above zero we interpolate linearly between the fan's reported min and
+  /// its effective max.
+  ///
+  /// When Overdrive is enabled in Settings, the effective max is the value
+  /// of `overdriveTargetRPM` rather than the firmware reported max. The
+  /// M5 Max firmware still accepts the higher target and spins the fan to
+  /// its physical limit, well above the reported value.
   func rpmForFan(percent: Double, minRPM: Float, maxRPM: Float) -> Float {
     if percent <= 0 { return 0 }
-    return minRPM + Float(percent) * (maxRPM - minRPM)
+    let overdriveOn = sharedDefaults().bool(forKey: SharedConfigKeys.overdriveEnabled)
+    let effectiveMax = overdriveOn ? max(maxRPM, overdriveTargetRPM) : maxRPM
+    return minRPM + Float(percent) * (effectiveMax - minRPM)
   }
 
   func resetToDefault() {
