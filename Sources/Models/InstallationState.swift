@@ -25,8 +25,27 @@ final class InstallationState: ObservableObject {
 
   @Published var step: Step = .checking
   @Published var lastError: String?
+  @Published var helperReachable: Bool = false
+  @Published var agentRawStatus: Int = 0
 
   private var timer: Timer?
+
+  /// Convenience computed helpers for the Settings UI.
+  var agentEnabled: Bool {
+    guard #available(macOS 13.0, *) else { return false }
+    return SMAppService.Status(rawValue: agentRawStatus) == .enabled
+  }
+
+  var agentStatusLabel: String {
+    guard #available(macOS 13.0, *) else { return "Unavailable" }
+    switch SMAppService.Status(rawValue: agentRawStatus) {
+    case .enabled: return "Enabled"
+    case .requiresApproval: return "Awaiting approval in System Settings"
+    case .notFound: return "Not installed"
+    case .notRegistered: return "Not registered"
+    default: return "Unknown"
+    }
+  }
 
   func startMonitoring(xpcClient: XPCClient) {
     Task { await refresh(xpcClient: xpcClient) }
@@ -64,10 +83,25 @@ final class InstallationState: ObservableObject {
     }
   }
 
+  /// Unregister the agent. Stops it and removes its entry from Login Items.
+  func unregisterAgent() {
+    guard #available(macOS 13.0, *) else { return }
+    let service = SMAppService.agent(plistName: "\(generatedAgentBundleID).plist")
+    do {
+      try service.unregister()
+      lastError = nil
+    } catch {
+      lastError = error.localizedDescription
+    }
+  }
+
   /// Probes current installation status.
   private func refresh(xpcClient: XPCClient) async {
     let helperOK = await helperResponding(xpcClient: xpcClient)
     let agentStatus = currentAgentStatus()
+
+    helperReachable = helperOK
+    agentRawStatus = agentStatus.rawValue
 
     if !helperOK {
       step = .helperMissing

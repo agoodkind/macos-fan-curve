@@ -25,6 +25,14 @@ struct ContentView: View {
     }
     .frame(minWidth: 800, idealWidth: 960, minHeight: 480, idealHeight: 560)
     .background(Color(nsColor: .windowBackgroundColor))
+    .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        Button(action: openSettings) {
+          Image(systemName: "gearshape")
+        }
+        .help("Settings")
+      }
+    }
     .onAppear {
       installState.startMonitoring(xpcClient: xpcClient)
       let ctrl = FanCurveController(xpcClient: xpcClient, sensorState: sensorState)
@@ -48,8 +56,19 @@ struct ContentView: View {
 
       SensorDashboard(
         sensorState: sensorState,
-        curveModel: curveModel
+        curveModel: curveModel,
+        installState: installState
       )
+    }
+  }
+
+  /// Open the built-in Settings scene. Works on macOS 13 through 26 without
+  /// requiring the macOS 14 only `@Environment(\.openSettings)` API.
+  private func openSettings() {
+    if #available(macOS 14.0, *) {
+      NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    } else {
+      NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
     }
   }
 }
