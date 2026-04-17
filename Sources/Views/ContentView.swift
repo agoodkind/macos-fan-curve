@@ -12,9 +12,32 @@ struct ContentView: View {
   @EnvironmentObject var xpcClient: XPCClient
   @StateObject private var curveModel = FanCurveModel()
   @StateObject private var sensorState = SensorState()
+  @StateObject private var installState = InstallationState()
   @State private var controller: FanCurveController?
 
   var body: some View {
+    Group {
+      if installState.step == .ready {
+        mainLayout
+      } else {
+        OnboardingView(state: installState)
+      }
+    }
+    .frame(minWidth: 800, idealWidth: 960, minHeight: 480, idealHeight: 560)
+    .background(Color(nsColor: .windowBackgroundColor))
+    .onAppear {
+      installState.startMonitoring(xpcClient: xpcClient)
+      let ctrl = FanCurveController(xpcClient: xpcClient, sensorState: sensorState)
+      controller = ctrl
+      ctrl.start()
+    }
+    .onDisappear {
+      installState.stopMonitoring()
+      controller?.stop()
+    }
+  }
+
+  private var mainLayout: some View {
     HStack(spacing: 0) {
       VStack(spacing: 0) {
         FanCurveEditor(model: curveModel, sensorState: sensorState)
@@ -27,16 +50,6 @@ struct ContentView: View {
         sensorState: sensorState,
         curveModel: curveModel
       )
-    }
-    .frame(minWidth: 800, idealWidth: 960, minHeight: 480, idealHeight: 560)
-    .background(Color(nsColor: .windowBackgroundColor))
-    .onAppear {
-      let ctrl = FanCurveController(xpcClient: xpcClient, sensorState: sensorState)
-      controller = ctrl
-      ctrl.start()
-    }
-    .onDisappear {
-      controller?.stop()
     }
   }
 }
