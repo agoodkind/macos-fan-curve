@@ -15,19 +15,56 @@ struct SettingsView: View {
     TabView {
       GeneralSettingsView()
         .tabItem { Label("General", systemImage: "gearshape") }
+      CurveSettingsView()
+        .tabItem { Label("Curve", systemImage: "waveform.path.ecg") }
       HelpersSettingsView()
         .tabItem { Label("Helpers", systemImage: "bolt.badge.clock") }
       UpdatesSettingsView()
         .tabItem { Label("Updates", systemImage: "arrow.down.circle") }
     }
-    .frame(width: 480, height: 360)
+    .frame(width: 520, height: 420)
   }
 }
 
-/// General preferences: interpolation mode and temperature unit.
+/// General display preferences. Stored in UserDefaults.standard because they
+/// only affect the GUI and do not need to be visible to the agent.
 struct GeneralSettingsView: View {
-  @AppStorage("interpolationMode") private var interpolationRaw: String = "catmullRom"
   @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
+
+  var body: some View {
+    Form {
+      Section {
+        Picker("Temperature Unit", selection: $unitRaw) {
+          ForEach(TemperatureUnit.allCases) { unit in
+            Text(unit.displayName).tag(unit.rawValue)
+          }
+        }
+        .pickerStyle(.segmented)
+      } header: {
+        Text("Display")
+      } footer: {
+        Text("Curves are stored internally in Celsius. Changing this only affects the UI.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .formStyle(.grouped)
+    .padding()
+  }
+}
+
+/// Curve behavior settings. These live in the shared suite because the Agent
+/// reads the same values when evaluating the curve in the background.
+struct CurveSettingsView: View {
+  @StateObject private var curveModel = FanCurveModel()
+
+  private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+
+  @AppStorage(SharedConfigKeys.interpolationMode, store: suite)
+  private var interpolationRaw: String = "catmullRom"
+
+  @AppStorage(SharedConfigKeys.overdriveEnabled, store: suite)
+  private var overdrive: Bool = false
 
   var body: some View {
     Form {
@@ -38,22 +75,44 @@ struct GeneralSettingsView: View {
         }
         .pickerStyle(.segmented)
       } header: {
-        Text("Curve Interpolation")
+        Text("Smoothing")
       } footer: {
-        Text("Linear draws straight segments between points. Smooth uses monotone cubic curves.")
+        Text("Linear draws straight segments between points. Smooth uses monotone cubic.")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
 
       Section {
-        Picker("Temperature Unit", selection: $unitRaw) {
-          ForEach(TemperatureUnit.allCases) { unit in
-            Text(unit.displayName).tag(unit.rawValue)
+        Toggle(isOn: $overdrive) {
+          VStack(alignment: .leading, spacing: 2) {
+            Text("Overdrive")
+            Text("100% on the curve requests \(Int(overdriveTargetRPM)) RPM")
+              .font(.caption)
+              .foregroundStyle(.secondary)
           }
         }
-        .pickerStyle(.segmented)
       } header: {
-        Text("Display")
+        Text("Maximum Fan Speed")
+      } footer: {
+        Text(
+          "The firmware reports a conservative max. Hardware can spin well past it when the target is higher."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      }
+
+      Section {
+        Button(role: .destructive) {
+          curveModel.resetToDefault()
+        } label: {
+          Label("Reset to Default Curve", systemImage: "arrow.counterclockwise")
+        }
+      } header: {
+        Text("Danger Zone")
+      } footer: {
+        Text("Replaces your saved curve with the built-in default. This cannot be undone.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
     }
     .formStyle(.grouped)
@@ -135,27 +194,48 @@ struct HelpersSettingsView: View {
   }
 }
 
-/// Updates preferences. Currently a stub. Sparkle can be added later.
+/// Updates settings. Checks the GitHub releases API for the latest tag.
 struct UpdatesSettingsView: View {
   @AppStorage("autoCheckUpdates") private var autoCheck: Bool = true
+
+  @StateObject private var checker = UpdateChecker()
 
   var body: some View {
     Form {
       Section {
-        Toggle("Automatically check for updates", isOn: $autoCheck)
-        Button("Check Now") {
-          NSWorkspace.shared.open(URL(string: "https://github.com/agoodkind/macos-fan-curve/releases")!)
+        Toggle("Automatically check on launch", isOn: $autoCheck)
+
+        HStack {
+          Label(statusLabel, systemImage: statusIcon)
+            .foregroundColor(statusColor)
+            .symbolRenderingMode(.hierarchical)
+
+          Spacer()
+
+          Button("Check Now") {
+            Task { await checker.check() }
+          }
+          .disabled(checker.isChecking)
+        }
+
+        if let latest = checker.latestTag, checker.isUpdateAvailable {
+          Button {
+            NSWorkspace.shared.open(
+              URL(string: "https://github.com/agoodkind/macos-fan-curve/releases/tag/\(latest)")!)
+          } label: {
+            Label("Download \(latest)", systemImage: "arrow.down.circle.fill")
+          }
+          .buttonStyle(.borderedProminent)
         }
       } header: {
         Text("Software Updates")
-      } footer: {
-        Text("Update checks are not yet automated in this build. The button opens the releases page.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
       }
 
       Section {
         Text("Build \(generatedGitVersion)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Text("Commit \(generatedGitCommit)")
           .font(.caption)
           .foregroundStyle(.secondary)
       } header: {
@@ -164,5 +244,77 @@ struct UpdatesSettingsView: View {
     }
     .formStyle(.grouped)
     .padding()
+    .task {
+      if autoCheck { await checker.check() }
+    }
+  }
+
+  private var statusLabel: String {
+    if checker.isChecking { return "Checking..." }
+    if let err = checker.error { return "Error: \(err)" }
+    if checker.isUpdateAvailable, let tag = checker.latestTag {
+      return "Update available: \(tag)"
+    }
+    if checker.latestTag != nil { return "You are up to date" }
+    return "Not checked yet"
+  }
+
+  private var statusIcon: String {
+    if checker.isChecking { return "arrow.triangle.2.circlepath" }
+    if checker.error != nil { return "exclamationmark.triangle" }
+    if checker.isUpdateAvailable { return "arrow.down.circle.fill" }
+    if checker.latestTag != nil { return "checkmark.circle.fill" }
+    return "questionmark.circle"
+  }
+
+  private var statusColor: Color {
+    if checker.error != nil { return Color(nsColor: .systemOrange) }
+    if checker.isUpdateAvailable { return Color(nsColor: .systemBlue) }
+    if checker.latestTag != nil { return Color(nsColor: .systemGreen) }
+    return .secondary
+  }
+}
+
+/// Polls the GitHub releases API. Not a full Sparkle replacement. Sufficient
+/// for this project until auto-update is needed.
+@MainActor
+final class UpdateChecker: ObservableObject {
+  @Published var latestTag: String?
+  @Published var isUpdateAvailable = false
+  @Published var isChecking = false
+  @Published var error: String?
+
+  private let releasesURL = URL(
+    string: "https://api.github.com/repos/agoodkind/macos-fan-curve/releases/latest")!
+
+  func check() async {
+    isChecking = true
+    error = nil
+    defer { isChecking = false }
+
+    do {
+      var req = URLRequest(url: releasesURL)
+      req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+      let (data, _) = try await URLSession.shared.data(for: req)
+      let decoded = try JSONDecoder().decode(Release.self, from: data)
+      latestTag = decoded.tagName
+      isUpdateAvailable = compareVersion(decoded.tagName, against: generatedGitVersion)
+    } catch {
+      self.error = error.localizedDescription
+    }
+  }
+
+  private func compareVersion(_ latest: String, against current: String) -> Bool {
+    // Strip leading 'v' if present, then compare as version-sortable strings.
+    // Any mismatch counts as an update; precise semver comparison is overkill here.
+    let l = latest.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
+    let c = current.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
+    return l != c && !c.contains(l)
+  }
+
+  private struct Release: Decodable {
+    let tagName: String
+
+    enum CodingKeys: String, CodingKey { case tagName = "tag_name" }
   }
 }

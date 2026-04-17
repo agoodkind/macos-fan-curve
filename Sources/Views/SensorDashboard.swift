@@ -13,6 +13,12 @@ struct SensorDashboard: View {
   @ObservedObject var curveModel: FanCurveModel
   @ObservedObject var installState: InstallationState
 
+  @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
+
+  private var unit: TemperatureUnit {
+    TemperatureUnit(rawValue: unitRaw) ?? .celsius
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 24) {
       // Hero temp
@@ -22,12 +28,13 @@ struct SensorDashboard: View {
           .foregroundColor(.secondary)
 
         HStack(alignment: .firstTextBaseline, spacing: 2) {
-          Text("\(Int(sensorState.governingTemperature))")
+          let displayed = Int(unit.convert(fromCelsius: sensorState.governingTemperature))
+          Text("\(displayed)")
             .font(.system(size: 48, weight: .thin, design: .rounded))
             .foregroundColor(tempColor)
             .contentTransition(.numericText())
-            .animation(.easeInOut(duration: 0.6), value: Int(sensorState.governingTemperature))
-          Text("°C")
+            .animation(.easeInOut(duration: 0.6), value: displayed)
+          Text(unit.symbol)
             .font(.system(size: 18, weight: .ultraLight))
             .foregroundColor(tempColor.opacity(0.5))
         }
