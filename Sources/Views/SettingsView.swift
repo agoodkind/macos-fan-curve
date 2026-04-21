@@ -26,6 +26,8 @@ struct SettingsView: View {
         .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
       GeneralSettingsView()
         .tabItem { Label("General", systemImage: "gearshape") }
+      ArbiterSettingsView()
+        .tabItem { Label("Arbiter", systemImage: "fanblades") }
       AboutSettingsView()
         .tabItem { Label("About", systemImage: "info.circle") }
     }
@@ -45,6 +47,7 @@ struct GeneralSettingsView: View {
 
   @EnvironmentObject var xpcClient: XPCClient
   @StateObject private var installState = InstallationState()
+  @StateObject private var smcdStatus = SMCDStatus()
 
   var body: some View {
     Form {
@@ -86,6 +89,18 @@ struct GeneralSettingsView: View {
       }
 
       Section {
+        smcdRow
+      } header: {
+        Text("Fan Arbiter (smcd)")
+      } footer: {
+        Text(
+          "User space arbiter. Mediates fan control between FanCurve and other apps such as lmd by priority. Install from the macos-smc-fan repository with `make smcd-install`."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      }
+
+      Section {
         agentRow
       } header: {
         Text("Background Agent")
@@ -97,8 +112,14 @@ struct GeneralSettingsView: View {
     }
     .formStyle(.grouped)
     .padding()
-    .onAppear { installState.startMonitoring(xpcClient: xpcClient) }
-    .onDisappear { installState.stopMonitoring() }
+    .onAppear {
+      installState.startMonitoring(xpcClient: xpcClient)
+      smcdStatus.startMonitoring(intervalSeconds: 2.0)
+    }
+    .onDisappear {
+      installState.stopMonitoring()
+      smcdStatus.stopMonitoring()
+    }
   }
 
   private var helperRow: some View {
@@ -116,6 +137,36 @@ struct GeneralSettingsView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
     }
+  }
+
+  private var smcdRow: some View {
+    HStack {
+      statusDot(ok: smcdStatus.reachable)
+      VStack(alignment: .leading, spacing: 2) {
+        Text("Fan Arbiter")
+          .font(.body)
+        Text(smcdSubtitle)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Spacer()
+      Text(smcdStatus.reachable ? "Running" : "Unreachable")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  private var smcdSubtitle: String {
+    if smcdStatus.reachable {
+      let count = smcdStatus.rows.count
+      if count == 0 { return "io.goodkind.smcd. No fans currently claimed." }
+      return "io.goodkind.smcd. \(count) fan\(count == 1 ? "" : "s") claimed."
+    }
+    if let err = smcdStatus.lastError, !err.isEmpty {
+      return "io.goodkind.smcd unreachable. \(err)"
+    }
+    return "io.goodkind.smcd not reachable."
   }
 
   private var agentRow: some View {
@@ -318,6 +369,99 @@ struct ProfilesSettingsView: View {
 struct AboutSettingsView: View {
   var body: some View {
     AboutContentView()
+  }
+}
+
+/// Live view of smcd arbitration. Shows which client currently owns each
+/// fan, at what priority, and how long ago they last wrote. Useful when
+/// two fan writers (FanCurve and lmd, for example) are installed and
+/// you want to see who is driving RPM right now.
+struct ArbiterSettingsView: View {
+  @StateObject private var smcdStatus = SMCDStatus()
+
+  var body: some View {
+    ScrollView {
+      Form {
+        Section {
+          HStack(spacing: 8) {
+            Circle()
+              .fill(smcdStatus.reachable ? Color(nsColor: .systemGreen) : Color(nsColor: .systemGray))
+              .frame(width: 8, height: 8)
+            Text(smcdStatus.reachable ? "Connected to smcd" : "Cannot reach smcd")
+              .font(.body)
+            Spacer()
+            if !smcdStatus.reachable, let err = smcdStatus.lastError {
+              Text(err)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            }
+          }
+        } header: {
+          Text("Status")
+        } footer: {
+          Text(
+            "The arbiter coordinates fan writes between FanCurve and other apps. Install from the macos-smc-fan repository with `make smcd-install` if it is not running."
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        }
+
+        Section {
+          if smcdStatus.rows.isEmpty {
+            Text(smcdStatus.reachable ? "No fans currently claimed." : "Waiting for smcd.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          } else {
+            ForEach(smcdStatus.rows) { row in
+              arbiterRow(row)
+            }
+          }
+        } header: {
+          Text("Current Owners")
+        } footer: {
+          Text(
+            "Priority preempts a running owner while it is active. Ownership lapses after roughly 10 seconds with no further writes, at which point any client may claim the fan."
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        }
+      }
+      .formStyle(.grouped)
+      .padding()
+    }
+    .onAppear { smcdStatus.startMonitoring(intervalSeconds: 1.0) }
+    .onDisappear { smcdStatus.stopMonitoring() }
+  }
+
+  @ViewBuilder
+  private func arbiterRow(_ row: ArbiterRow) -> some View {
+    HStack {
+      VStack(alignment: .leading, spacing: 2) {
+        Text("Fan \(row.fanIndex)")
+          .font(.body)
+        Text("owned by \(row.clientName)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      Spacer()
+      VStack(alignment: .trailing, spacing: 2) {
+        Text("priority \(row.priority)")
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
+        Text(formatAge(row.ageSeconds))
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
+      }
+    }
+  }
+
+  private func formatAge(_ seconds: TimeInterval) -> String {
+    if seconds < 1.0 { return "just now" }
+    if seconds < 60 { return "\(Int(seconds))s ago" }
+    let minutes = Int(seconds / 60)
+    return "\(minutes)m ago"
   }
 }
 
