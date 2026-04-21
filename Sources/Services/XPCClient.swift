@@ -66,7 +66,7 @@ class XPCClient: ObservableObject, @unchecked Sendable {
   /// Invalidate on app termination.
   func shutdown() {
     self.client.shutdown()
-    Task { @MainActor in self.state = .disconnected }
+    Task { @MainActor [weak self] in self?.state = .disconnected }
     log.debug("xpc.shutdown")
   }
 
@@ -202,12 +202,12 @@ class XPCClient: ObservableObject, @unchecked Sendable {
     if case .connected = self.state { wasConnected = true } else { wasConnected = false }
     self.stateLock.unlock()
     if !wasConnected {
-      Task { @MainActor in self.state = .connected }
+      Task { @MainActor [weak self] in self?.state = .connected }
     }
   }
 
   private func markError(_ error: Error) {
     let msg = error.localizedDescription
-    Task { @MainActor in self.state = .error(msg) }
+    Task { @MainActor [weak self] in self?.state = .error(msg) }
   }
 }
