@@ -48,7 +48,11 @@ targets:
       - package: FanCurve
         product: SMCFanKit
       - package: FanCurve
-        product: SMCFanLogging
+        product: AppLog
+      - package: FanCurve
+        product: SMCDClient
+      - package: FanCurve
+        product: SMCFanProtocol
       - target: FanCurveAgent
         embed: false
     settings:
@@ -90,7 +94,11 @@ targets:
       - package: FanCurve
         product: SMCFanKit
       - package: FanCurve
-        product: SMCFanLogging
+        product: AppLog
+      - package: FanCurve
+        product: SMCDClient
+      - package: FanCurve
+        product: SMCFanProtocol
     settings:
       base:
         PRODUCT_NAME: $(AGENT_BUNDLE_ID)

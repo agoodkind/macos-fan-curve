@@ -6,16 +6,13 @@
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-15.
 //  Copyright © 2026
 //
-// NOTE: Using a local path override for macos-smc-fan so that AppLog picks up
-// the migrated sources. Switch back to the remote URL after pushing smc-fan.
-
 import PackageDescription
 
 let package = Package(
     name: "FanCurve",
     platforms: [.macOS(.v13)],
     dependencies: [
-        .package(path: "/Users/agoodkind/Sites/macos-smc-fan"),
+        .package(url: "https://github.com/agoodkind/macos-smc-fan.git", branch: "main"),
     ],
     targets: [
         .target(
