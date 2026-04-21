@@ -39,15 +39,22 @@ final class SMCDStatus: ObservableObject {
   )
   private var timer: Timer?
 
+  // Owners must call `stopMonitoring` before dropping the last reference.
+  // SwiftUI's `.onAppear` / `.onDisappear` pair already provides this for
+  // the Settings screens. We cannot safely invalidate from a `deinit` here
+  // because `Timer` is not `Sendable` and a `@MainActor` nonisolated
+  // deinit is the default in Swift 6. A leaked timer ticks against a nil
+  // `self?` via `[weak self]`, which is a no op rather than a crash.
+
   func startMonitoring(intervalSeconds: TimeInterval = 1.0) {
     self.stopMonitoring()
     log.debug(
       "smcd_status.start interval=\(intervalSeconds, privacy: .public)"
     )
     self.timer = Timer.scheduledTimer(withTimeInterval: intervalSeconds, repeats: true) { [weak self] _ in
-      Task { @MainActor in await self?.tick() }
+      Task { @MainActor [weak self] in await self?.tick() }
     }
-    Task { @MainActor in await self.tick() }
+    Task { @MainActor [weak self] in await self?.tick() }
   }
 
   func stopMonitoring() {
