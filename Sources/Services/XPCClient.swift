@@ -6,8 +6,11 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import Combine
 import Foundation
+
+private let log = AppLog.make(category: "XPCClient")
 
 enum ConnectionState: Sendable {
   case disconnected
@@ -22,12 +25,17 @@ struct SMCXPCError: LocalizedError, Sendable {
 }
 
 /// Apple-idiomatic XPC client. One persistent connection per app lifetime.
+///
+/// Every remote call uses a per-call proxy created via
+/// `remoteObjectProxyWithErrorHandler`. The error handler resumes the
+/// awaiting continuation on XPC failure so we never leak continuations
+/// or their captured state. Leaked continuations were causing the
+/// agent's memory to balloon over hours of uptime.
+///
 /// interruptionHandler: log only (auto-reconnects on next message).
 /// invalidationHandler: nil out, recreate lazily on next use.
-/// Per Apple WWDC 2012 Session 241 and NSXPCConnection documentation.
 class XPCClient: ObservableObject, @unchecked Sendable {
   private var connection: NSXPCConnection?
-  private var cachedProxy: SMCFanHelperProtocol?
   private let lock = NSLock()
   private let helperBundleID: String
   private var smcOpened = false
@@ -38,58 +46,43 @@ class XPCClient: ObservableObject, @unchecked Sendable {
     self.helperBundleID = SMCFanConfiguration.default.helperBundleID
   }
 
-  /// Returns the XPC proxy, creating the connection lazily if needed.
-  /// Thread-safe. Connection persists for app lifetime.
-  func proxy() throws -> SMCFanHelperProtocol {
+  /// Returns the cached NSXPCConnection, creating it lazily. The
+  /// per-call proxy is obtained separately so each call can install
+  /// its own error handler.
+  private func ensureConnection() throws -> NSXPCConnection {
     lock.lock()
     defer { lock.unlock() }
 
-    if let p = cachedProxy { return p }
+    if let c = connection { return c }
 
     let conn = NSXPCConnection(
       machServiceName: helperBundleID,
-      options: .privileged
-    )
+      options: .privileged)
     conn.remoteObjectInterface = NSXPCInterface(with: SMCFanHelperProtocol.self)
 
-    // interruptionHandler: do NOT touch the connection. It auto-reconnects.
     conn.interruptionHandler = { [weak self] in
-      Log.debug("XPC connection interrupted, will auto-reconnect on next message")
+      log.debug("xpc.interrupted action=auto-reconnect-on-next-message")
       Task { @MainActor in self?.state = .disconnected }
     }
-
-    // invalidationHandler: connection is permanently dead. Nil out for lazy recreation.
     conn.invalidationHandler = { [weak self] in
-      Log.debug("XPC connection invalidated, will recreate on next use")
+      log.debug("xpc.invalidated action=recreate-on-next-use")
       self?.lock.lock()
       self?.connection = nil
-      self?.cachedProxy = nil
       self?.smcOpened = false
       self?.lock.unlock()
       Task { @MainActor in self?.state = .disconnected }
     }
 
     conn.resume()
-
-    guard
-      let p = conn.remoteObjectProxyWithErrorHandler({ error in
-        Log.debug("XPC proxy error: \(error.localizedDescription)")
-      }) as? SMCFanHelperProtocol
-    else {
-      throw SMCXPCError("Failed to create XPC proxy. Is the helper installed?")
-    }
-
     connection = conn
-    cachedProxy = p
     Task { @MainActor in state = .connected }
-    return p
+    return conn
   }
 
   /// Open the SMC connection in the helper. Idempotent.
   func ensureOpen() async throws {
     if smcOpened { return }
-    let p = try proxy()
-    try await callVoid { p.smcOpen(reply: $0) }
+    try await callVoid { proxy, reply in proxy.smcOpen(reply: reply) }
     smcOpened = true
   }
 
@@ -98,7 +91,6 @@ class XPCClient: ObservableObject, @unchecked Sendable {
     lock.lock()
     connection?.invalidate()
     connection = nil
-    cachedProxy = nil
     lock.unlock()
   }
 
@@ -106,22 +98,36 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
   func getFanCount() async throws -> UInt {
     try await ensureOpen()
-    let p = try proxy()
-    return try await call { p.smcGetFanCount(reply: $0) }
+    return try await call { proxy, reply in proxy.smcGetFanCount(reply: reply) }
   }
 
   func getFanInfo(_ index: UInt) async throws -> FanInfo {
     try await ensureOpen()
-    let p = try proxy()
-    return try await withCheckedThrowingContinuation { continuation in
+    let conn = try ensureConnection()
+    return try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<FanInfo, Error>) in
+      let once = ResumeGuard()
+      let proxy = conn.remoteObjectProxyWithErrorHandler { error in
+        once.tryResume {
+          continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+        }
+      }
+      guard let p = proxy as? SMCFanHelperProtocol else {
+        once.tryResume {
+          continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
+        }
+        return
+      }
       p.smcGetFanInfo(index) { success, actual, target, min, max, manual, error in
-        if success {
-          continuation.resume(
-            returning: FanInfo(
-              actualRPM: actual, targetRPM: target,
-              minRPM: min, maxRPM: max, manualMode: manual))
-        } else {
-          continuation.resume(throwing: SMCXPCError(error))
+        once.tryResume {
+          if success {
+            continuation.resume(
+              returning: FanInfo(
+                actualRPM: actual, targetRPM: target,
+                minRPM: min, maxRPM: max, manualMode: manual))
+          } else {
+            continuation.resume(throwing: SMCXPCError(error))
+          }
         }
       }
     }
@@ -129,35 +135,28 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
   func setFanRPM(_ index: UInt, rpm: Float) async throws {
     try await ensureOpen()
-    let p = try proxy()
-    try await callVoid { p.smcSetFanRPM(index, rpm: rpm, reply: $0) }
+    try await callVoid { proxy, reply in
+      proxy.smcSetFanRPM(index, rpm: rpm, reply: reply)
+    }
   }
 
   func setFanAuto(_ index: UInt) async throws {
     try await ensureOpen()
-    let p = try proxy()
-    try await callVoid { p.smcSetFanAuto(index, reply: $0) }
+    try await callVoid { proxy, reply in proxy.smcSetFanAuto(index, reply: reply) }
   }
 
   func readKey(_ key: String) async throws -> Float {
     try await ensureOpen()
-    let p = try proxy()
-    return try await call { p.smcReadKey(key, reply: $0) }
+    return try await call { proxy, reply in proxy.smcReadKey(key, reply: reply) }
   }
 
   // MARK: - Batched read + apply
 
-  /// Result of a batched read.
   struct BatchReadResult: Sendable {
     let fans: [FanInfo]
     let temps: [String: Float]
   }
 
-  /// Performs a batch of operations in sequence on the same connection:
-  /// 1. Reads `fanCount` fans (pass 0 to skip)
-  /// 2. Reads every key in `tempKeys` (silently skips failures - sensor may not exist)
-  /// 3. Applies `setFans` RPM writes
-  /// 4. Applies `autoFans` auto-mode writes
   func readAndApply(
     fanCount: UInt,
     tempKeys: [String],
@@ -166,7 +165,6 @@ class XPCClient: ObservableObject, @unchecked Sendable {
   ) async throws -> BatchReadResult {
     try await ensureOpen()
 
-    // Fans
     var fans: [FanInfo] = []
     if fanCount > 0 {
       for i in 0..<fanCount {
@@ -174,7 +172,6 @@ class XPCClient: ObservableObject, @unchecked Sendable {
       }
     }
 
-    // Temps (ignore errors per-key; sensor may not exist on this hardware)
     var temps: [String: Float] = [:]
     for key in tempKeys {
       if let value = try? await readKey(key), value > 0, value < 150 {
@@ -182,7 +179,6 @@ class XPCClient: ObservableObject, @unchecked Sendable {
       }
     }
 
-    // Writes
     if let setFans {
       for f in setFans {
         try? await setFanRPM(f.index, rpm: f.rpm)
@@ -199,25 +195,87 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
   // MARK: - Helpers
 
+  /// Wraps a proxy call whose reply signature is `(Bool, T, String?)`.
+  /// The per-call error handler guarantees the continuation resumes even
+  /// when the XPC connection dies before the reply fires, preventing
+  /// continuation leaks.
   private func call<T: Sendable>(
-    _ block: @escaping (@escaping @Sendable (Bool, T, String?) -> Void) -> Void
+    _ block: @escaping (
+      SMCFanHelperProtocol,
+      @escaping @Sendable (Bool, T, String?) -> Void
+    ) -> Void
   ) async throws -> T {
-    try await withCheckedThrowingContinuation { continuation in
-      block { success, value, error in
-        if success { continuation.resume(returning: value) }
-        else { continuation.resume(throwing: SMCXPCError(error)) }
+    let conn = try ensureConnection()
+    return try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<T, Error>) in
+      let once = ResumeGuard()
+      let proxy = conn.remoteObjectProxyWithErrorHandler { error in
+        once.tryResume {
+          continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+        }
+      }
+      guard let p = proxy as? SMCFanHelperProtocol else {
+        once.tryResume {
+          continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
+        }
+        return
+      }
+      block(p) { success, value, error in
+        once.tryResume {
+          if success { continuation.resume(returning: value) }
+          else { continuation.resume(throwing: SMCXPCError(error)) }
+        }
       }
     }
   }
 
+  /// Same idea as `call` but for replies of `(Bool, String?)`.
   private func callVoid(
-    _ block: @escaping (@escaping @Sendable (Bool, String?) -> Void) -> Void
+    _ block: @escaping (
+      SMCFanHelperProtocol,
+      @escaping @Sendable (Bool, String?) -> Void
+    ) -> Void
   ) async throws {
-    try await withCheckedThrowingContinuation { continuation in
-      block { success, error in
-        if success { continuation.resume() }
-        else { continuation.resume(throwing: SMCXPCError(error)) }
+    let conn = try ensureConnection()
+    try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<Void, Error>) in
+      let once = ResumeGuard()
+      let proxy = conn.remoteObjectProxyWithErrorHandler { error in
+        once.tryResume {
+          continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+        }
+      }
+      guard let p = proxy as? SMCFanHelperProtocol else {
+        once.tryResume {
+          continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
+        }
+        return
+      }
+      block(p) { success, error in
+        once.tryResume {
+          if success { continuation.resume() }
+          else { continuation.resume(throwing: SMCXPCError(error)) }
+        }
       }
     }
+  }
+}
+
+/// Single-use gate ensuring a closure runs exactly once. We need this
+/// because both the XPC reply and the XPC error handler can fire, and
+/// a continuation must only be resumed a single time.
+private final class ResumeGuard: @unchecked Sendable {
+  private var fired = false
+  private let lock = NSLock()
+
+  func tryResume(_ action: () -> Void) {
+    lock.lock()
+    if fired {
+      lock.unlock()
+      return
+    }
+    fired = true
+    lock.unlock()
+    action()
   }
 }

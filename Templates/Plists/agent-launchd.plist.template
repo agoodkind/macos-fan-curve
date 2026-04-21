@@ -17,8 +17,8 @@
 	<key>ProcessType</key>
 	<string>Background</string>
 	<key>StandardOutPath</key>
-	<string>/tmp/@@AGENT_BUNDLE_ID@@.out.log</string>
+	<string>/dev/null</string>
 	<key>StandardErrorPath</key>
-	<string>/tmp/@@AGENT_BUNDLE_ID@@.err.log</string>
+	<string>/dev/null</string>
 </dict>
 </plist>

@@ -1,0 +1,109 @@
+//
+//  CPULoadSampler.swift
+//  FanCurve
+//
+//  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-16.
+//  Copyright © 2026
+//
+
+import Darwin
+import Foundation
+import IOKit
+
+/// Reads the GPU utilization percent from the IOAccelerator IORegistry
+/// node. Returns zero if unavailable. Safe to call from any thread.
+func readGPULoadPercent() -> Double {
+  var iter: io_iterator_t = 0
+  let result = IOServiceGetMatchingServices(
+    kIOMainPortDefault,
+    IOServiceMatching("IOAccelerator"),
+    &iter)
+  guard result == KERN_SUCCESS else { return 0 }
+  defer { IOObjectRelease(iter) }
+
+  while case let entry = IOIteratorNext(iter), entry != 0 {
+    defer { IOObjectRelease(entry) }
+    var props: Unmanaged<CFMutableDictionary>?
+    guard
+      IORegistryEntryCreateCFProperties(entry, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+      let dict = props?.takeRetainedValue() as? [String: Any],
+      let perf = dict["PerformanceStatistics"] as? [String: Any]
+    else { continue }
+
+    if let util = perf["Device Utilization %"] as? Double {
+      return min(100, max(0, util))
+    }
+    if let util = perf["Device Utilization %"] as? Int {
+      return min(100, max(0, Double(util)))
+    }
+  }
+  return 0
+}
+
+/// Lightweight CPU load sampler shared between the GUI and the Agent.
+/// Each instance keeps its own baseline and returns a smoothed percent
+/// (0 to 100) based on the diff between successive ticks. Callers are
+/// expected to call sample() on a steady cadence (once per second or so).
+final class CPULoadSampler: @unchecked Sendable {
+  private var prev: (user: UInt32, system: UInt32, idle: UInt32, nice: UInt32)?
+  private var ema: Double = 0
+  private let emaAlpha: Double
+
+  /// emaAlpha controls smoothing. 0.3 responds in a few seconds and
+  /// damps out short compile spikes.
+  init(emaAlpha: Double = 0.3) {
+    self.emaAlpha = emaAlpha
+  }
+
+  /// Returns the instantaneous CPU percent (unfiltered). Use smoothed()
+  /// for the EMA-smoothed value that is safer for fan control decisions.
+  @discardableResult
+  func sample() -> Double {
+    var numCpus: natural_t = 0
+    var cpuInfo: processor_info_array_t?
+    var numCpuInfo: mach_msg_type_number_t = 0
+
+    let err = host_processor_info(
+      mach_host_self(),
+      PROCESSOR_CPU_LOAD_INFO,
+      &numCpus,
+      &cpuInfo,
+      &numCpuInfo)
+    guard err == KERN_SUCCESS, let cpuInfo else { return ema }
+
+    var user: UInt32 = 0
+    var system: UInt32 = 0
+    var idle: UInt32 = 0
+    var nice: UInt32 = 0
+
+    for i in 0..<Int(numCpus) {
+      let base = Int(CPU_STATE_MAX) * i
+      user &+= UInt32(cpuInfo[base + Int(CPU_STATE_USER)])
+      system &+= UInt32(cpuInfo[base + Int(CPU_STATE_SYSTEM)])
+      idle &+= UInt32(cpuInfo[base + Int(CPU_STATE_IDLE)])
+      nice &+= UInt32(cpuInfo[base + Int(CPU_STATE_NICE)])
+    }
+
+    let size = vm_size_t(Int(numCpuInfo) * MemoryLayout<integer_t>.stride)
+    vm_deallocate(mach_task_self_, vm_address_t(bitPattern: cpuInfo), size)
+
+    defer { prev = (user, system, idle, nice) }
+
+    guard let prev else { return 0 }
+    let dUser = Double(user &- prev.user)
+    let dSys = Double(system &- prev.system)
+    let dIdle = Double(idle &- prev.idle)
+    let dNice = Double(nice &- prev.nice)
+    let total = dUser + dSys + dIdle + dNice
+    guard total > 0 else { return ema }
+    let used = dUser + dSys + dNice
+    let instant = min(100, max(0, used / total * 100))
+
+    ema = emaAlpha * instant + (1 - emaAlpha) * ema
+    return instant
+  }
+
+  /// EMA smoothed load percent (0 to 100). Prefer this over sample() for
+  /// fan control so short load bursts do not trigger the floor.
+  var smoothed: Double { ema }
+}
