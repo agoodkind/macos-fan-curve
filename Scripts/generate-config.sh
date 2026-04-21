@@ -9,6 +9,9 @@ mkdir -p "${GENERATED_DIR}"
 GIT_COMMIT=$(git -C "${SRCROOT}" rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_VERSION=$(git -C "${SRCROOT}" describe --tags --always --dirty 2>/dev/null || echo "dev")
 GIT_DIRTY=$(git -C "${SRCROOT}" diff --quiet 2>/dev/null && echo "false" || echo "true")
+GIT_DATE=$(git -C "${SRCROOT}" log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M' 2>/dev/null || echo "unknown")
+GIT_BRANCH=$(git -C "${SRCROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
 
 find "${TEMPLATES_DIR}" -name '*.template' | while read -r template; do
   filename=$(basename "${template}" .template)
@@ -22,5 +25,8 @@ find "${TEMPLATES_DIR}" -name '*.template' | while read -r template; do
     -e "s|@@GIT_COMMIT@@|${GIT_COMMIT}|g" \
     -e "s|@@GIT_VERSION@@|${GIT_VERSION}|g" \
     -e "s|@@GIT_DIRTY@@|${GIT_DIRTY}|g" \
+    -e "s|@@GIT_DATE@@|${GIT_DATE}|g" \
+    -e "s|@@GIT_BRANCH@@|${GIT_BRANCH}|g" \
+    -e "s|@@BUILD_DATE@@|${BUILD_DATE}|g" \
     "${template}" > "${GENERATED_DIR}/${filename}"
 done

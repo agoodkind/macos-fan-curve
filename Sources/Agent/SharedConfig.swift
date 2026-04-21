@@ -40,6 +40,33 @@ struct SharedConfig {
     defaults.bool(forKey: SharedConfigKeys.curveActive)
   }
 
+  func loadBoostEnabled() -> Bool {
+    defaults.bool(forKey: SharedConfigKeys.boostEnabled)
+  }
+
+  func loadLoadFloorEnabled() -> Bool {
+    defaults.bool(forKey: SharedConfigKeys.loadFloorEnabled)
+  }
+
+  /// Threshold CPU percent (0 to 100) that activates the floor. Defaults
+  /// to 70 when unset so a fresh enable has sensible behavior.
+  func loadLoadFloorThreshold() -> Double {
+    let stored = defaults.double(forKey: SharedConfigKeys.loadFloorThreshold)
+    return stored > 0 ? stored : 70
+  }
+
+  func loadGpuLoadFloorThreshold() -> Double {
+    let stored = defaults.double(forKey: SharedConfigKeys.gpuLoadFloorThreshold)
+    return stored > 0 ? stored : 70
+  }
+
+  /// Minimum fan percent (0 to 100) applied while the floor is active.
+  /// Defaults to 60 when unset.
+  func loadLoadFloorPercent() -> Double {
+    let stored = defaults.double(forKey: SharedConfigKeys.loadFloorPercent)
+    return stored > 0 ? stored : 60
+  }
+
   // MARK: - Writes (agent status)
 
   func writeAgentStatus(pid: Int32, lastTick: Date) {
@@ -47,8 +74,17 @@ struct SharedConfig {
     defaults.set(lastTick.timeIntervalSince1970, forKey: SharedConfigKeys.agentLastTick)
   }
 
+  func writeAgentLastError(_ message: String?) {
+    if let message {
+      defaults.set(message, forKey: SharedConfigKeys.agentLastError)
+    } else {
+      defaults.removeObject(forKey: SharedConfigKeys.agentLastError)
+    }
+  }
+
   func clearAgentStatus() {
     defaults.removeObject(forKey: SharedConfigKeys.agentPID)
     defaults.removeObject(forKey: SharedConfigKeys.agentLastTick)
+    defaults.removeObject(forKey: SharedConfigKeys.agentLastError)
   }
 }

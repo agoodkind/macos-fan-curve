@@ -9,37 +9,41 @@
 import Combine
 import Foundation
 
-struct CurvePoint: Identifiable, Codable, Sendable {
-  let id: UUID
-  var temperature: Double
-  var fanPercent: Double
+/// Conservative default for Overdrive's 100% target when no probe result
+/// has been written yet. Firmware accepts it on M4 Max and M5 Max.
+private let overdriveTargetRPMDefault: Float = 10000
 
-  init(temperature: Double, fanPercent: Double) {
-    self.id = UUID()
-    self.temperature = temperature
-    self.fanPercent = fanPercent
+/// When Overdrive is on, 100% on the curve maps to this value. Prefers
+/// the measured value from a Learn probe, falling back to the default.
+var overdriveTargetRPM: Float {
+  let measured = Float(
+    sharedDefaults().double(forKey: SharedConfigKeys.overdriveTargetRPMMeasured))
+  return measured > 0 ? measured : overdriveTargetRPMDefault
+}
+
+/// Map a curve percent (0...1) to a command for a fan given its reported
+/// min/max RPM. Honors the Overdrive and Underdrive settings read from the
+/// shared UserDefaults suite so the GUI and the Agent agree.
+///
+/// Semantics:
+/// - percent <= 0 with underdrive off: fan goes to auto.
+/// - percent <= 0 with underdrive on: fan is forced to 0 RPM in manual mode.
+/// - percent > 0 with overdrive off: interpolate between minRPM and maxRPM.
+/// - percent > 0 with overdrive on: interpolate between minRPM and overdriveTargetRPM.
+/// - Underdrive also lowers the floor from minRPM to 0 for above-zero targets.
+func fanCommandFor(percent: Double, minRPM: Float, maxRPM: Float) -> FanCommand {
+  let defaults = sharedDefaults()
+  let overdrive = defaults.bool(forKey: SharedConfigKeys.overdriveEnabled)
+  let underdrive = defaults.bool(forKey: SharedConfigKeys.underdriveEnabled)
+
+  if percent <= 0 {
+    return underdrive ? .setRPM(0) : .auto
   }
+  let effectiveMax = overdrive ? max(maxRPM, overdriveTargetRPM) : maxRPM
+  let effectiveMin: Float = underdrive ? 0 : minRPM
+  let rpm = effectiveMin + Float(percent) * (effectiveMax - effectiveMin)
+  return .setRPM(rpm)
 }
-
-enum InterpolationMode: String, Codable, Sendable {
-  case linear
-  case catmullRom
-}
-
-/// Shared UserDefaults keys. Both GUI and Agent read/write via the shared suite.
-enum SharedConfigKeys {
-  static let curvePoints = "curvePoints"
-  static let interpolationMode = "interpolationMode"
-  static let curveActive = "curveActive"
-  static let overdriveEnabled = "overdriveEnabled"
-  static let agentPID = "agentPID"
-  static let agentLastTick = "agentLastTick"
-}
-
-/// When Overdrive is on, 100% on the curve maps to this value instead of the
-/// firmware reported max. Firmware accepts it and the fan spins to its
-/// physical limit. Verified on M4 Max and M5 Max.
-let overdriveTargetRPM: Float = 10000
 
 /// Access the shared UserDefaults suite used by GUI + Agent.
 /// Persists to ~/Library/Preferences/<SHARED_SUITE_ID>.plist
@@ -60,23 +64,32 @@ class FanCurveModel: ObservableObject {
     }
   }
 
-  static let defaultCurve: [CurvePoint] = [
-    CurvePoint(temperature: 30, fanPercent: 0.0),
-    CurvePoint(temperature: 50, fanPercent: 0.0),
-    CurvePoint(temperature: 55, fanPercent: 0.30),
-    CurvePoint(temperature: 65, fanPercent: 0.35),
-    CurvePoint(temperature: 75, fanPercent: 0.45),
-    CurvePoint(temperature: 85, fanPercent: 0.60),
-    CurvePoint(temperature: 95, fanPercent: 0.80),
-    CurvePoint(temperature: 100, fanPercent: 1.0),
-  ]
+  /// Ships as the Apple Silent approximation so a fresh install matches
+  /// roughly what macOS would do on its own. The user can pick a more
+  /// aggressive preset from Settings if they want.
+  static let defaultCurve: [CurvePoint] = CurvePresets.appleSilent.curvePoints()
 
   static let tempRange: ClosedRange<Double> = 20...110
 
   init() {
-    self.controlPoints = Self.load() ?? Self.defaultCurve
+    let loaded = Self.load() ?? Self.defaultCurve
+    self.controlPoints = Self.normalizedCurve(loaded)
     self.interpolationMode = Self.loadMode()
     self.isActive = sharedDefaults().bool(forKey: SharedConfigKeys.curveActive)
+  }
+
+  /// Ensures the curve has an explicit grabber at the plot's left edge
+  /// so the user can always drag the starting fan percent directly. If
+  /// the first stored point already sits at or below tempRange.lowerBound,
+  /// returns the curve unchanged.
+  private static func normalizedCurve(_ points: [CurvePoint]) -> [CurvePoint] {
+    guard let first = points.first else { return points }
+    if first.temperature <= tempRange.lowerBound { return points }
+    var updated = points
+    updated.insert(
+      CurvePoint(temperature: tempRange.lowerBound, fanPercent: first.fanPercent),
+      at: 0)
+    return updated
   }
 
   func evaluate(at temperature: Double) -> Double {
@@ -84,20 +97,12 @@ class FanCurveModel: ObservableObject {
   }
 
   /// Map a curve percent (0...1) to an RPM target for a specific fan.
-  ///
-  /// Zero percent writes zero so the helper can fall back to auto mode.
-  /// Above zero we interpolate linearly between the fan's reported min and
-  /// its effective max.
-  ///
-  /// When Overdrive is enabled in Settings, the effective max is the value
-  /// of `overdriveTargetRPM` rather than the firmware reported max. The
-  /// M5 Max firmware still accepts the higher target and spins the fan to
-  /// its physical limit, well above the reported value.
+  /// Shares its semantics with `fanCommandFor`. Kept for GUI preview uses.
   func rpmForFan(percent: Double, minRPM: Float, maxRPM: Float) -> Float {
-    if percent <= 0 { return 0 }
-    let overdriveOn = sharedDefaults().bool(forKey: SharedConfigKeys.overdriveEnabled)
-    let effectiveMax = overdriveOn ? max(maxRPM, overdriveTargetRPM) : maxRPM
-    return minRPM + Float(percent) * (effectiveMax - minRPM)
+    switch fanCommandFor(percent: percent, minRPM: minRPM, maxRPM: maxRPM) {
+    case .auto: return 0
+    case .setRPM(let rpm): return rpm
+    }
   }
 
   func resetToDefault() {

@@ -27,6 +27,12 @@ final class InstallationState: ObservableObject {
   @Published var lastError: String?
   @Published var helperReachable: Bool = false
   @Published var agentRawStatus: Int = 0
+  /// Timestamp of the Agent's last successful tick, read from the shared
+  /// UserDefaults suite on each refresh. 0 when unset.
+  @Published var agentLastTickEpoch: Double = 0
+  /// Last error string reported by the Agent, empty when the last tick
+  /// succeeded or the Agent has never written one.
+  @Published var agentLastError: String = ""
 
   private var timer: Timer?
 
@@ -34,6 +40,15 @@ final class InstallationState: ObservableObject {
   var agentEnabled: Bool {
     guard #available(macOS 13.0, *) else { return false }
     return SMAppService.Status(rawValue: agentRawStatus) == .enabled
+  }
+
+  /// True when the Agent is registered AND has written a tick within the
+  /// freshness window. "Registered but silent" means the process died or
+  /// is hung, which is what the user sees as "fan control stopped".
+  var agentLive: Bool {
+    guard agentEnabled else { return false }
+    let lastTick = Date(timeIntervalSince1970: agentLastTickEpoch)
+    return agentLastTickEpoch > 0 && Date().timeIntervalSince(lastTick) < 10
   }
 
   var agentStatusLabel: String {
@@ -102,6 +117,10 @@ final class InstallationState: ObservableObject {
 
     helperReachable = helperOK
     agentRawStatus = agentStatus.rawValue
+
+    let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+    agentLastTickEpoch = suite.double(forKey: SharedConfigKeys.agentLastTick)
+    agentLastError = suite.string(forKey: SharedConfigKeys.agentLastError) ?? ""
 
     if !helperOK {
       step = .helperMissing

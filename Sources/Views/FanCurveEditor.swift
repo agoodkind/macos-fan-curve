@@ -14,6 +14,20 @@ struct FanCurveEditor: View {
   @State private var hoveredIndex: Int?
   @State private var mouseLocation: CGPoint?
   @State private var draggedCurveID: UUID?
+  @State private var segmentDrag: SegmentDragState?
+
+  /// State captured when the user starts dragging on a curve segment so
+  /// both bracketing control points move together by the drag delta in
+  /// both temperature (x) and fan percent (y).
+  private struct SegmentDragState {
+    let leftIndex: Int
+    let leftInitialTemp: Double
+    let leftInitialPercent: Double
+    let rightInitialTemp: Double
+    let rightInitialPercent: Double
+    let startTemp: Double
+    let startPercent: Double
+  }
 
   @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
 
@@ -27,8 +41,14 @@ struct FanCurveEditor: View {
 
   @State private var animatedTemp: Double = 0
   @State private var animatedActualPercent: Double = 0
+  /// Crossfade driver between active and inactive curve rendering. 1 is
+  /// fully active (blue solid user curve, no ghost). 0 is fully inactive
+  /// (gray dashed user curve, accent-colored Apple ghost). SwiftUI
+  /// animates this on toggle so Canvas redraws with interpolated opacity
+  /// each frame, giving a smooth transition.
+  @State private var activePhase: Double = 1.0
 
-  private let topPad: CGFloat = 40
+  private let topPad: CGFloat = 56
   private let bottomPad: CGFloat = 44
   private let leftPad: CGFloat = 72
   private let rightPad: CGFloat = 24
@@ -36,9 +56,26 @@ struct FanCurveEditor: View {
   private let tempRange: ClosedRange<Double> = 20...110
   private let curveColor = Color.accentColor
 
+  @AppStorage(SharedConfigKeys.overdriveEnabled, store: Self.suite)
+  private var overdriveEnabled: Bool = false
+
+  @AppStorage(SharedConfigKeys.underdriveEnabled, store: Self.suite)
+  private var underdriveEnabled: Bool = false
+
+  @AppStorage(SharedConfigKeys.boostEnabled, store: Self.suite)
+  private var boostEnabled: Bool = false
+
+  private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+
+  /// Visual scale for the Y axis follows the effective fan control range.
+  /// Overdrive extends the top to the configured target. Underdrive drops
+  /// the bottom to zero. When neither is on the axis uses the firmware
+  /// reported minimum and maximum.
   private var rpmRange: (min: Float, max: Float) {
     guard let fan = sensorState.fans.first else { return (0, 8000) }
-    return (fan.minRPM, fan.maxRPM)
+    let minR: Float = underdriveEnabled ? 0 : fan.minRPM
+    let maxR: Float = overdriveEnabled ? max(fan.maxRPM, overdriveTargetRPM) : fan.maxRPM
+    return (minR, maxR)
   }
 
   /// Average actual RPM across all fans. Used to plot the live "actual" dot.
@@ -61,11 +98,6 @@ struct FanCurveEditor: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      header
-        .padding(.horizontal, 20)
-        .padding(.top, 20)
-        .padding(.bottom, 12)
-
       GeometryReader { geo in
         let size = geo.size
 
@@ -79,9 +111,14 @@ struct FanCurveEditor: View {
           .contentShape(Rectangle())
           .gesture(addPointDragGesture(size: size))
 
-          currentPositionOverlay(size: size)
           controlPointsOverlay(size: size)
+          // Current position and Now label render last so they sit on top
+          // of the curve line and all control points.
+          currentPositionOverlay(size: size)
           hoverTooltipOverlay(size: size)
+          boostOverlay(size: size)
+          modeBadgesOverlay
+          appleAutoLabelOverlay(size: size)
         }
         .onContinuousHover { phase in
           switch phase {
@@ -91,9 +128,14 @@ struct FanCurveEditor: View {
         }
       }
     }
-    .background(Color(nsColor: .textBackgroundColor))
+    .fancurveGlassCard(cornerRadius: 12)
     .clipShape(RoundedRectangle(cornerRadius: 12))
-    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(0.08)))
+    .onAppear { activePhase = model.isActive ? 1.0 : 0.0 }
+    .onChange(of: model.isActive) { newActive in
+      withAnimation(.easeInOut(duration: 0.35)) {
+        activePhase = newActive ? 1.0 : 0.0
+      }
+    }
     .onChange(of: sensorState.governingTemperature) { newTemp in
       withAnimation(.easeInOut(duration: 0.8)) {
         animatedTemp = newTemp
@@ -109,36 +151,28 @@ struct FanCurveEditor: View {
 
   // MARK: - Header
 
+  /// Compact caption above the chart. The window title already says
+  /// FanCurve, so a second H1 here would be redundant. A single caption
+  /// line carries the operational state and keeps the chart as the hero.
   private var header: some View {
-    HStack(alignment: .firstTextBaseline) {
-      VStack(alignment: .leading, spacing: 2) {
-        Text("Fan Curve")
-          .font(.headline)
-        Text(
-          model.isActive
-            ? "Fans are following this curve"
-            : "Preview only. Turn on Fan Control to apply."
-        )
-        .font(.caption)
-        .foregroundStyle(.secondary)
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      if model.isActive {
+        Circle()
+          .fill(Color(nsColor: .systemGreen))
+          .frame(width: 6, height: 6)
+        Text("Fans are following this curve")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      } else {
+        Circle()
+          .fill(Color.secondary.opacity(0.5))
+          .frame(width: 6, height: 6)
+        Text("Preview only. Turn on Fan Control to apply.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
       Spacer()
-      statusBadge
     }
-  }
-
-  @ViewBuilder
-  private var statusBadge: some View {
-    let (label, color): (String, Color) =
-      model.isActive
-      ? ("Applied", Color(nsColor: .systemGreen))
-      : ("Preview", .secondary)
-    Text(label)
-      .font(.system(.caption2, design: .rounded).weight(.semibold))
-      .foregroundColor(color)
-      .padding(.horizontal, 10)
-      .padding(.vertical, 4)
-      .background(Capsule().fill(color.opacity(0.12)))
   }
 
   // MARK: - Current Position Overlay
@@ -184,11 +218,126 @@ struct FanCurveEditor: View {
         .position(actualPos)
 
       if mouseLocation == nil {
-        Text("Now")
-          .font(.system(.caption2, design: .rounded).weight(.medium))
-          .foregroundColor(Color(nsColor: .systemOrange))
-          .position(x: actualPos.x + 24, y: actualPos.y)
+        nowLabel
+          .position(x: actualPos.x, y: actualPos.y - 16)
       }
+    }
+  }
+
+  /// Horizontal line showing the Load Floor minimum. Solid and labeled
+  /// "Active" when CPU load is above the threshold and the agent is
+  /// actually enforcing the floor. Dashed and muted otherwise so the
+  /// user knows it is armed but not currently applied.
+  /// Overlay that kicks in when Boost is active. Shades everything below
+  /// the 100% line to make it clear the curve is temporarily bypassed.
+  @ViewBuilder
+  private func boostOverlay(size: CGSize) -> some View {
+    if boostEnabled {
+      let plotLeft = leftPad
+      let plotRight = size.width - rightPad
+      let plotTop = topPad
+      let topY = dataToPixel(temp: 20, percent: 1.0, in: size).y
+      let lineColor = Color(nsColor: .systemOrange)
+
+      // Very subtle wash so the curve and grid stay readable. The
+      // horizontal line at 100% and the Boost pill carry the state.
+      Rectangle()
+        .fill(lineColor.opacity(0.03))
+        .frame(width: plotRight - plotLeft, height: size.height - plotTop - bottomPad)
+        .position(
+          x: (plotLeft + plotRight) / 2,
+          y: (plotTop + (size.height - bottomPad)) / 2)
+        .allowsHitTesting(false)
+
+      Rectangle()
+        .fill(lineColor)
+        .frame(width: plotRight - plotLeft, height: 2)
+        .position(x: (plotLeft + plotRight) / 2, y: topY)
+        .allowsHitTesting(false)
+
+      Group {
+        let label = HStack(spacing: 4) {
+          Image(systemName: "bolt.fill")
+            .font(.caption2)
+          Text("Boost: fans at 100%")
+            .font(.system(.caption2, design: .rounded).weight(.semibold))
+        }
+        .foregroundStyle(lineColor)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+
+        if #available(macOS 26.0, *) {
+          label
+            .glassEffect(in: Capsule())
+            .overlay(Capsule().stroke(lineColor.opacity(0.45), lineWidth: 0.5))
+        } else {
+          label
+            .background(Capsule().fill(Color(nsColor: .windowBackgroundColor)))
+            .overlay(Capsule().stroke(lineColor.opacity(0.45), lineWidth: 0.5))
+        }
+      }
+      .position(x: plotRight - 62, y: topY)
+      .allowsHitTesting(false)
+    }
+  }
+
+  /// Orange capsules pinned to the top-right of the plot that surface
+  /// Overdrive / Underdrive being on. Placed on the graph so the warning
+  /// lives next to the curve it is actually modifying rather than in the
+  /// sidebar status area.
+  @ViewBuilder
+  private var modeBadgesOverlay: some View {
+    if model.isActive {
+      VStack(alignment: .trailing, spacing: 6) {
+        HStack(spacing: 6) {
+          Spacer()
+          if overdriveEnabled {
+            modePill(
+              label: "Overdrive on",
+              tooltip:
+                "Overdrive is on. 100% on the curve pushes fans beyond the firmware reported max, up to \(Int(overdriveTargetRPM)) RPM. Sustained high RPM shortens bearing life and increases noise. Turn off in Settings > Curve > Advanced."
+            )
+          }
+          if underdriveEnabled {
+            modePill(
+              label: "Underdrive on",
+              tooltip:
+                "Underdrive is on. 0% on the curve forces fans to 0 RPM in manual mode. Without airflow your machine can overheat, throttle, or shut down under load. Turn off in Settings > Curve > Advanced."
+            )
+          }
+        }
+        Spacer()
+      }
+      .padding(.top, 12)
+      .padding(.trailing, 12)
+      .transition(.opacity)
+    }
+  }
+
+  @ViewBuilder
+  private func modePill(label: String, tooltip: String) -> some View {
+    let orange = Color(nsColor: .systemOrange)
+    let content = HStack(spacing: 4) {
+      Image(systemName: "exclamationmark.triangle.fill")
+        .font(.system(size: 9))
+      Text(label)
+        .font(.system(.caption2, design: .rounded).weight(.medium))
+        .lineLimit(1)
+    }
+    .fixedSize()
+    .foregroundColor(orange)
+    .padding(.horizontal, 8)
+    .padding(.vertical, 3)
+
+    if #available(macOS 26.0, *) {
+      content
+        .background(Capsule().fill(orange.opacity(0.15)))
+        .glassEffect(in: Capsule())
+        .help(tooltip)
+    } else {
+      content
+        .background(Capsule().fill(orange.opacity(0.15)))
+        .help(tooltip)
     }
   }
 
@@ -251,66 +400,110 @@ struct FanCurveEditor: View {
       at: CGPoint(x: (leftPad + size.width - rightPad) / 2, y: size.height - 12),
       anchor: .center)
 
+    // Y axis title sits above the top tick. topPad leaves 16pt of space
+    // above the 100% tick for this label so the two do not overlap.
     let yTitle = Text("Fan Speed (% / RPM)")
       .font(.system(.caption2, design: .rounded).weight(.medium))
       .foregroundColor(titleColor)
     context.draw(
       yTitle,
-      at: CGPoint(x: 8, y: topPad - 18),
+      at: CGPoint(x: leftPad - 48, y: topPad - 24),
       anchor: .leading)
   }
 
   // MARK: - Curve
 
   private func drawCurve(context: GraphicsContext, size: CGSize) {
+    // Ghost always drawn but scaled by (1 - activePhase) so it fades in
+    // as fan control turns off.
+    drawGhostCurve(context: context, size: size, opacity: 1.0 - activePhase)
+
     let pathPoints = CurveInterpolation.pathPoints(
       points: model.controlPoints, mode: model.interpolationMode,
       tempRange: tempRange, steps: 300)
     guard !pathPoints.isEmpty else { return }
 
-    let firstPt = dataToPixel(temp: pathPoints[0].0, percent: pathPoints[0].1, in: size)
+    let pixelPoints = pathPoints.map { dataToPixel(temp: $0.0, percent: $0.1, in: size) }
+    let firstPt = pixelPoints.first!
+    let lastPt = pixelPoints.last!
     let zeroY = dataToPixel(temp: 20, percent: 0, in: size).y
 
-    var fill = Path()
-    fill.move(to: CGPoint(x: firstPt.x, y: zeroY))
-    fill.addLine(to: firstPt)
-    for point in pathPoints.dropFirst() {
-      fill.addLine(to: dataToPixel(temp: point.0, percent: point.1, in: size))
-    }
-    let lastPt = dataToPixel(temp: pathPoints.last!.0, percent: pathPoints.last!.1, in: size)
+    // Line is the smoothed polyline. Fill reuses the line path but
+    // closes back to the baseline so the gradient under the curve is
+    // bounded by the same smoothed shape.
+    let line = smoothedPath(through: pixelPoints)
+    var fill = line
     fill.addLine(to: CGPoint(x: lastPt.x, y: zeroY))
+    fill.addLine(to: CGPoint(x: firstPt.x, y: zeroY))
     fill.closeSubpath()
 
-    let active = model.isActive
-    let fillOpacity = active ? 0.18 : 0.06
-    let lineOpacity = active ? 1.0 : 0.6
-    let glowOpacity = active ? 0.15 : 0.0
+    let phase = activePhase
+    let inversePhase = 1.0 - activePhase
 
-    context.fill(
-      fill,
-      with: .linearGradient(
-        Gradient(colors: [curveColor.opacity(fillOpacity), curveColor.opacity(0.0)]),
-        startPoint: CGPoint(x: 0, y: topPad),
-        endPoint: CGPoint(x: 0, y: size.height - bottomPad)))
+    if phase > 0.01 {
+      context.fill(
+        fill,
+        with: .linearGradient(
+          Gradient(colors: [curveColor.opacity(0.18 * phase), curveColor.opacity(0.0)]),
+          startPoint: CGPoint(x: 0, y: topPad),
+          endPoint: CGPoint(x: 0, y: size.height - bottomPad)))
 
-    var line = Path()
-    line.move(to: firstPt)
-    for point in pathPoints.dropFirst() {
-      line.addLine(to: dataToPixel(temp: point.0, percent: point.1, in: size))
-    }
-
-    let lineStyle: StrokeStyle =
-      active
-      ? StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
-      : StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round, dash: [6, 5])
-
-    if glowOpacity > 0 {
       context.stroke(
-        line, with: .color(curveColor.opacity(glowOpacity)),
+        line, with: .color(curveColor.opacity(0.15 * phase)),
         style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
+      context.stroke(
+        line, with: .color(curveColor.opacity(phase)),
+        style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
     }
+
+    if inversePhase > 0.01 {
+      context.stroke(
+        line, with: .color(Color.secondary.opacity(0.3 * inversePhase)),
+        style: StrokeStyle(lineWidth: 1.25, lineCap: .round, lineJoin: .round, dash: [4, 5]))
+    }
+  }
+
+  /// Builds a visually-smoothed path through a sampled polyline by
+  /// replacing straight segments with quadratic Beziers through the
+  /// midpoint of each pair. This rounds micro-corners that appear when
+  /// adjacent control points sit close in temperature with a big
+  /// percent jump. Evaluation stays authoritative; only rendering is
+  /// smoothed.
+  private func smoothedPath(through pts: [CGPoint]) -> Path {
+    var path = Path()
+    guard let first = pts.first else { return path }
+    path.move(to: first)
+    guard pts.count >= 3 else {
+      for p in pts.dropFirst() { path.addLine(to: p) }
+      return path
+    }
+    for i in 1..<(pts.count - 1) {
+      let mid = CGPoint(
+        x: (pts[i].x + pts[i + 1].x) / 2,
+        y: (pts[i].y + pts[i + 1].y) / 2)
+      path.addQuadCurve(to: mid, control: pts[i])
+    }
+    path.addLine(to: pts.last!)
+    return path
+  }
+
+  /// Renders the Apple Silent preset as a dashed accent-colored guide
+  /// showing roughly what macOS governs when the user curve is off. The
+  /// `opacity` parameter drives the crossfade from active to inactive.
+  private func drawGhostCurve(context: GraphicsContext, size: CGSize, opacity: Double) {
+    guard opacity > 0.01 else { return }
+    let ghostPoints = CurvePresets.appleSilent.curvePoints()
+    let pathPoints = CurveInterpolation.pathPoints(
+      points: ghostPoints, mode: .catmullRom,
+      tempRange: tempRange, steps: 300)
+    guard !pathPoints.isEmpty else { return }
+
+    let pixelPoints = pathPoints.map { dataToPixel(temp: $0.0, percent: $0.1, in: size) }
+    let line = smoothedPath(through: pixelPoints)
     context.stroke(
-      line, with: .color(curveColor.opacity(lineOpacity)), style: lineStyle)
+      line,
+      with: .color(curveColor.opacity(0.75 * opacity)),
+      style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round, dash: [5, 4]))
   }
 
   // MARK: - Hover Tooltip
@@ -341,6 +534,94 @@ struct FanCurveEditor: View {
     _ = pos
   }
 
+  /// "System Default" pill placed just below the ghost line in the open
+  /// triangle under the rising portion of the curve. Fades with
+  /// activePhase so it only shows when Fan Control is off. Uses the
+  /// same pill treatment as the Now label.
+  @ViewBuilder
+  private func appleAutoLabelOverlay(size: CGSize) -> some View {
+    let inverse = 1.0 - activePhase
+    if inverse > 0.01 {
+      // Anchor at the midpoint of the rising ramp, offset slightly
+      // below the line so it sits in the open area beneath the dash.
+      let ghostAt = CurveInterpolation.evaluate(
+        at: 92,
+        points: CurvePresets.appleSilent.curvePoints(),
+        mode: .catmullRom)
+      let anchor = dataToPixel(temp: 92, percent: ghostAt, in: size)
+      let text = Text("System Default")
+        .font(.system(.caption2, design: .rounded).weight(.medium))
+        .foregroundColor(curveColor)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+
+      Group {
+        if #available(macOS 26.0, *) {
+          text.glassEffect(in: RoundedRectangle(cornerRadius: 4))
+        } else {
+          text
+            .background(
+              RoundedRectangle(cornerRadius: 4)
+                .fill(Color(nsColor: .windowBackgroundColor)))
+            .overlay(
+              RoundedRectangle(cornerRadius: 4)
+                .stroke(curveColor.opacity(0.35), lineWidth: 0.5))
+        }
+      }
+      .opacity(inverse)
+      .position(x: anchor.x - 34, y: anchor.y + 16)
+      .allowsHitTesting(false)
+    }
+  }
+
+  /// "Now" label with Liquid Glass on macOS 26, plain background below.
+  @ViewBuilder
+  private var nowLabel: some View {
+    let text = Text("Now")
+      .font(.system(.caption2, design: .rounded).weight(.medium))
+      .foregroundColor(Color(nsColor: .systemOrange))
+      .padding(.horizontal, 5)
+      .padding(.vertical, 1)
+
+    if #available(macOS 26.0, *) {
+      text.glassEffect(in: RoundedRectangle(cornerRadius: 3))
+    } else {
+      text
+        .background(
+          RoundedRectangle(cornerRadius: 3)
+            .fill(Color(nsColor: .windowBackgroundColor))
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 3)
+            .stroke(Color(nsColor: .systemOrange).opacity(0.35), lineWidth: 0.5)
+        )
+    }
+  }
+
+  /// Tooltip pill with Liquid Glass when available.
+  @ViewBuilder
+  private func tooltipPill(temp: Double, percent: Double, rpm: Int) -> some View {
+    let label = Text("\(displayTemp(temp))\(unit.symbol)  \(Int(percent * 100))%  \(rpm.formatted()) RPM")
+      .font(.system(.caption2, design: .rounded).weight(.medium))
+      .foregroundColor(Color.primary.opacity(0.95))
+      .padding(.horizontal, 7)
+      .padding(.vertical, 3)
+
+    if #available(macOS 26.0, *) {
+      label.glassEffect(in: RoundedRectangle(cornerRadius: 5))
+    } else {
+      label
+        .background(
+          RoundedRectangle(cornerRadius: 5)
+            .fill(Color(nsColor: .windowBackgroundColor).opacity(0.92))
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 5)
+            .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+        )
+    }
+  }
+
   /// Tooltip rendered as a real SwiftUI view so its .position animates
   /// between frames instead of snapping on every mouse sample.
   @ViewBuilder
@@ -353,22 +634,18 @@ struct FanCurveEditor: View {
         let rpm = Int(rpmRange.min + Float(percent) * (rpmRange.max - rpmRange.min))
         let tooltipY = pos.y > topPad + 32 ? pos.y - 26 : pos.y + 26
 
-        Text("\(displayTemp(data.x))\(unit.symbol)  \(Int(percent * 100))%  \(rpm.formatted()) RPM")
-          .font(.system(.caption2, design: .rounded).weight(.medium))
-          .foregroundColor(Color.primary.opacity(0.95))
-          .padding(.horizontal, 7)
-          .padding(.vertical, 3)
-          .background(
-            RoundedRectangle(cornerRadius: 5)
-              .fill(Color(nsColor: .windowBackgroundColor).opacity(0.92))
-          )
-          .overlay(
-            RoundedRectangle(cornerRadius: 5)
-              .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-          )
-          .position(x: pos.x, y: tooltipY)
-          .animation(.easeOut(duration: 0.12), value: pos)
-          .transition(.opacity)
+        // Only show the tooltip when the mouse is close to (or below) the
+        // curve line. Far above it the user is not actually probing the
+        // curve and a floating pill just adds noise.
+        let distanceFromCurve = mouse.y - pos.y
+        let showTooltip = distanceFromCurve > -30
+
+        if showTooltip {
+          tooltipPill(temp: data.x, percent: percent, rpm: rpm)
+            .position(x: pos.x, y: tooltipY)
+            .animation(.easeOut(duration: 0.12), value: pos)
+            .transition(.opacity)
+        }
       }
     }
   }
@@ -386,13 +663,15 @@ struct FanCurveEditor: View {
     let pos = dataToPixel(temp: point.temperature, percent: point.fanPercent, in: size)
     let isHovered = hoveredIndex == index
 
+    let strokeColor: Color = model.isActive ? curveColor : Color.secondary
     return Circle()
       .fill(Color(nsColor: .textBackgroundColor))
       .frame(width: isHovered ? 14 : 10, height: isHovered ? 14 : 10)
-      .overlay(Circle().stroke(curveColor, lineWidth: isHovered ? 2.5 : 1.5))
-      .shadow(color: curveColor.opacity(0.25), radius: isHovered ? 6 : 2)
+      .overlay(Circle().stroke(strokeColor, lineWidth: isHovered ? 2.5 : 1.5))
+      .shadow(color: strokeColor.opacity(0.25), radius: isHovered ? 6 : 2)
       .position(pos)
       .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHovered)
+      .animation(.easeInOut(duration: 0.35), value: model.isActive)
       .onHover { over in hoveredIndex = over ? index : nil }
       .gesture(dragGesture(index: index, size: size))
   }
@@ -417,51 +696,138 @@ struct FanCurveEditor: View {
           data.x = min(model.controlPoints[index + 1].temperature - 1, data.x)
         }
 
+        // Enforce a non-decreasing curve. Cannot dip below the left
+        // neighbor (hard clamp). Rising above the right neighbor pushes
+        // every later point up to match, so dragging an early point to
+        // 100% lifts the tail instead of being blocked.
+        var minY = 0.0
+        if index > 0 { minY = model.controlPoints[index - 1].fanPercent }
+        data.y = max(minY, min(1.0, data.y))
+
         model.controlPoints[index].temperature = data.x
         model.controlPoints[index].fanPercent = data.y
+        for laterIndex in (index + 1)..<model.controlPoints.count {
+          if model.controlPoints[laterIndex].fanPercent < data.y {
+            model.controlPoints[laterIndex].fanPercent = data.y
+          } else {
+            break
+          }
+        }
         hoveredIndex = index
       }
   }
 
-  /// Drag anywhere on the plot area to create a new control point and move it.
-  /// The gesture only fires when the user starts dragging on the canvas
-  /// outside the existing handle hit targets.
+  /// Drag on a segment between two control points to yank both of them
+  /// vertically together. No new points are inserted. If the drag starts
+  /// outside the temperature range of any segment (before the first or
+  /// after the last point), the gesture is ignored.
   private func addPointDragGesture(size: CGSize) -> some Gesture {
     DragGesture(minimumDistance: 4)
       .onChanged { value in
-        if draggedCurveID == nil {
-          insertPoint(at: value.location, size: size)
-        }
-        guard
-          let id = draggedCurveID,
-          let idx = model.controlPoints.firstIndex(where: { $0.id == id })
-        else { return }
+        let data = pixelToData(value.location, in: size)
 
-        var data = pixelToData(value.location, in: size)
-        data.x = max(tempRange.lowerBound, min(tempRange.upperBound, data.x))
-        data.y = max(0, min(1, data.y))
+        if segmentDrag == nil {
+          guard let leftIdx = leftBracketIndex(forTemp: data.x) else { return }
+          let left = model.controlPoints[leftIdx]
+          let right = model.controlPoints[leftIdx + 1]
+          segmentDrag = SegmentDragState(
+            leftIndex: leftIdx,
+            leftInitialTemp: left.temperature,
+            leftInitialPercent: left.fanPercent,
+            rightInitialTemp: right.temperature,
+            rightInitialPercent: right.fanPercent,
+            startTemp: data.x,
+            startPercent: max(0, min(1, data.y)))
+        }
 
-        if idx > 0 {
-          data.x = max(model.controlPoints[idx - 1].temperature + 1, data.x)
+        guard let drag = segmentDrag else { return }
+        let currentPercent = max(0, min(1, data.y))
+        let deltaY = currentPercent - drag.startPercent
+        let deltaX = data.x - drag.startTemp
+
+        // Parameter t along the segment at the original grab point.
+        // t=0 means grabbed at the left vertex, t=1 at the right. Each
+        // endpoint moves proportionally so the endpoint closer to the
+        // grab shifts more, giving rope-pull physics.
+        let span = drag.rightInitialTemp - drag.leftInitialTemp
+        let t: Double =
+          span > 0
+          ? max(0, min(1, (drag.startTemp - drag.leftInitialTemp) / span))
+          : 0.5
+        let leftWeight = 1 - t
+        let rightWeight = t
+
+        // Clamp horizontal motion so the pair does not cross its
+        // neighbors or leave the plot. Each endpoint has its own bound.
+        let leftMinTemp = drag.leftIndex > 0
+          ? model.controlPoints[drag.leftIndex - 1].temperature + 1
+          : tempRange.lowerBound
+        let rightMaxTemp = (drag.leftIndex + 2) < model.controlPoints.count
+          ? model.controlPoints[drag.leftIndex + 2].temperature - 1
+          : tempRange.upperBound
+
+        var newLeftTemp = drag.leftInitialTemp + leftWeight * deltaX
+        var newRightTemp = drag.rightInitialTemp + rightWeight * deltaX
+        newLeftTemp = max(leftMinTemp, newLeftTemp)
+        newRightTemp = min(rightMaxTemp, newRightTemp)
+        // Never let the two endpoints collide or swap.
+        if newLeftTemp >= newRightTemp - 0.5 {
+          let mid = (newLeftTemp + newRightTemp) / 2
+          newLeftTemp = mid - 0.5
+          newRightTemp = mid + 0.5
         }
-        if idx < model.controlPoints.count - 1 {
-          data.x = min(model.controlPoints[idx + 1].temperature - 1, data.x)
+
+        // Honor monotonicity: left endpoint cannot drop below its
+        // outer-left neighbor (hard clamp). Right endpoint is free to
+        // rise above its outer-right neighbor because later points get
+        // cascaded up after the write. The pair itself never swaps.
+        let leftMinPct = drag.leftIndex > 0
+          ? model.controlPoints[drag.leftIndex - 1].fanPercent
+          : 0.0
+
+        var newLeftPct = max(leftMinPct, min(1, drag.leftInitialPercent + leftWeight * deltaY))
+        var newRightPct = max(0.0, min(1.0, drag.rightInitialPercent + rightWeight * deltaY))
+        if newLeftPct > newRightPct {
+          let mid = (newLeftPct + newRightPct) / 2
+          newLeftPct = mid
+          newRightPct = mid
         }
-        model.controlPoints[idx].temperature = data.x
-        model.controlPoints[idx].fanPercent = data.y
+
+        model.controlPoints[drag.leftIndex].temperature = newLeftTemp
+        model.controlPoints[drag.leftIndex].fanPercent = newLeftPct
+        model.controlPoints[drag.leftIndex + 1].temperature = newRightTemp
+        model.controlPoints[drag.leftIndex + 1].fanPercent = newRightPct
+
+        // Cascade upward: any later point lower than the newly-raised
+        // right endpoint gets lifted to match, stopping at the first
+        // already-higher point.
+        for laterIndex in (drag.leftIndex + 2)..<model.controlPoints.count {
+          if model.controlPoints[laterIndex].fanPercent < newRightPct {
+            model.controlPoints[laterIndex].fanPercent = newRightPct
+          } else {
+            break
+          }
+        }
       }
-      .onEnded { _ in draggedCurveID = nil }
+      .onEnded { _ in segmentDrag = nil }
   }
 
-  private func insertPoint(at pixel: CGPoint, size: CGSize) {
-    let data = pixelToData(pixel, in: size)
-    guard data.x > tempRange.lowerBound, data.x < tempRange.upperBound else { return }
-    let point = CurvePoint(
-      temperature: data.x,
-      fanPercent: max(0, min(1, data.y)))
-    model.controlPoints.append(point)
-    model.controlPoints.sort { $0.temperature < $1.temperature }
-    draggedCurveID = point.id
+  /// Returns the index of the left bracketing control point for a given
+  /// temperature. If temp falls before the first point, returns the
+  /// first segment (0); if after the last, returns the last segment.
+  /// This way the user can grab and drag any part of the plot, not just
+  /// the span between the outermost control points.
+  private func leftBracketIndex(forTemp temp: Double) -> Int? {
+    let points = model.controlPoints
+    guard points.count >= 2 else { return nil }
+    if temp <= points.first!.temperature { return 0 }
+    if temp >= points.last!.temperature { return points.count - 2 }
+    for i in 0..<(points.count - 1) {
+      if temp >= points[i].temperature, temp <= points[i + 1].temperature {
+        return i
+      }
+    }
+    return nil
   }
 
   // MARK: - Coordinate Mapping
