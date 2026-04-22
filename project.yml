@@ -50,7 +50,7 @@ targets:
       - package: FanCurve
         product: AppLog
       - package: FanCurve
-        product: SMCDClient
+        product: SMCFanXPCClient
       - package: FanCurve
         product: SMCFanProtocol
       - target: FanCurveAgent
@@ -96,7 +96,7 @@ targets:
       - package: FanCurve
         product: AppLog
       - package: FanCurve
-        product: SMCDClient
+        product: SMCFanXPCClient
       - package: FanCurve
         product: SMCFanProtocol
     settings:

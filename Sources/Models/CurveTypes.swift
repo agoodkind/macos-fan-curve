@@ -42,6 +42,10 @@ enum SharedConfigKeys {
   static let agentLastTick = "agentLastTick"
   static let agentLastError = "agentLastError"
   static let overdriveTargetRPMMeasured = "overdriveTargetRPMMeasured"
+  /// Priority the agent uses for the normal curve write. Default 10.
+  static let curveNormalPriority = "curveNormalPriority"
+  /// Priority the agent uses when boost is on. Default 50.
+  static let userBoostPriority = "userBoostPriority"
 }
 
 /// Result of mapping a curve percent to a fan action for one fan.
