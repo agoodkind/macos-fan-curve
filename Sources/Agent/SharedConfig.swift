@@ -67,6 +67,20 @@ struct SharedConfig {
     return stored > 0 ? stored : 60
   }
 
+  /// Priority the agent uses for the normal curve write. Matches
+  /// `SMCFanPriority.curveNormal` (10) by default.
+  func loadCurveNormalPriority() -> Int {
+    let stored = defaults.integer(forKey: SharedConfigKeys.curveNormalPriority)
+    return stored > 0 ? stored : 10
+  }
+
+  /// Priority the agent uses when boost is on. Matches
+  /// `SMCFanPriority.userBoost` (50) by default.
+  func loadUserBoostPriority() -> Int {
+    let stored = defaults.integer(forKey: SharedConfigKeys.userBoostPriority)
+    return stored > 0 ? stored : 50
+  }
+
   // MARK: - Writes (agent status)
 
   func writeAgentStatus(pid: Int32, lastTick: Date) {

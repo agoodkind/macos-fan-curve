@@ -5,24 +5,26 @@
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-15.
 //  Copyright © 2026
 //
-//  Fan control client for the FanCurve agent. Delegates to `SMCDClient`
-//  from macos-smc-fan so arbitration is handled by the shared user space
-//  smcd daemon. This wrapper preserves the previous API (`readAndApply`,
-//  `shutdown`, `ConnectionState` publisher) so `AgentController` does not
-//  have to change.
+//  Fan control client for the FanCurve agent. Delegates to the upstream
+//  `SMCFanXPCClient` from macos-smc-fan. Priority arbitration is handled
+//  by the privileged helper directly; there is no intermediate daemon.
+//  This wrapper preserves the GUI facing API (`readAndApply`, `shutdown`,
+//  `ConnectionState` publisher) so `AgentController` does not change
+//  shape.
 //
 
 import AppLog
 import Combine
 import Foundation
-import SMCDClient
 import SMCFanProtocol
+import SMCFanXPCClient
 
 private let log = AppLog.make(category: "XPCClient")
 
-/// Upstream's FanInfo has the same fields as the project local one defined
-/// in Sources/Common/SMCProtocol.swift. They are distinct types. Convert
-/// at the XPC boundary so AgentController continues to use the local type.
+/// Upstream's FanInfo and the project local FanInfo in
+/// Sources/Common/SMCProtocol.swift have the same fields but are distinct
+/// types. Convert at the XPC boundary so AgentController keeps using the
+/// local type.
 private typealias UpstreamFanInfo = SMCFanProtocol.FanInfo
 
 private func toLocal(_ up: UpstreamFanInfo) -> FanInfo {
@@ -41,20 +43,25 @@ enum ConnectionState: Sendable {
   case error(String)
 }
 
-/// Thin wrapper around `SMCDClient` that preserves the @Published
+/// Thin wrapper around `SMCFanXPCClient` that preserves the `@Published`
 /// connection state used by the GUI. All XPC reliability (invalidation,
-/// reconnect, `ResumeGuard`) is handled by `SMCDClient` internally.
+/// reconnect, `ResumeGuard`) is handled by `SMCFanXPCClient` internally,
+/// and the privileged helper arbitrates priority.
 class XPCClient: ObservableObject, @unchecked Sendable {
-  private let client: SMCDClient
+  private let client: SMCFanXPCClient
   private let stateLock = NSLock()
 
   @Published var state: ConnectionState = .disconnected
 
   init(
     clientName: String = "fancurve",
-    defaultPriority: Int = SMCDPriority.curveNormal
+    defaultPriority: Int = SMCFanPriority.curveNormal
   ) {
-    self.client = SMCDClient(
+    // SMCFanXPCClient's init declares throws for source compatibility but
+    // does not actually perform any failable work. A trap here would mean
+    // upstream changed that contract; crashing loudly at init time is the
+    // correct signal.
+    self.client = try! SMCFanXPCClient(
       clientName: clientName,
       defaultPriority: defaultPriority
     )
@@ -106,7 +113,7 @@ class XPCClient: ObservableObject, @unchecked Sendable {
         try await client.setFanRPM(index, rpm: rpm)
       }
       self.markConnected()
-    } catch let err as SMCDConflictError {
+    } catch let err as SMCXPCConflictError {
       // Preempted by a higher priority client (for example lmd while an
       // LLM is running). Not an error from the curve's point of view;
       // skip this write and let the next tick retry.
@@ -131,7 +138,7 @@ class XPCClient: ObservableObject, @unchecked Sendable {
         try await client.setFanAuto(index)
       }
       self.markConnected()
-    } catch let err as SMCDConflictError {
+    } catch let err as SMCXPCConflictError {
       log.debug(
         "xpc.auto_preempted fan=\(index, privacy: .public) reason=\(err.message, privacy: .public)"
       )

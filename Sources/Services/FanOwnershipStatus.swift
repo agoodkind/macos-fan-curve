@@ -1,24 +1,26 @@
 //
-//  SMCDStatus.swift
+//  FanOwnershipStatus.swift
 //  FanCurve
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-21.
 //  Copyright © 2026
 //
-//  Observable wrapper around an SMCDClient that polls arbitration state
-//  for the Settings and Arbiter screens. Does not replace the agent's
-//  per tick client; this is a read only dashboard poller.
+//  Observable wrapper around an SMCFanXPCClient that polls per fan
+//  arbitration state for the Settings surface. Read only; does not
+//  replace the agent's per tick write client. The poller only runs
+//  while its owning view is visible.
 //
 
 import AppLog
 import Combine
 import Foundation
-import SMCDClient
+import SMCFanProtocol
+import SMCFanXPCClient
 
-private let log = AppLog.make(category: "SMCDStatus")
+private let log = AppLog.make(category: "FanOwnershipStatus")
 
-/// One entry shown in the Arbiter screen. Mirrors
-/// `SMCDClient.OwnershipEntry` but owned by @MainActor for SwiftUI use.
+/// One entry shown in the ownership disclosure. Mirrors
+/// `SMCFanXPCClient.OwnershipEntry` but owned by @MainActor for SwiftUI.
 struct ArbiterRow: Identifiable, Sendable {
   let id: UInt
   let fanIndex: UInt
@@ -28,15 +30,18 @@ struct ArbiterRow: Identifiable, Sendable {
 }
 
 @MainActor
-final class SMCDStatus: ObservableObject {
+final class FanOwnershipStatus: ObservableObject {
   @Published var reachable: Bool = false
   @Published var rows: [ArbiterRow] = []
   @Published var lastError: String?
 
-  private let client = SMCDClient(
-    clientName: "fancurve-settings",
-    defaultPriority: 0
-  )
+  private let client: SMCFanXPCClient = {
+    // See XPCClient: init throws for source compat only.
+    try! SMCFanXPCClient(
+      clientName: "fancurve-settings",
+      defaultPriority: 0
+    )
+  }()
   private var timer: Timer?
 
   // Owners must call `stopMonitoring` before dropping the last reference.
@@ -49,7 +54,7 @@ final class SMCDStatus: ObservableObject {
   func startMonitoring(intervalSeconds: TimeInterval = 1.0) {
     self.stopMonitoring()
     log.debug(
-      "smcd_status.start interval=\(intervalSeconds, privacy: .public)"
+      "ownership_status.start interval=\(intervalSeconds, privacy: .public)"
     )
     self.timer = Timer.scheduledTimer(withTimeInterval: intervalSeconds, repeats: true) { [weak self] _ in
       Task { @MainActor [weak self] in await self?.tick() }
@@ -60,7 +65,7 @@ final class SMCDStatus: ObservableObject {
   func stopMonitoring() {
     self.timer?.invalidate()
     self.timer = nil
-    log.debug("smcd_status.stop")
+    log.debug("ownership_status.stop")
   }
 
   private func tick() async {
@@ -82,7 +87,7 @@ final class SMCDStatus: ObservableObject {
       self.reachable = false
       self.lastError = error.localizedDescription
       log.debug(
-        "smcd_status.unreachable error=\(error.localizedDescription, privacy: .public)"
+        "ownership_status.unreachable error=\(error.localizedDescription, privacy: .public)"
       )
     }
   }

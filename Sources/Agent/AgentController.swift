@@ -169,11 +169,16 @@ final class AgentController: @unchecked Sendable {
                 }
             }
 
+            let tickPriority = boost
+                ? sharedConfig.loadUserBoostPriority()
+                : sharedConfig.loadCurveNormalPriority()
+
             _ = try await xpcClient.readAndApply(
                 fanCount: 0,
                 tempKeys: [],
                 setFans: setFans.isEmpty ? nil : setFans,
-                autoFans: autoFans.isEmpty ? nil : autoFans
+                autoFans: autoFans.isEmpty ? nil : autoFans,
+                priority: tickPriority
             )
 
             eventWriter.append(
