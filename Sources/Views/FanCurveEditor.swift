@@ -259,10 +259,22 @@ struct FanCurveEditor: View {
   }
 
   private func refreshRuntimeMarkerTargets() {
-    targetCommittedPercent = runtime.committedPercent
-    targetCommittedTemperature = committedMarkerTemperatureTarget()
-    targetRawTemperature = runtime.rawPressureTemperature ?? runtime.governingTemperature
-    targetRawPercent = runtime.rawBaselinePercent
+    if runtime.curveActive {
+      targetCommittedPercent = runtime.committedPercent
+      targetCommittedTemperature = committedMarkerTemperatureTarget()
+      targetRawTemperature = runtime.rawPressureTemperature ?? runtime.governingTemperature
+      targetRawPercent = runtime.rawBaselinePercent
+    } else {
+      let livePercent = liveFanPercent()
+      targetCommittedPercent = livePercent
+      targetCommittedTemperature = projectedCurveTemperature(
+        for: livePercent,
+        points: CurvePresets.appleSilent.curvePoints(),
+        mode: .catmullRom
+      ) ?? runtime.governingTemperature
+      targetRawTemperature = runtime.governingTemperature
+      targetRawPercent = livePercent
+    }
   }
 
   private func committedMarkerTemperatureTarget() -> Double {
@@ -273,17 +285,25 @@ struct FanCurveEditor: View {
     // Keep the primary marker on the authored curve so the chart remains
     // visually truthful. The faint secondary marker carries the live thermal
     // pressure/current-state context.
-    if let projectedTemperature = projectedCurveTemperature(for: runtime.committedPercent) {
+    if let projectedTemperature = projectedCurveTemperature(
+      for: runtime.committedPercent,
+      points: model.controlPoints,
+      mode: model.interpolationMode
+    ) {
       return projectedTemperature
     }
 
     return runtime.committedTemperature
   }
 
-  private func projectedCurveTemperature(for percent: Double) -> Double? {
+  private func projectedCurveTemperature(
+    for percent: Double,
+    points: [CurvePoint],
+    mode: InterpolationMode
+  ) -> Double? {
     let clampedPercent = max(0, min(1, percent))
-    let minCurvePercent = model.evaluate(at: tempRange.lowerBound)
-    let maxCurvePercent = model.evaluate(at: tempRange.upperBound)
+    let minCurvePercent = CurveInterpolation.evaluate(at: tempRange.lowerBound, points: points, mode: mode)
+    let maxCurvePercent = CurveInterpolation.evaluate(at: tempRange.upperBound, points: points, mode: mode)
 
     guard clampedPercent >= minCurvePercent - 0.0005,
           clampedPercent <= maxCurvePercent + 0.0005 else {
@@ -295,7 +315,7 @@ struct FanCurveEditor: View {
 
     for _ in 0..<28 {
       let mid = (lower + upper) / 2
-      let value = model.evaluate(at: mid)
+      let value = CurveInterpolation.evaluate(at: mid, points: points, mode: mode)
       if value < clampedPercent {
         lower = mid
       } else {
@@ -304,6 +324,13 @@ struct FanCurveEditor: View {
     }
 
     return (lower + upper) / 2
+  }
+
+  private func liveFanPercent() -> Double {
+    guard let fan = runtime.fans.first else { return 0 }
+    let span = max(1, fan.maxRPM - fan.minRPM)
+    let normalized = Double((fan.actualRPM - fan.minRPM) / span)
+    return max(0, min(1, normalized))
   }
 
   /// Horizontal line showing the Load Floor minimum. Solid and labeled

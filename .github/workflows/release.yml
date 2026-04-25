@@ -1,0 +1,161 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: macos-15
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Compute release metadata
+        id: meta
+        run: |
+          TS=$(date -u +%Y%m%d%H%M)
+          HEX=$(printf '%x' "$GITHUB_RUN_NUMBER")
+          SHA=$(git rev-parse --short HEAD)
+          TAG="${TS}-${HEX}-${SHA}"
+          SHORT_VERSION=$(date -u +%Y.%-m.%-d)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "build_version=$TS" >> "$GITHUB_OUTPUT"
+          echo "marketing_version=$SHORT_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Push tag
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Set up Node for Wrangler
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install signing certificate
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          BUILD_CERTIFICATE_BASE64_PART1: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64_PART1 }}
+          BUILD_CERTIFICATE_BASE64_PART2: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64_PART2 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+
+          if [ -n "$BUILD_CERTIFICATE_BASE64" ]; then
+            printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERT_PATH"
+          else
+            printf '%s%s' "$BUILD_CERTIFICATE_BASE64_PART1" "$BUILD_CERTIFICATE_BASE64_PART2" | base64 --decode -o "$CERT_PATH"
+          fi
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+      - name: Write CI xcconfig
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CODE_SIGN_IDENTITY: ${{ secrets.APPLE_CODE_SIGN_IDENTITY }}
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+        run: |
+          cat > Config/local.xcconfig <<EOF
+          CODE_SIGN_IDENTITY = ${APPLE_CODE_SIGN_IDENTITY}
+          DEVELOPMENT_TEAM = ${APPLE_TEAM_ID}
+          BUNDLE_ID_PREFIX = io.goodkind
+          HELPER_BUNDLE_ID = io.goodkind.smcfanhelper
+          APP_BUNDLE_ID = io.goodkind.fancurve
+          AGENT_BUNDLE_ID = io.goodkind.fancurveagent
+          SHARED_SUITE_ID = io.goodkind.fancurve.shared
+          DMG_SIGN_IDENTITY = ${APPLE_CODE_SIGN_IDENTITY}
+          SPARKLE_FEED_URL = https://goodkind.io/fancurve/appcast.xml
+          SPARKLE_PUBLIC_ED_KEY = ${SPARKLE_PUBLIC_ED_KEY}
+          EOF
+
+      - name: Build release DMG
+        env:
+          MARKETING_VERSION: ${{ steps.meta.outputs.marketing_version }}
+          CURRENT_PROJECT_VERSION: ${{ steps.meta.outputs.build_version }}
+        run: |
+          make release-assets \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
+            SPARKLE_FEED_URL="https://goodkind.io/fancurve/appcast.xml" \
+            SPARKLE_PUBLIC_ED_KEY="${{ secrets.SPARKLE_PUBLIC_ED_KEY }}"
+
+      - name: Notarize DMG
+        if: ${{ secrets.APPLE_NOTARY_KEY_ID != '' && secrets.APPLE_NOTARY_ISSUER_ID != '' && secrets.APPLE_NOTARY_PRIVATE_KEY != '' }}
+        env:
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_NOTARY_PRIVATE_KEY: ${{ secrets.APPLE_NOTARY_PRIVATE_KEY }}
+          BUILD_VERSION: ${{ steps.meta.outputs.build_version }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          printf '%s' "$APPLE_NOTARY_PRIVATE_KEY" > "$KEY_PATH"
+          xcrun notarytool submit "Products/FanCurve-${BUILD_VERSION}.dmg" \
+            --key "$KEY_PATH" \
+            --key-id "$APPLE_NOTARY_KEY_ID" \
+            --issuer "$APPLE_NOTARY_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "Products/FanCurve-${BUILD_VERSION}.dmg"
+
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "Automated release for $GITHUB_SHA"
+
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          BUILD_VERSION: ${{ steps.meta.outputs.build_version }}
+        run: |
+          gh release upload "$TAG" "Products/FanCurve-${BUILD_VERSION}.dmg" --clobber
+
+      - name: Generate Sparkle appcast
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          BUILD_VERSION: ${{ steps.meta.outputs.build_version }}
+          MARKETING_VERSION: ${{ steps.meta.outputs.marketing_version }}
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/sparkle_private_key"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$KEY_PATH"
+          export SPARKLE_PRIVATE_KEY_FILE="$KEY_PATH"
+
+          make prepare-sparkle-updates \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_VERSION" \
+            RELEASE_TAG="$RELEASE_TAG" \
+            GITHUB_RELEASE_BASE_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/"
+
+      - name: Deploy appcast worker
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          cp build/sparkle-updates/appcast.xml deploy/appcast-worker/public/appcast.xml
+          npx wrangler deploy --config deploy/appcast-worker/wrangler.toml
