@@ -375,15 +375,11 @@ struct FanCurveEditor: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
 
-        if #available(macOS 26.0, *) {
-          label
-            .glassEffect(in: Capsule())
-            .overlay(Capsule().stroke(lineColor.opacity(0.45), lineWidth: 0.5))
-        } else {
-          label
-            .background(Capsule().fill(Color(nsColor: .windowBackgroundColor)))
-            .overlay(Capsule().stroke(lineColor.opacity(0.45), lineWidth: 0.5))
-        }
+        label
+          .fancurveGlassPill(
+            in: Capsule(),
+            fallbackFill: Color(nsColor: .windowBackgroundColor),
+            stroke: lineColor.opacity(0.45))
       }
       .position(x: plotRight - 62, y: topY)
       .allowsHitTesting(false)
@@ -439,16 +435,9 @@ struct FanCurveEditor: View {
     .padding(.horizontal, 8)
     .padding(.vertical, 3)
 
-    if #available(macOS 26.0, *) {
-      content
-        .background(Capsule().fill(orange.opacity(0.15)))
-        .glassEffect(in: Capsule())
-        .help(tooltip)
-    } else {
-      content
-        .background(Capsule().fill(orange.opacity(0.15)))
-        .help(tooltip)
-    }
+    content
+      .fancurveGlass(in: Capsule(), fallbackFill: orange.opacity(0.15))
+      .help(tooltip)
   }
 
   // MARK: - Grid and Axes
@@ -666,19 +655,11 @@ struct FanCurveEditor: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
 
-      Group {
-        if #available(macOS 26.0, *) {
-          text.glassEffect(in: RoundedRectangle(cornerRadius: 4))
-        } else {
-          text
-            .background(
-              RoundedRectangle(cornerRadius: 4)
-                .fill(Color(nsColor: .windowBackgroundColor)))
-            .overlay(
-              RoundedRectangle(cornerRadius: 4)
-                .stroke(curveColor.opacity(0.35), lineWidth: 0.5))
-        }
-      }
+      text
+        .fancurveGlassPill(
+          in: RoundedRectangle(cornerRadius: 4),
+          fallbackFill: Color(nsColor: .windowBackgroundColor),
+          stroke: curveColor.opacity(0.35))
       .opacity(inverse)
       .position(x: anchor.x - 34, y: anchor.y + 16)
       .allowsHitTesting(false)
@@ -694,19 +675,11 @@ struct FanCurveEditor: View {
       .padding(.horizontal, 5)
       .padding(.vertical, 1)
 
-    if #available(macOS 26.0, *) {
-      text.glassEffect(in: RoundedRectangle(cornerRadius: 3))
-    } else {
-      text
-        .background(
-          RoundedRectangle(cornerRadius: 3)
-            .fill(Color(nsColor: .windowBackgroundColor))
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: 3)
-            .stroke(Color(nsColor: .systemOrange).opacity(0.35), lineWidth: 0.5)
-        )
-    }
+    text
+      .fancurveGlassPill(
+        in: RoundedRectangle(cornerRadius: 3),
+        fallbackFill: Color(nsColor: .windowBackgroundColor),
+        stroke: Color(nsColor: .systemOrange).opacity(0.35))
   }
 
   @ViewBuilder
@@ -717,19 +690,11 @@ struct FanCurveEditor: View {
       .padding(.horizontal, 5)
       .padding(.vertical, 1)
 
-    if #available(macOS 26.0, *) {
-      text.glassEffect(in: RoundedRectangle(cornerRadius: 3))
-    } else {
-      text
-        .background(
-          RoundedRectangle(cornerRadius: 3)
-            .fill(Color(nsColor: .windowBackgroundColor))
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: 3)
-            .stroke(Color(nsColor: .systemOrange).opacity(0.22), lineWidth: 0.5)
-        )
-    }
+    text
+      .fancurveGlassPill(
+        in: RoundedRectangle(cornerRadius: 3),
+        fallbackFill: Color(nsColor: .windowBackgroundColor),
+        stroke: Color(nsColor: .systemOrange).opacity(0.22))
   }
 
   /// Tooltip pill with Liquid Glass when available.
@@ -741,19 +706,10 @@ struct FanCurveEditor: View {
       .padding(.horizontal, 7)
       .padding(.vertical, 3)
 
-    if #available(macOS 26.0, *) {
-      label.glassEffect(in: RoundedRectangle(cornerRadius: 5))
-    } else {
-      label
-        .background(
-          RoundedRectangle(cornerRadius: 5)
-            .fill(Color(nsColor: .windowBackgroundColor).opacity(0.92))
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: 5)
-            .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-        )
-    }
+    label
+      .fancurveGlassPill(
+        in: RoundedRectangle(cornerRadius: 5),
+        fallbackFill: Color(nsColor: .windowBackgroundColor).opacity(0.92))
   }
 
   /// Tooltip rendered as a real SwiftUI view so its .position animates
