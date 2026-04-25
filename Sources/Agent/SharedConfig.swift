@@ -15,6 +15,7 @@ struct SharedConfig {
 
   init() {
     self.defaults = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+    LoadAssistStore.migrateLegacyIfNeeded(defaults: self.defaults)
   }
 
   // MARK: - Reads (populated by GUI)
@@ -67,6 +68,14 @@ struct SharedConfig {
     return stored > 0 ? stored : 60
   }
 
+  func loadLoadAssistEnabled(_ kind: LoadAssistKind) -> Bool {
+    LoadAssistStore.loadEnabled(kind, defaults: defaults)
+  }
+
+  func loadLoadAssistCurve(_ kind: LoadAssistKind) -> [CurvePoint] {
+    LoadAssistStore.loadPoints(kind, defaults: defaults)
+  }
+
   /// Priority the agent uses for the normal curve write. Matches
   /// `SMCFanPriority.curveNormal` (10) by default.
   func loadCurveNormalPriority() -> Int {
@@ -88,6 +97,10 @@ struct SharedConfig {
     defaults.set(lastTick.timeIntervalSince1970, forKey: SharedConfigKeys.agentLastTick)
   }
 
+  func writeAgentSnapshot(_ snapshot: AgentSnapshot) {
+    AgentSnapshotStore.save(snapshot, defaults: defaults)
+  }
+
   func writeAgentLastError(_ message: String?) {
     if let message {
       defaults.set(message, forKey: SharedConfigKeys.agentLastError)
@@ -100,5 +113,6 @@ struct SharedConfig {
     defaults.removeObject(forKey: SharedConfigKeys.agentPID)
     defaults.removeObject(forKey: SharedConfigKeys.agentLastTick)
     defaults.removeObject(forKey: SharedConfigKeys.agentLastError)
+    AgentSnapshotStore.clear(defaults: defaults)
   }
 }

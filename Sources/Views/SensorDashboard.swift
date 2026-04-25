@@ -9,35 +9,22 @@
 import SwiftUI
 
 struct SensorDashboard: View {
-  @ObservedObject var sensorState: SensorState
+  @ObservedObject var runtime: AgentSnapshotState
   @ObservedObject var curveModel: FanCurveModel
   @ObservedObject var installState: InstallationState
-  @ObservedObject var usage: SystemUsage
 
   @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
 
   private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
 
-  @AppStorage(SharedConfigKeys.overdriveEnabled, store: suite)
-  private var overdrive: Bool = false
-
-  @AppStorage(SharedConfigKeys.underdriveEnabled, store: suite)
-  private var underdrive: Bool = false
-
   @AppStorage(SharedConfigKeys.boostEnabled, store: suite)
   private var boost: Bool = false
 
-  @AppStorage(SharedConfigKeys.loadFloorEnabled, store: suite)
-  private var loadFloorEnabled: Bool = false
+  @AppStorage(SharedConfigKeys.cpuLoadAssistEnabled, store: suite)
+  private var cpuLoadAssistEnabled: Bool = false
 
-  @AppStorage(SharedConfigKeys.loadFloorThreshold, store: suite)
-  private var loadFloorThreshold: Double = 70
-
-  @AppStorage(SharedConfigKeys.gpuLoadFloorThreshold, store: suite)
-  private var gpuLoadFloorThreshold: Double = 70
-
-  @AppStorage(SharedConfigKeys.loadFloorPercent, store: suite)
-  private var loadFloorPercent: Double = 60
+  @AppStorage(SharedConfigKeys.gpuLoadAssistEnabled, store: suite)
+  private var gpuLoadAssistEnabled: Bool = false
 
 
   private var unit: TemperatureUnit {
@@ -55,6 +42,9 @@ struct SensorDashboard: View {
     .fancurveGlass(
       in: RoundedRectangle(cornerRadius: 0),
       fallbackFill: Color(nsColor: .windowBackgroundColor))
+    .onAppear {
+      LoadAssistStore.migrateLegacyIfNeeded(defaults: Self.suite)
+    }
   }
 
   private var sidebarContent: some View {
@@ -76,34 +66,30 @@ struct SensorDashboard: View {
         }
 
         HStack(alignment: .firstTextBaseline, spacing: 2) {
-          let displayed = Int(unit.convert(fromCelsius: sensorState.governingTemperature))
+          let displayed = Int(unit.convert(fromCelsius: runtime.governingTemperature))
           Text("\(displayed)")
             .font(.system(.largeTitle, design: .rounded).weight(.regular))
             .foregroundStyle(.primary)
             .monospacedDigit()
             .contentTransition(.numericText())
-            .animation(.easeInOut(duration: 0.6), value: displayed)
+            .animation(.easeOut(duration: 0.38), value: displayed)
           Text(unit.symbol)
             .font(.title3)
             .foregroundStyle(.secondary)
         }
       }
 
-      // Live system usage. Each bar gets an inline Load Floor caption
-      // when the feature is enabled, anchoring the rule to the metric
-      // it actually watches.
+      let assistStates = activeAssistStates
+
+      // Live system usage with compact assist indicators when a CPU/GPU
+      // load assist is actively raising the current floor.
       VStack(spacing: 10) {
-        let showThresholds = loadFloorEnabled && curveModel.isActive
         VStack(spacing: 4) {
           usageRow(
             label: "CPU", icon: "cpu",
-            value: usage.cpuPercent, tint: Color.accentColor,
-            threshold: showThresholds ? $loadFloorThreshold : nil)
-          if showThresholds {
-            loadFloorCaption(
-              load: usage.cpuPercent,
-              threshold: loadFloorThreshold,
-              metric: "CPU")
+            value: runtime.cpuLoadPercent, tint: Color.accentColor)
+          if let assist = assistStates.first(where: { $0.kind == .cpu }) {
+            loadAssistCaption(assist)
             .transition(.asymmetric(
               insertion: .opacity.combined(with: .move(edge: .top)),
               removal: .opacity))
@@ -112,13 +98,9 @@ struct SensorDashboard: View {
         VStack(spacing: 4) {
           usageRow(
             label: "GPU", icon: "memorychip",
-            value: usage.gpuPercent, tint: Color.accentColor.opacity(0.55),
-            threshold: showThresholds ? $gpuLoadFloorThreshold : nil)
-          if showThresholds {
-            loadFloorCaption(
-              load: usage.gpuPercent,
-              threshold: gpuLoadFloorThreshold,
-              metric: "GPU")
+            value: runtime.gpuLoadPercent, tint: Color.accentColor.opacity(0.55))
+          if let assist = assistStates.first(where: { $0.kind == .gpu }) {
+            loadAssistCaption(assist)
             .transition(.asymmetric(
               insertion: .opacity.combined(with: .move(edge: .top)),
               removal: .opacity))
@@ -131,13 +113,13 @@ struct SensorDashboard: View {
       // readable even when the window is focused and glass is less
       // pronounced from the system chrome.
       VStack(spacing: 10) {
-        ForEach(sensorState.fans) { fan in
+        ForEach(runtime.fans) { fan in
           fanRow(fan)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .fancurveGlass(
-              in: RoundedRectangle(cornerRadius: 8),
-              fallbackFill: Color.secondary.opacity(0.06))
+            .background(
+              RoundedRectangle(cornerRadius: 8)
+                .fill(Color.secondary.opacity(0.06)))
             .overlay(
               RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
@@ -157,6 +139,11 @@ struct SensorDashboard: View {
           Text(fanControlStateLabel)
             .font(.caption)
             .foregroundColor(fanControlStateColor)
+          if curveModel.isActive && !boost {
+            Text(controllerStateLabel)
+              .font(.caption2)
+              .foregroundStyle(.tertiary)
+          }
         }
         Spacer()
         Toggle("", isOn: $curveModel.isActive)
@@ -187,8 +174,6 @@ struct SensorDashboard: View {
     .padding(.horizontal, 20)
     .padding(.top, 24)
     .padding(.bottom, 20)
-    .animation(.easeInOut(duration: 0.22), value: curveModel.isActive)
-    .animation(.easeInOut(duration: 0.22), value: loadFloorEnabled)
   }
 
   /// Boost as a plain Button so the text stays high contrast in both
@@ -262,11 +247,28 @@ struct SensorDashboard: View {
     return curveModel.isActive ? Color.accentColor : .secondary
   }
 
+  private var controllerStateLabel: String {
+    let committed = Int((runtime.committedPercent * 100).rounded())
+    switch runtime.controllerMode {
+    case .holding:
+      if runtime.holdRemainingSeconds > 0 {
+        return "Targeting \(committed)%"
+      }
+      return "Targeting \(committed)%"
+    case .rampingUp:
+      return "Stepping up toward \(committed)%"
+    case .rampingDown:
+      return "Cooling down toward \(committed)%"
+    case .emergency:
+      return "Emergency ramp"
+    }
+  }
+
   /// Returns true when the fan is actively spinning up or down toward a
   /// new target. A fan at or above its firmware reported max is at its
   /// physical limit, even if the agent commanded a higher target via
   /// Overdrive, so we don't show the ramp indicator in that case.
-  private func isRamping(_ fan: FanReading) -> Bool {
+  private func isRamping(_ fan: AgentFanSnapshot) -> Bool {
     let target = fan.targetRPM
     guard target > 0 else { return false }
     // Fan has reached its mechanical ceiling. It cannot climb further.
@@ -286,13 +288,14 @@ struct SensorDashboard: View {
   private enum SystemStatus { case green, orange, red }
 
   private var systemStatus: SystemStatus {
-    if installState.helperReachable, installState.agentEnabled, installState.agentLive {
+    let helperReachable = runtime.isFresh ? runtime.helperReachable : installState.helperReachable
+    if helperReachable, installState.agentEnabled, installState.agentLive {
       return .green
     }
-    if installState.helperReachable, installState.agentEnabled, !installState.agentLive {
+    if helperReachable, installState.agentEnabled, !installState.agentLive {
       return .orange
     }
-    if installState.agentEnabled, !installState.helperReachable {
+    if installState.agentEnabled, !helperReachable {
       return .orange
     }
     return .red
@@ -344,19 +347,42 @@ struct SensorDashboard: View {
     }
   }
 
-  /// Inline caption under a usage bar showing the load floor rule for
-  /// that specific metric in plain language. Renders as a Liquid Glass
-  /// capsule on macOS 26 and a soft tinted pill on older macOS.
+  private struct ActiveAssistState: Identifiable {
+    let kind: LoadAssistKind
+    let loadPercent: Double
+    let floorPercent: Double
+
+    var id: String { kind.rawValue }
+  }
+
+  private var activeAssistStates: [ActiveAssistState] {
+    guard curveModel.isActive, !boost else { return [] }
+    let curveReferenceTemp = runtime.rawPressureTemperature ?? runtime.governingTemperature
+    let basePercent = curveModel.evaluate(at: curveReferenceTemp)
+    var candidates: [ActiveAssistState] = []
+    let floorPercent = runtime.assistFloorPercent ?? 0
+    for kind in LoadAssistKind.allCases {
+      let enabled = kind == .cpu ? cpuLoadAssistEnabled : gpuLoadAssistEnabled
+      guard enabled else { continue }
+      let load = kind == .cpu ? runtime.cpuLoadPercent : runtime.gpuLoadPercent
+      guard runtime.activeAssistKinds.contains(kind), floorPercent > basePercent + 0.005 else { continue }
+      candidates.append(ActiveAssistState(kind: kind, loadPercent: load, floorPercent: floorPercent))
+    }
+    guard let maxFloor = candidates.map(\.floorPercent).max() else { return [] }
+    return candidates.filter { abs($0.floorPercent - maxFloor) < 0.001 }
+  }
+
+  /// Inline caption under a usage bar showing when a load assist is
+  /// actively raising the effective floor right now.
   @ViewBuilder
-  private func loadFloorCaption(load: Double, threshold: Double, metric: String) -> some View {
-    let active = load >= threshold
+  private func loadAssistCaption(_ assist: ActiveAssistState) -> some View {
     let color = Color(nsColor: .systemTeal)
-    let text: String = active
-      ? "Minimum \(Int(loadFloorPercent))% fans"
-      : "Minimum \(Int(loadFloorPercent))% fans when \(metric) over \(Int(threshold))%"
+    let floor = Int((assist.floorPercent * 100).rounded())
+    let load = Int(assist.loadPercent.rounded())
+    let text = "\(assist.kind.shortTitle) assist holding minimum \(floor)% at \(load)% load"
 
     HStack(alignment: .top, spacing: 6) {
-      Image(systemName: active ? "arrow.up.forward.circle.fill" : "arrow.up.forward.circle")
+      Image(systemName: "arrow.up.forward.circle.fill")
         .font(.system(size: 11))
       Text(text)
         .font(.caption)
@@ -364,12 +390,12 @@ struct SensorDashboard: View {
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .foregroundStyle(active ? color : .secondary)
+    .foregroundStyle(color)
     .padding(.horizontal, 10)
     .padding(.vertical, 5)
-    .modifier(LoadFloorGlassModifier(color: color, active: active))
+    .modifier(LoadFloorGlassModifier(color: color, active: true))
     .help(
-      "When \(metric) load stays above \(Int(threshold))%, the curve is raised so fans run at least \(Int(loadFloorPercent))%."
+      "\(assist.kind.title) is active and is currently raising the effective minimum fan floor to \(floor)%."
     )
   }
 
@@ -381,12 +407,8 @@ struct SensorDashboard: View {
     label: String,
     icon: String,
     value: Double,
-    tint: Color,
-    threshold: Binding<Double>? = nil
+    tint: Color
   ) -> some View {
-    let floorActive = threshold.map { value >= $0.wrappedValue } ?? false
-    let floorColor = Color(nsColor: .systemTeal)
-
     VStack(alignment: .leading, spacing: 4) {
       HStack(alignment: .firstTextBaseline) {
         Image(systemName: icon)
@@ -400,56 +422,23 @@ struct SensorDashboard: View {
           .font(.system(.callout, design: .rounded).weight(.medium))
           .monospacedDigit()
           .contentTransition(.numericText())
-          .animation(.easeInOut(duration: 0.6), value: Int(value.rounded()))
+          .animation(.easeOut(duration: 0.32), value: value)
       }
       GeometryReader { geo in
         ZStack(alignment: .leading) {
           RoundedRectangle(cornerRadius: 2)
             .fill(Color.secondary.opacity(0.15))
           RoundedRectangle(cornerRadius: 2)
-            .fill(floorActive ? floorColor : tint)
+            .fill(tint)
             .frame(width: geo.size.width * CGFloat(value / 100))
-            .animation(.easeInOut(duration: 0.4), value: value)
-          if let threshold {
-            thresholdThumb(threshold: threshold, width: geo.size.width, barHeight: geo.size.height)
-          }
+            .animation(.easeOut(duration: 0.34), value: value)
         }
       }
       .frame(height: 4)
     }
   }
 
-  /// Draggable teal tick marking the load-floor threshold. Wider
-  /// invisible hit area makes it easy to grab on a 4pt bar. Snaps to
-  /// integer percents so the value reads cleanly in the caption.
-  @ViewBuilder
-  private func thresholdThumb(threshold: Binding<Double>, width: CGFloat, barHeight: CGFloat)
-    -> some View {
-    let floorColor = Color(nsColor: .systemTeal)
-    let x = width * CGFloat(threshold.wrappedValue / 100)
-
-    ZStack {
-      Rectangle()
-        .fill(Color.clear)
-        .contentShape(Rectangle())
-        .frame(width: 18, height: 22)
-      Rectangle()
-        .fill(floorColor)
-        .frame(width: 2.5, height: 14)
-    }
-    .position(x: x, y: barHeight / 2 + 3)
-    .help("Drag to set the load-floor threshold. Currently \(Int(threshold.wrappedValue))%.")
-    .gesture(
-      DragGesture(minimumDistance: 0)
-        .onChanged { value in
-          guard width > 0 else { return }
-          let pct = Double(value.location.x / width) * 100
-          threshold.wrappedValue = max(1, min(99, pct.rounded()))
-        }
-    )
-  }
-
-  private func fanRow(_ fan: FanReading) -> some View {
+  private func fanRow(_ fan: AgentFanSnapshot) -> some View {
     HStack(alignment: .firstTextBaseline) {
       VStack(alignment: .leading, spacing: 2) {
         HStack(spacing: 4) {
@@ -468,7 +457,7 @@ struct SensorDashboard: View {
             .font(.system(.title3, design: .rounded))
             .monospacedDigit()
             .contentTransition(.numericText())
-            .animation(.easeInOut(duration: 0.6), value: Int(fan.actualRPM))
+            .animation(.easeOut(duration: 0.4), value: fan.actualRPM)
           Text("RPM")
             .font(.caption)
             .foregroundColor(.secondary)
@@ -488,14 +477,9 @@ struct SensorDashboard: View {
 
   @ViewBuilder
   private func fanIcon(spinning: Bool) -> some View {
-    let icon = Image(systemName: "fan.fill")
+    Image(systemName: "fan.fill")
       .font(.caption)
       .foregroundColor(spinning ? Color.accentColor : .secondary)
-    if #available(macOS 15.0, *) {
-      icon.symbolEffect(.rotate, isActive: spinning)
-    } else {
-      icon
-    }
   }
 
   /// Liquid Glass capsule for the load floor caption. On macOS 26 it
@@ -506,25 +490,16 @@ struct SensorDashboard: View {
     let active: Bool
 
     func body(content: Content) -> some View {
-      if #available(macOS 26.0, *) {
-        content
-          .background(Capsule().fill(color.opacity(active ? 0.18 : 0.06)))
-          .glassEffect(in: Capsule())
-          .overlay(
-            Capsule().stroke(color.opacity(active ? 0.7 : 0.4), lineWidth: 2.5)
-          )
-      } else {
-        content
-          .background(Capsule().fill(color.opacity(active ? 0.18 : 0.08)))
-          .overlay(
-            Capsule().stroke(color.opacity(active ? 0.7 : 0.4), lineWidth: 2.5)
-          )
-      }
+      content
+        .background(Capsule().fill(color.opacity(active ? 0.18 : 0.08)))
+        .overlay(
+          Capsule().stroke(color.opacity(active ? 0.7 : 0.4), lineWidth: 1.0)
+        )
     }
   }
 
   private var tempColor: Color {
-    let t = sensorState.governingTemperature
+    let t = runtime.governingTemperature
     if t < 55 { return Color(nsColor: .systemGreen) }
     if t < 75 { return Color(nsColor: .systemYellow) }
     if t < 90 { return Color(nsColor: .systemOrange) }

@@ -9,12 +9,11 @@
 import SwiftUI
 
 struct ContentView: View {
+  @Environment(\.openWindow) private var openWindow
   @EnvironmentObject var xpcClient: XPCClient
   @EnvironmentObject var curveModel: FanCurveModel
-  @EnvironmentObject var usage: SystemUsage
-  @StateObject private var sensorState = SensorState()
   @StateObject private var installState = InstallationState()
-  @State private var controller: FanCurveController?
+  @StateObject private var runtimeState = AgentSnapshotState()
 
   @AppStorage("sidebarWidth") private var sidebarWidth: Double = 240
   @State private var dragStartWidth: Double? = nil
@@ -39,54 +38,40 @@ struct ContentView: View {
     }
     .onAppear {
       installState.startMonitoring(xpcClient: xpcClient)
-      usage.start()
-      let ctrl = FanCurveController(xpcClient: xpcClient, sensorState: sensorState)
-      controller = ctrl
-      ctrl.start()
+      runtimeState.start()
     }
     .onDisappear {
       installState.stopMonitoring()
-      usage.stop()
-      controller?.stop()
+      runtimeState.stop()
     }
   }
 
-  /// Opens the Settings scene. SettingsLink is the native macOS 14+ way to
-  /// bind a toolbar button to the Settings scene. Kept as a visible gear
-  /// in the toolbar so users who don't know Cmd+, still find it.
-  @ViewBuilder
   private var settingsToolbarButton: some View {
-    if #available(macOS 14.0, *) {
-      SettingsLink {
-        Image(systemName: "gearshape")
-      }
-      .help("Settings")
-    } else {
-      Button {
-        NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-      } label: {
-        Image(systemName: "gearshape")
-      }
-      .help("Settings")
+    Button {
+      openWindow(id: "settings")
+    } label: {
+      Image(systemName: "gearshape")
     }
+    .help("Settings")
   }
 
   private var mainLayout: some View {
     HStack(spacing: 0) {
-      FanCurveEditor(model: curveModel, sensorState: sensorState)
+      FanCurveEditor(model: curveModel, runtime: runtimeState)
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .layoutPriority(1)
 
       sidebarSplitter
 
       SensorDashboard(
-        sensorState: sensorState,
+        runtime: runtimeState,
         curveModel: curveModel,
-        installState: installState,
-        usage: usage
+        installState: installState
       )
       .frame(width: sidebarWidth)
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
   }
 
   /// Vertical splitter: a thin hairline with a wider invisible hit area.

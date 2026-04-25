@@ -10,24 +10,22 @@ import SwiftUI
 
 struct FanCurveEditor: View {
   @ObservedObject var model: FanCurveModel
-  @ObservedObject var sensorState: SensorState
+  @ObservedObject var runtime: AgentSnapshotState
   @State private var hoveredIndex: Int?
+  @State private var draggedIndex: Int?
   @State private var mouseLocation: CGPoint?
-  @State private var draggedCurveID: UUID?
-  @State private var segmentDrag: SegmentDragState?
+  @State private var targetCommittedTemperature: Double = 0
+  @State private var targetCommittedPercent: Double = 0
+  @State private var targetRawTemperature: Double = 0
+  @State private var targetRawPercent: Double = 0
+  @State private var displayedCommittedTemperature: Double = 0
+  @State private var displayedCommittedPercent: Double = 0
+  @State private var displayedRawTemperature: Double = 0
+  @State private var displayedRawPercent: Double = 0
+  @State private var markerSmoothingTask: Task<Void, Never>?
+  @State private var lastMarkerUpdateTime: ContinuousClock.Instant?
 
-  /// State captured when the user starts dragging on a curve segment so
-  /// both bracketing control points move together by the drag delta in
-  /// both temperature (x) and fan percent (y).
-  private struct SegmentDragState {
-    let leftIndex: Int
-    let leftInitialTemp: Double
-    let leftInitialPercent: Double
-    let rightInitialTemp: Double
-    let rightInitialPercent: Double
-    let startTemp: Double
-    let startPercent: Double
-  }
+  private let controlPointHitRadius: CGFloat = 14
 
   @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
 
@@ -39,8 +37,6 @@ struct FanCurveEditor: View {
     Int(unit.convert(fromCelsius: celsius).rounded())
   }
 
-  @State private var animatedTemp: Double = 0
-  @State private var animatedActualPercent: Double = 0
   /// Crossfade driver between active and inactive curve rendering. 1 is
   /// fully active (blue solid user curve, no ghost). 0 is fully inactive
   /// (gray dashed user curve, accent-colored Apple ghost). SwiftUI
@@ -52,8 +48,9 @@ struct FanCurveEditor: View {
   private let bottomPad: CGFloat = 44
   private let leftPad: CGFloat = 72
   private let rightPad: CGFloat = 24
+  private let minimumPointSpacing: Double = 2
 
-  private let tempRange: ClosedRange<Double> = 20...110
+  private let tempRange: ClosedRange<Double> = 20...100
   private let curveColor = Color.accentColor
 
   @AppStorage(SharedConfigKeys.overdriveEnabled, store: Self.suite)
@@ -72,62 +69,59 @@ struct FanCurveEditor: View {
   /// the bottom to zero. When neither is on the axis uses the firmware
   /// reported minimum and maximum.
   private var rpmRange: (min: Float, max: Float) {
-    guard let fan = sensorState.fans.first else { return (0, 8000) }
+    guard let fan = runtime.fans.first else { return (0, 8000) }
     let minR: Float = underdriveEnabled ? 0 : fan.minRPM
     let maxR: Float = overdriveEnabled ? max(fan.maxRPM, overdriveTargetRPM) : fan.maxRPM
     return (minR, maxR)
   }
 
-  /// Average actual RPM across all fans. Used to plot the live "actual" dot.
-  private var averageFanRPM: Float {
-    let fans = sensorState.fans
-    guard !fans.isEmpty else { return 0 }
-    return fans.reduce(0) { $0 + $1.actualRPM } / Float(fans.count)
-  }
-
-  /// Where the fan actually is, expressed as a 0...1 value inside the
-  /// reported min-max RPM range. Zero RPM maps to zero regardless of min.
-  private var currentActualPercent: Double {
-    let rpm = averageFanRPM
-    if rpm <= 0 { return 0 }
-    let span = rpmRange.max - rpmRange.min
-    guard span > 0 else { return 0 }
-    let p = Double((rpm - rpmRange.min) / span)
-    return max(0, min(1, p))
-  }
+  private let markerSmoothingInterval: UInt64 = 16_000_000
+  private let committedMarkerTemperatureHalfLife: Double = 0.9
+  private let committedMarkerPercentHalfLife: Double = 0.78
+  private let rawMarkerTemperatureHalfLife: Double = 0.38
+  private let rawMarkerPercentHalfLife: Double = 0.3
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      GeometryReader { geo in
-        let size = geo.size
+    GeometryReader { geo in
+      let size = geo.size
 
-        ZStack {
-          Canvas { context, canvasSize in
-            drawGrid(context: context, size: canvasSize)
-            drawCurve(context: context, size: canvasSize)
-            drawHoverLine(context: context, size: canvasSize)
-            drawAxisTitles(context: context, size: canvasSize)
-          }
-          .contentShape(Rectangle())
-          .gesture(addPointDragGesture(size: size))
-
-          controlPointsOverlay(size: size)
-          // Current position and Now label render last so they sit on top
-          // of the curve line and all control points.
-          currentPositionOverlay(size: size)
-          hoverTooltipOverlay(size: size)
-          boostOverlay(size: size)
-          modeBadgesOverlay
-          appleAutoLabelOverlay(size: size)
+      ZStack {
+        Canvas { context, canvasSize in
+          drawGrid(context: context, size: canvasSize)
+          drawCurve(context: context, size: canvasSize)
+          drawHoverLine(context: context, size: canvasSize)
+          drawAxisTitles(context: context, size: canvasSize)
         }
-        .onContinuousHover { phase in
-          switch phase {
-          case .active(let location): mouseLocation = location
-          case .ended: mouseLocation = nil
+        .contentShape(Rectangle())
+        // Point dragging is the only editing mode in this pass.
+        // Disabling segment dragging keeps the monotonic rules
+        // predictable while we tighten the core curve behavior.
+
+        controlPointsOverlay(size: size)
+        // Current position and Now label render last so they sit on top
+        // of the curve line and all control points.
+        currentPositionOverlay(size: size)
+        hoverTooltipOverlay(size: size)
+        boostOverlay(size: size)
+        modeBadgesOverlay
+        appleAutoLabelOverlay(size: size)
+      }
+      .onContinuousHover { phase in
+        switch phase {
+        case .active(let location):
+          mouseLocation = location
+          if draggedIndex == nil {
+            hoveredIndex = hoveredControlPointIndex(at: location, in: size)
+          }
+        case .ended:
+          mouseLocation = nil
+          if draggedIndex == nil {
+            hoveredIndex = nil
           }
         }
       }
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .fancurveGlassCard(cornerRadius: 12)
     .clipShape(RoundedRectangle(cornerRadius: 12))
     .onAppear { activePhase = model.isActive ? 1.0 : 0.0 }
@@ -136,16 +130,36 @@ struct FanCurveEditor: View {
         activePhase = newActive ? 1.0 : 0.0
       }
     }
-    .onChange(of: sensorState.governingTemperature) { newTemp in
-      withAnimation(.easeInOut(duration: 0.8)) {
-        animatedTemp = newTemp
-        animatedActualPercent = currentActualPercent
-      }
+    .onAppear {
+      refreshRuntimeMarkerTargets()
+      displayedCommittedTemperature = targetCommittedTemperature
+      displayedCommittedPercent = targetCommittedPercent
+      displayedRawTemperature = targetRawTemperature
+      displayedRawPercent = targetRawPercent
+      startMarkerSmoothing()
     }
-    .onChange(of: averageFanRPM) { _ in
-      withAnimation(.easeInOut(duration: 0.8)) {
-        animatedActualPercent = currentActualPercent
-      }
+    .onChange(of: runtime.committedTemperature) { newTemperature in
+      refreshRuntimeMarkerTargets()
+    }
+    .onChange(of: runtime.committedPercent) { newPercent in
+      refreshRuntimeMarkerTargets()
+    }
+    .onChange(of: runtime.rawPressureTemperature) { newTemperature in
+      refreshRuntimeMarkerTargets()
+    }
+    .onChange(of: runtime.rawBaselinePercent) { newPercent in
+      refreshRuntimeMarkerTargets()
+    }
+    .onChange(of: runtime.activeAssistKinds) { _ in
+      refreshRuntimeMarkerTargets()
+    }
+    .onChange(of: boostEnabled) { _ in
+      refreshRuntimeMarkerTargets()
+    }
+    .onDisappear {
+      markerSmoothingTask?.cancel()
+      markerSmoothingTask = nil
+      lastMarkerUpdateTime = nil
     }
   }
 
@@ -179,49 +193,117 @@ struct FanCurveEditor: View {
 
   @ViewBuilder
   private func currentPositionOverlay(size: CGSize) -> some View {
-    if animatedTemp > 0 {
-      let actualPos = dataToPixel(temp: animatedTemp, percent: animatedActualPercent, in: size)
-      let curveTargetPercent = model.evaluate(at: animatedTemp)
-      let curvePos = dataToPixel(temp: animatedTemp, percent: curveTargetPercent, in: size)
-      let plotLeft = leftPad
-      let zeroY = dataToPixel(temp: 20, percent: 0, in: size).y
-      let dashLine = StrokeStyle(lineWidth: 1, dash: [4, 4])
+    Group {
+      let committedTemp = displayedCommittedTemperature
+      let committedPercent = displayedCommittedPercent
+      let rawTemp = displayedRawTemperature
+      let rawPercent = displayedRawPercent
+      if committedTemp > 0 {
+        let committedPos = dataToPixel(temp: committedTemp, percent: committedPercent, in: size)
+        let rawPos = dataToPixel(temp: rawTemp, percent: rawPercent, in: size)
+        let plotLeft = leftPad
+        let zeroY = dataToPixel(temp: 20, percent: 0, in: size).y
+        let dashLine = StrokeStyle(lineWidth: 1, dash: [4, 4])
 
-      // Vertical dashed line from the actual dot down to the X axis.
-      // Uses a Shape with explicit height so .position() animates smoothly
-      // alongside the orange dot when the temperature changes.
-      DashedLine(axis: .vertical)
-        .stroke(Color(nsColor: .systemOrange).opacity(0.25), style: dashLine)
-        .frame(width: 1, height: max(0, zeroY - actualPos.y))
-        .position(x: actualPos.x, y: (actualPos.y + zeroY) / 2)
+        // Vertical dashed line from the actual dot down to the X axis.
+        // Uses a Shape with explicit height so .position() animates smoothly
+        // alongside the orange dot when the temperature changes.
+        DashedLine(axis: .vertical)
+          .stroke(Color(nsColor: .systemOrange).opacity(0.25), style: dashLine)
+          .frame(width: 1, height: max(0, zeroY - committedPos.y))
+          .position(x: committedPos.x, y: (committedPos.y + zeroY) / 2)
 
-      // Horizontal dashed line from the Y axis to the actual dot.
-      // Balances the vertical guide and surfaces the current fan percent.
-      DashedLine(axis: .horizontal)
-        .stroke(Color(nsColor: .systemOrange).opacity(0.25), style: dashLine)
-        .frame(width: max(0, actualPos.x - plotLeft), height: 1)
-        .position(x: (plotLeft + actualPos.x) / 2, y: actualPos.y)
+        // Horizontal dashed line from the Y axis to the actual dot.
+        // Balances the vertical guide and surfaces the current fan percent.
+        DashedLine(axis: .horizontal)
+          .stroke(Color(nsColor: .systemOrange).opacity(0.25), style: dashLine)
+          .frame(width: max(0, committedPos.x - plotLeft), height: 1)
+          .position(x: (plotLeft + committedPos.x) / 2, y: committedPos.y)
 
-      // Curve target marker: hollow ring on the curve at current temperature.
-      // Shows where the curve would put the fan right now.
-      Circle()
-        .stroke(Color(nsColor: .systemOrange).opacity(0.55), lineWidth: 1.5)
-        .frame(width: 9, height: 9)
-        .position(curvePos)
+        if hypot(rawPos.x - committedPos.x, rawPos.y - committedPos.y) > 6 {
+          Path { path in
+            path.move(to: committedPos)
+            path.addLine(to: rawPos)
+          }
+          .stroke(Color(nsColor: .systemOrange).opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
+        }
 
-      // Actual marker: solid dot at current (temp, actual RPM).
-      // Shows where the fan really is.
-      Circle()
-        .fill(Color(nsColor: .systemOrange))
-        .frame(width: 10, height: 10)
-        .shadow(color: Color(nsColor: .systemOrange).opacity(0.5), radius: 6)
-        .position(actualPos)
+        Circle()
+          .stroke(Color(nsColor: .systemOrange).opacity(0.32), lineWidth: 1.25)
+          .frame(width: 7, height: 7)
+          .position(rawPos)
+          .animation(.easeInOut(duration: 0.42), value: rawPos)
 
-      if mouseLocation == nil {
-        nowLabel
-          .position(x: actualPos.x, y: actualPos.y - 16)
+        if mouseLocation == nil,
+           hypot(rawPos.x - committedPos.x, rawPos.y - committedPos.y) > 22 {
+          pressureLabel
+            .position(x: rawPos.x, y: rawPos.y + 16)
+            .animation(.easeInOut(duration: 0.42), value: rawPos)
+        }
+
+        Circle()
+          .fill(Color(nsColor: .systemOrange))
+          .frame(width: 10, height: 10)
+          .shadow(color: Color(nsColor: .systemOrange).opacity(0.5), radius: 6)
+          .position(committedPos)
+          .animation(.timingCurve(0.18, 0.82, 0.22, 1.0, duration: 0.55), value: committedPos)
+
+        if mouseLocation == nil {
+          nowLabel
+            .position(x: committedPos.x, y: committedPos.y - 16)
+            .animation(.timingCurve(0.18, 0.82, 0.22, 1.0, duration: 0.55), value: committedPos)
+        }
       }
     }
+    .allowsHitTesting(false)
+  }
+
+  private func refreshRuntimeMarkerTargets() {
+    targetCommittedPercent = runtime.committedPercent
+    targetCommittedTemperature = committedMarkerTemperatureTarget()
+    targetRawTemperature = runtime.rawPressureTemperature ?? runtime.governingTemperature
+    targetRawPercent = runtime.rawBaselinePercent
+  }
+
+  private func committedMarkerTemperatureTarget() -> Double {
+    guard runtime.committedPercent > 0 else {
+      return tempRange.lowerBound
+    }
+
+    // Keep the primary marker on the authored curve so the chart remains
+    // visually truthful. The faint secondary marker carries the live thermal
+    // pressure/current-state context.
+    if let projectedTemperature = projectedCurveTemperature(for: runtime.committedPercent) {
+      return projectedTemperature
+    }
+
+    return runtime.committedTemperature
+  }
+
+  private func projectedCurveTemperature(for percent: Double) -> Double? {
+    let clampedPercent = max(0, min(1, percent))
+    let minCurvePercent = model.evaluate(at: tempRange.lowerBound)
+    let maxCurvePercent = model.evaluate(at: tempRange.upperBound)
+
+    guard clampedPercent >= minCurvePercent - 0.0005,
+          clampedPercent <= maxCurvePercent + 0.0005 else {
+      return nil
+    }
+
+    var lower = tempRange.lowerBound
+    var upper = tempRange.upperBound
+
+    for _ in 0..<28 {
+      let mid = (lower + upper) / 2
+      let value = model.evaluate(at: mid)
+      if value < clampedPercent {
+        lower = mid
+      } else {
+        upper = mid
+      }
+    }
+
+    return (lower + upper) / 2
   }
 
   /// Horizontal line showing the Load Floor minimum. Solid and labeled
@@ -287,7 +369,7 @@ struct FanCurveEditor: View {
   /// sidebar status area.
   @ViewBuilder
   private var modeBadgesOverlay: some View {
-    if model.isActive {
+    if overdriveEnabled || underdriveEnabled {
       VStack(alignment: .trailing, spacing: 6) {
         HStack(spacing: 6) {
           Spacer()
@@ -311,6 +393,7 @@ struct FanCurveEditor: View {
       .padding(.top, 12)
       .padding(.trailing, 12)
       .transition(.opacity)
+      .allowsHitTesting(false)
     }
   }
 
@@ -373,7 +456,7 @@ struct FanCurveEditor: View {
     }
 
     // Vertical gridlines and X axis labels
-    for temp in stride(from: 20.0, through: 110.0, by: 10.0) {
+    for temp in stride(from: 20.0, through: 100.0, by: 10.0) {
       let x = dataToPixel(temp: temp, percent: 0, in: size).x
       var line = Path()
       line.move(to: CGPoint(x: x, y: plotTop))
@@ -510,6 +593,7 @@ struct FanCurveEditor: View {
 
   private func drawHoverLine(context: GraphicsContext, size: CGSize) {
     guard let mouse = mouseLocation else { return }
+    guard draggedIndex == nil, hoveredIndex == nil else { return }
     let data = pixelToData(mouse, in: size)
     guard data.x >= tempRange.lowerBound, data.x <= tempRange.upperBound else { return }
 
@@ -598,6 +682,29 @@ struct FanCurveEditor: View {
     }
   }
 
+  @ViewBuilder
+  private var pressureLabel: some View {
+    let text = Text("Pressure")
+      .font(.system(.caption2, design: .rounded).weight(.medium))
+      .foregroundColor(Color(nsColor: .systemOrange).opacity(0.78))
+      .padding(.horizontal, 5)
+      .padding(.vertical, 1)
+
+    if #available(macOS 26.0, *) {
+      text.glassEffect(in: RoundedRectangle(cornerRadius: 3))
+    } else {
+      text
+        .background(
+          RoundedRectangle(cornerRadius: 3)
+            .fill(Color(nsColor: .windowBackgroundColor))
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 3)
+            .stroke(Color(nsColor: .systemOrange).opacity(0.22), lineWidth: 0.5)
+        )
+    }
+  }
+
   /// Tooltip pill with Liquid Glass when available.
   @ViewBuilder
   private func tooltipPill(temp: Double, percent: Double, rpm: Int) -> some View {
@@ -626,7 +733,7 @@ struct FanCurveEditor: View {
   /// between frames instead of snapping on every mouse sample.
   @ViewBuilder
   private func hoverTooltipOverlay(size: CGSize) -> some View {
-    if let mouse = mouseLocation {
+    if let mouse = mouseLocation, draggedIndex == nil, hoveredIndex == nil {
       let data = pixelToData(mouse, in: size)
       if data.x >= tempRange.lowerBound, data.x <= tempRange.upperBound {
         let percent = model.evaluate(at: data.x)
@@ -645,6 +752,7 @@ struct FanCurveEditor: View {
             .position(x: pos.x, y: tooltipY)
             .animation(.easeOut(duration: 0.12), value: pos)
             .transition(.opacity)
+            .allowsHitTesting(false)
         }
       }
     }
@@ -661,18 +769,17 @@ struct FanCurveEditor: View {
 
   private func controlPointView(index: Int, point: CurvePoint, size: CGSize) -> some View {
     let pos = dataToPixel(temp: point.temperature, percent: point.fanPercent, in: size)
-    let isHovered = hoveredIndex == index
+    let isHighlighted = hoveredIndex == index || draggedIndex == index
 
     let strokeColor: Color = model.isActive ? curveColor : Color.secondary
     return Circle()
       .fill(Color(nsColor: .textBackgroundColor))
-      .frame(width: isHovered ? 14 : 10, height: isHovered ? 14 : 10)
-      .overlay(Circle().stroke(strokeColor, lineWidth: isHovered ? 2.5 : 1.5))
-      .shadow(color: strokeColor.opacity(0.25), radius: isHovered ? 6 : 2)
+      .frame(width: isHighlighted ? 14 : 10, height: isHighlighted ? 14 : 10)
+      .overlay(Circle().stroke(strokeColor, lineWidth: isHighlighted ? 2.5 : 1.5))
+      .shadow(color: strokeColor.opacity(0.25), radius: isHighlighted ? 6 : 2)
       .position(pos)
-      .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHovered)
+      .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHighlighted)
       .animation(.easeInOut(duration: 0.35), value: model.isActive)
-      .onHover { over in hoveredIndex = over ? index : nil }
       .gesture(dragGesture(index: index, size: size))
   }
 
@@ -681,153 +788,234 @@ struct FanCurveEditor: View {
   private func dragGesture(index: Int, size: CGSize) -> some Gesture {
     DragGesture(minimumDistance: 0)
       .onChanged { value in
+        draggedIndex = index
+        hoveredIndex = index
         var data = pixelToData(value.location, in: size)
         data.x = max(tempRange.lowerBound, min(tempRange.upperBound, data.x))
         data.y = max(0, min(1, data.y))
 
-        if index == 0 { data.x = model.controlPoints[index].temperature }
-        if index == model.controlPoints.count - 1 {
+        if index == 0 || index == model.controlPoints.count - 1 {
           data.x = model.controlPoints[index].temperature
         }
-        if index > 0 {
-          data.x = max(model.controlPoints[index - 1].temperature + 1, data.x)
-        }
-        if index < model.controlPoints.count - 1 {
-          data.x = min(model.controlPoints[index + 1].temperature - 1, data.x)
-        }
 
-        // Enforce a non-decreasing curve. Cannot dip below the left
-        // neighbor (hard clamp). Rising above the right neighbor pushes
-        // every later point up to match, so dragging an early point to
-        // 100% lifts the tail instead of being blocked.
-        var minY = 0.0
-        if index > 0 { minY = model.controlPoints[index - 1].fanPercent }
-        data.y = max(minY, min(1.0, data.y))
-
-        model.controlPoints[index].temperature = data.x
-        model.controlPoints[index].fanPercent = data.y
-        for laterIndex in (index + 1)..<model.controlPoints.count {
-          if model.controlPoints[laterIndex].fanPercent < data.y {
-            model.controlPoints[laterIndex].fanPercent = data.y
-          } else {
-            break
-          }
-        }
-        hoveredIndex = index
+        applyDraggedPoint(at: index, temperature: data.x, proposedPercent: data.y)
+      }
+      .onEnded { value in
+        draggedIndex = nil
+        hoveredIndex = hoveredControlPointIndex(at: value.location, in: size)
       }
   }
 
-  /// Drag on a segment between two control points to yank both of them
-  /// vertically together. No new points are inserted. If the drag starts
-  /// outside the temperature range of any segment (before the first or
-  /// after the last point), the gesture is ignored.
-  private func addPointDragGesture(size: CGSize) -> some Gesture {
-    DragGesture(minimumDistance: 4)
-      .onChanged { value in
-        let data = pixelToData(value.location, in: size)
-
-        if segmentDrag == nil {
-          guard let leftIdx = leftBracketIndex(forTemp: data.x) else { return }
-          let left = model.controlPoints[leftIdx]
-          let right = model.controlPoints[leftIdx + 1]
-          segmentDrag = SegmentDragState(
-            leftIndex: leftIdx,
-            leftInitialTemp: left.temperature,
-            leftInitialPercent: left.fanPercent,
-            rightInitialTemp: right.temperature,
-            rightInitialPercent: right.fanPercent,
-            startTemp: data.x,
-            startPercent: max(0, min(1, data.y)))
-        }
-
-        guard let drag = segmentDrag else { return }
-        let currentPercent = max(0, min(1, data.y))
-        let deltaY = currentPercent - drag.startPercent
-        let deltaX = data.x - drag.startTemp
-
-        // Parameter t along the segment at the original grab point.
-        // t=0 means grabbed at the left vertex, t=1 at the right. Each
-        // endpoint moves proportionally so the endpoint closer to the
-        // grab shifts more, giving rope-pull physics.
-        let span = drag.rightInitialTemp - drag.leftInitialTemp
-        let t: Double =
-          span > 0
-          ? max(0, min(1, (drag.startTemp - drag.leftInitialTemp) / span))
-          : 0.5
-        let leftWeight = 1 - t
-        let rightWeight = t
-
-        // Clamp horizontal motion so the pair does not cross its
-        // neighbors or leave the plot. Each endpoint has its own bound.
-        let leftMinTemp = drag.leftIndex > 0
-          ? model.controlPoints[drag.leftIndex - 1].temperature + 1
-          : tempRange.lowerBound
-        let rightMaxTemp = (drag.leftIndex + 2) < model.controlPoints.count
-          ? model.controlPoints[drag.leftIndex + 2].temperature - 1
-          : tempRange.upperBound
-
-        var newLeftTemp = drag.leftInitialTemp + leftWeight * deltaX
-        var newRightTemp = drag.rightInitialTemp + rightWeight * deltaX
-        newLeftTemp = max(leftMinTemp, newLeftTemp)
-        newRightTemp = min(rightMaxTemp, newRightTemp)
-        // Never let the two endpoints collide or swap.
-        if newLeftTemp >= newRightTemp - 0.5 {
-          let mid = (newLeftTemp + newRightTemp) / 2
-          newLeftTemp = mid - 0.5
-          newRightTemp = mid + 0.5
-        }
-
-        // Honor monotonicity: left endpoint cannot drop below its
-        // outer-left neighbor (hard clamp). Right endpoint is free to
-        // rise above its outer-right neighbor because later points get
-        // cascaded up after the write. The pair itself never swaps.
-        let leftMinPct = drag.leftIndex > 0
-          ? model.controlPoints[drag.leftIndex - 1].fanPercent
-          : 0.0
-
-        var newLeftPct = max(leftMinPct, min(1, drag.leftInitialPercent + leftWeight * deltaY))
-        var newRightPct = max(0.0, min(1.0, drag.rightInitialPercent + rightWeight * deltaY))
-        if newLeftPct > newRightPct {
-          let mid = (newLeftPct + newRightPct) / 2
-          newLeftPct = mid
-          newRightPct = mid
-        }
-
-        model.controlPoints[drag.leftIndex].temperature = newLeftTemp
-        model.controlPoints[drag.leftIndex].fanPercent = newLeftPct
-        model.controlPoints[drag.leftIndex + 1].temperature = newRightTemp
-        model.controlPoints[drag.leftIndex + 1].fanPercent = newRightPct
-
-        // Cascade upward: any later point lower than the newly-raised
-        // right endpoint gets lifted to match, stopping at the first
-        // already-higher point.
-        for laterIndex in (drag.leftIndex + 2)..<model.controlPoints.count {
-          if model.controlPoints[laterIndex].fanPercent < newRightPct {
-            model.controlPoints[laterIndex].fanPercent = newRightPct
-          } else {
-            break
-          }
-        }
+  private func hoveredControlPointIndex(at location: CGPoint, in size: CGSize) -> Int? {
+    model.controlPoints.enumerated()
+      .compactMap { index, point -> (index: Int, distance: CGFloat)? in
+        let pos = dataToPixel(temp: point.temperature, percent: point.fanPercent, in: size)
+        let distance = hypot(pos.x - location.x, pos.y - location.y)
+        guard distance <= controlPointHitRadius else { return nil }
+        return (index, distance)
       }
-      .onEnded { _ in segmentDrag = nil }
+      .min { lhs, rhs in lhs.distance < rhs.distance }?
+      .index
   }
 
-  /// Returns the index of the left bracketing control point for a given
-  /// temperature. If temp falls before the first point, returns the
-  /// first segment (0); if after the last, returns the last segment.
-  /// This way the user can grab and drag any part of the plot, not just
-  /// the span between the outermost control points.
-  private func leftBracketIndex(forTemp temp: Double) -> Int? {
-    let points = model.controlPoints
-    guard points.count >= 2 else { return nil }
-    if temp <= points.first!.temperature { return 0 }
-    if temp >= points.last!.temperature { return points.count - 2 }
-    for i in 0..<(points.count - 1) {
-      if temp >= points[i].temperature, temp <= points[i + 1].temperature {
-        return i
+  private func startMarkerSmoothing() {
+    markerSmoothingTask?.cancel()
+    lastMarkerUpdateTime = nil
+    markerSmoothingTask = Task { @MainActor in
+      let clock = ContinuousClock()
+      while !Task.isCancelled {
+        let now = clock.now
+        let deltaSeconds: Double
+        if let lastMarkerUpdateTime {
+          deltaSeconds = Double(lastMarkerUpdateTime.duration(to: now).components.seconds)
+            + Double(lastMarkerUpdateTime.duration(to: now).components.attoseconds) / 1e18
+        } else {
+          deltaSeconds = Double(markerSmoothingInterval) / 1e9
+        }
+        self.lastMarkerUpdateTime = now
+
+        displayedCommittedTemperature = exponentiallyApproach(
+          current: displayedCommittedTemperature,
+          target: targetCommittedTemperature,
+          deltaSeconds: deltaSeconds,
+          halfLife: committedMarkerTemperatureHalfLife
+        )
+        displayedCommittedPercent = exponentiallyApproach(
+          current: displayedCommittedPercent,
+          target: targetCommittedPercent,
+          deltaSeconds: deltaSeconds,
+          halfLife: committedMarkerPercentHalfLife
+        )
+        displayedRawTemperature = exponentiallyApproach(
+          current: displayedRawTemperature,
+          target: targetRawTemperature,
+          deltaSeconds: deltaSeconds,
+          halfLife: rawMarkerTemperatureHalfLife
+        )
+        displayedRawPercent = exponentiallyApproach(
+          current: displayedRawPercent,
+          target: targetRawPercent,
+          deltaSeconds: deltaSeconds,
+          halfLife: rawMarkerPercentHalfLife
+        )
+        try? await Task.sleep(nanoseconds: markerSmoothingInterval)
       }
     }
-    return nil
+  }
+
+  private func exponentiallyApproach(
+    current: Double,
+    target: Double,
+    deltaSeconds: Double,
+    halfLife: Double
+  ) -> Double {
+    guard halfLife > 0, deltaSeconds > 0 else { return target }
+    let decay = pow(0.5, deltaSeconds / halfLife)
+    let next = target + (current - target) * decay
+    return abs(next - target) < 0.0001 ? target : next
+  }
+
+  /// Direct point dragging preserves a non-decreasing curve while
+  /// smoothly pulling nearby neighbors. Immediate neighbors move most;
+  /// farther points move less, then the whole set reclamps into a valid
+  /// monotonic shape.
+  private func applyDraggedPoint(at index: Int, temperature: Double, proposedPercent: Double) {
+    let originalPoints = model.controlPoints
+    let originalPercent = originalPoints[index].fanPercent
+    let leftConstraint = index > 0 ? originalPoints[index - 1].fanPercent : 0.0
+    let rightConstraint = index < originalPoints.count - 1 ? originalPoints[index + 1].fanPercent : 1.0
+    let clampedPercent = max(leftConstraint, min(rightConstraint, proposedPercent))
+    let delta = clampedPercent - originalPercent
+    let adjustedTemperatures = adjustedTemperaturesForDrag(
+      originalPoints: originalPoints,
+      draggedIndex: index,
+      proposedTemperature: temperature)
+
+    for pointIndex in model.controlPoints.indices {
+      model.controlPoints[pointIndex].temperature = adjustedTemperatures[pointIndex]
+    }
+    model.controlPoints[index].fanPercent = clampedPercent
+
+    for earlierIndex in stride(from: index - 1, through: 0, by: -1) {
+      let distance = Double(index - earlierIndex)
+      let weight = percentInfluenceWeight(distance: distance)
+      let desired = originalPoints[earlierIndex].fanPercent + delta * weight
+      let ceiling = model.controlPoints[earlierIndex + 1].fanPercent
+      model.controlPoints[earlierIndex].fanPercent = max(0.0, min(ceiling, desired))
+    }
+
+    for laterIndex in (index + 1)..<model.controlPoints.count {
+      let distance = Double(laterIndex - index)
+      let weight = percentInfluenceWeight(distance: distance)
+      let desired = originalPoints[laterIndex].fanPercent + delta * weight
+      let floor = model.controlPoints[laterIndex - 1].fanPercent
+      model.controlPoints[laterIndex].fanPercent = max(floor, min(1.0, desired))
+    }
+
+    smoothPercentsAroundDraggedPoint(index: index)
+  }
+
+  private func percentInfluenceWeight(distance: Double) -> Double {
+    pow(0.55, max(0, distance - 1))
+  }
+
+  private func temperatureInfluenceWeight(distance: Double) -> Double {
+    if distance <= 1 { return 0.72 }
+    return 0.72 * pow(0.32, distance - 1)
+  }
+
+  private func adjustedTemperaturesForDrag(
+    originalPoints: [CurvePoint],
+    draggedIndex: Int,
+    proposedTemperature: Double
+  ) -> [Double] {
+    var temperatures = originalPoints.map(\.temperature)
+    let delta = proposedTemperature - originalPoints[draggedIndex].temperature
+    guard draggedIndex > 0, draggedIndex < originalPoints.count - 1 else {
+      temperatures[draggedIndex] = originalPoints[draggedIndex].temperature
+      return temperatures
+    }
+
+    let globalMin = originalPoints.first?.temperature ?? tempRange.lowerBound
+    let globalMax = originalPoints.last?.temperature ?? tempRange.upperBound
+    let lowerBound =
+      globalMin + Double(draggedIndex) * minimumPointSpacing
+    let upperBound =
+      globalMax - Double(originalPoints.count - draggedIndex - 1) * minimumPointSpacing
+    temperatures[draggedIndex] = max(lowerBound, min(upperBound, proposedTemperature))
+
+    for earlierIndex in stride(from: draggedIndex - 1, through: 1, by: -1) {
+      let distance = Double(draggedIndex - earlierIndex)
+      let desired =
+        originalPoints[earlierIndex].temperature
+        + delta * temperatureInfluenceWeight(distance: distance)
+      let maxTemp = temperatures[earlierIndex + 1] - minimumPointSpacing
+      let minTemp = globalMin + Double(earlierIndex) * minimumPointSpacing
+      temperatures[earlierIndex] = max(minTemp, min(maxTemp, desired))
+    }
+
+    for laterIndex in (draggedIndex + 1)..<(originalPoints.count - 1) {
+      let distance = Double(laterIndex - draggedIndex)
+      let desired =
+        originalPoints[laterIndex].temperature
+        + delta * temperatureInfluenceWeight(distance: distance)
+      let minTemp = temperatures[laterIndex - 1] + minimumPointSpacing
+      let maxTemp = globalMax - Double(originalPoints.count - laterIndex - 1) * minimumPointSpacing
+      temperatures[laterIndex] = max(minTemp, min(maxTemp, desired))
+    }
+
+    temperatures[0] = globalMin
+    temperatures[temperatures.count - 1] = globalMax
+
+    for pointIndex in 1..<temperatures.count {
+      temperatures[pointIndex] = max(
+        temperatures[pointIndex],
+        temperatures[pointIndex - 1] + minimumPointSpacing)
+    }
+    for pointIndex in stride(from: temperatures.count - 2, through: 0, by: -1) {
+      temperatures[pointIndex] = min(
+        temperatures[pointIndex],
+        temperatures[pointIndex + 1] - minimumPointSpacing)
+    }
+
+    return temperatures
+  }
+
+  private func smoothPercentsAroundDraggedPoint(index: Int) {
+    guard model.controlPoints.count > 2 else { return }
+
+    let currentPercents = model.controlPoints.map(\.fanPercent)
+    var smoothedPercents = currentPercents
+
+    for pointIndex in 1..<(model.controlPoints.count - 1) where pointIndex != index {
+      let left = currentPercents[pointIndex - 1]
+      let right = currentPercents[pointIndex + 1]
+      let interpolated = (left + right) / 2
+      let distance = Double(abs(pointIndex - index))
+      let smoothingStrength = 0.38 * pow(0.45, max(0, distance - 1))
+      smoothedPercents[pointIndex] =
+        currentPercents[pointIndex]
+        + (interpolated - currentPercents[pointIndex]) * smoothingStrength
+    }
+
+    smoothedPercents[index] = currentPercents[index]
+    smoothedPercents[0] = currentPercents[0]
+    smoothedPercents[smoothedPercents.count - 1] = currentPercents[smoothedPercents.count - 1]
+
+    for pointIndex in 1..<smoothedPercents.count {
+      smoothedPercents[pointIndex] = max(
+        smoothedPercents[pointIndex],
+        smoothedPercents[pointIndex - 1])
+    }
+    for pointIndex in stride(from: smoothedPercents.count - 2, through: 0, by: -1) {
+      smoothedPercents[pointIndex] = min(
+        smoothedPercents[pointIndex],
+        smoothedPercents[pointIndex + 1])
+    }
+
+    for pointIndex in model.controlPoints.indices {
+      model.controlPoints[pointIndex].fanPercent = max(0.0, min(1.0, smoothedPercents[pointIndex]))
+    }
   }
 
   // MARK: - Coordinate Mapping
@@ -835,10 +1023,12 @@ struct FanCurveEditor: View {
   private func dataToPixel(temp: Double, percent: Double, in size: CGSize) -> CGPoint {
     let w = size.width - leftPad - rightPad
     let h = size.height - topPad - bottomPad
+    let clampedTemp = max(tempRange.lowerBound, min(tempRange.upperBound, temp))
+    let clampedPercent = max(0, min(1, percent))
     let x =
       leftPad
-      + CGFloat((temp - tempRange.lowerBound) / (tempRange.upperBound - tempRange.lowerBound)) * w
-    let y = topPad + CGFloat(1 - percent) * h
+      + CGFloat((clampedTemp - tempRange.lowerBound) / (tempRange.upperBound - tempRange.lowerBound)) * w
+    let y = topPad + CGFloat(1 - clampedPercent) * h
     return CGPoint(x: x, y: y)
   }
 

@@ -13,23 +13,40 @@ import ServiceManagement
 private let log = AppLog.make(category: "SettingsView")
 import SwiftUI
 
+private enum SettingsTab: Hashable {
+  case general
+  case profiles
+  case advanced
+  case about
+}
+
 /// Root Settings window. Uses the macOS Settings scene (Cmd-comma).
 /// Three tabs ordered by how often a user reaches for them. Profiles is
 /// the hero since it holds the curve itself. General covers everything
 /// that runs outside the foreground app. About carries meta information.
 struct SettingsView: View {
+  @State private var selectedTab: SettingsTab = .general
+
   var body: some View {
-    TabView {
+    TabView(selection: $selectedTab) {
+      GeneralSettingsView()
+        .tag(SettingsTab.general)
+        .tabItem { Label("General", systemImage: "gearshape") }
       ProfilesSettingsView()
+        .tag(SettingsTab.profiles)
         .tabItem { Label("Profiles", systemImage: "chart.xyaxis.line") }
       AdvancedSettingsView()
+        .tag(SettingsTab.advanced)
         .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
-      GeneralSettingsView()
-        .tabItem { Label("General", systemImage: "gearshape") }
       AboutSettingsView()
+        .tag(SettingsTab.about)
         .tabItem { Label("About", systemImage: "info.circle") }
     }
-    .frame(width: 520, height: 460)
+    .frame(minWidth: 520, minHeight: 460)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .onAppear {
+      selectedTab = .general
+    }
   }
 }
 
@@ -78,6 +95,16 @@ struct GeneralSettingsView: View {
       }
 
       Section {
+        agentRow
+      } header: {
+        Text("Background Agent")
+      } footer: {
+        Text("Applies the curve when the app is closed. Resets fans to auto when disabled.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      Section {
         helperRow
         DisclosureGroup(isExpanded: $showOwnership) {
           ownershipContent
@@ -93,19 +120,8 @@ struct GeneralSettingsView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
       }
-
-      Section {
-        agentRow
-      } header: {
-        Text("Background Agent")
-      } footer: {
-        Text("Applies the curve when the app is closed. Resets fans to auto when disabled.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
     }
     .formStyle(.grouped)
-    .padding()
     .onAppear {
       installState.startMonitoring(xpcClient: xpcClient)
     }
@@ -125,6 +141,8 @@ struct GeneralSettingsView: View {
   private var ownershipSummary: some View {
     let count = ownershipStatus.rows.count
     let label: String = {
+      if !showOwnership && !ownershipStatus.hasLoaded { return "Current Owners" }
+      if ownershipStatus.isMonitoring && !ownershipStatus.hasLoaded { return "Current Owners (checking helper...)" }
       if !ownershipStatus.reachable { return "Current Owners (helper unreachable)" }
       if count == 0 { return "Current Owners (no fans claimed)" }
       return "Current Owners (\(count) claimed)"
@@ -134,6 +152,11 @@ struct GeneralSettingsView: View {
 
   @ViewBuilder
   private var ownershipContent: some View {
+    if ownershipStatus.isMonitoring && !ownershipStatus.hasLoaded {
+      Text("Checking helper...")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    } else
     if ownershipStatus.rows.isEmpty {
       Text(ownershipStatus.reachable ? "No fans currently claimed." : "Waiting for helper.")
         .font(.caption)
@@ -207,8 +230,9 @@ struct GeneralSettingsView: View {
         Button("Restart") { restartAgent() }
           .controlSize(.small)
       } else if installState.agentEnabled {
-        Button("Uninstall") { installState.unregisterAgent() }
-          .controlSize(.small)
+        Text("Installed")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       } else {
         Button("Install") { installState.registerAgent() }
           .controlSize(.small)
@@ -369,7 +393,6 @@ struct ProfilesSettingsView: View {
 
     }
     .formStyle(.grouped)
-    .padding()
   }
 
   /// Spin up a read-only sensor poller so the LearnSheet can display live
@@ -492,7 +515,6 @@ struct AboutContentView: View {
       }
     }
     .formStyle(.grouped)
-    .padding()
     .task {
       if autoCheck { await checker.check() }
     }
@@ -611,18 +633,6 @@ struct AdvancedSettingsView: View {
   @AppStorage(SharedConfigKeys.underdriveEnabled, store: suite)
   private var underdrive: Bool = false
 
-  @AppStorage(SharedConfigKeys.loadFloorEnabled, store: suite)
-  private var loadFloorEnabled: Bool = false
-
-  @AppStorage(SharedConfigKeys.loadFloorThreshold, store: suite)
-  private var loadFloorThreshold: Double = 70
-
-  @AppStorage(SharedConfigKeys.gpuLoadFloorThreshold, store: suite)
-  private var gpuLoadFloorThreshold: Double = 70
-
-  @AppStorage(SharedConfigKeys.loadFloorPercent, store: suite)
-  private var loadFloorPercent: Double = 60
-
   @AppStorage(SharedConfigKeys.curveNormalPriority, store: suite)
   private var curveNormalPriority: Double = 10
 
@@ -651,6 +661,40 @@ struct AdvancedSettingsView: View {
   var body: some View {
     ScrollView {
       Form {
+        Section {
+          LoadAssistModuleView(kind: .cpu)
+          LoadAssistModuleView(kind: .gpu)
+        } header: {
+          Text("Load Assist")
+        } footer: {
+          Text(
+            "Each assist curve maps load percent to a minimum fan floor. The agent evaluates the temperature curve, CPU assist, and GPU assist, then applies whichever result is highest."
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        }
+
+        Section {
+          prioritySliderRow(
+            title: "Normal curve",
+            value: $curveNormalPriority,
+            help:
+              "Priority used for normal curve writes. Higher values preempt lower-priority fan clients.")
+          prioritySliderRow(
+            title: "When boost is on",
+            value: $userBoostPriority,
+            help:
+              "Priority used while Boost is active. Raise it above competing fan apps if Boost should win.")
+        } header: {
+          Text("Client Priority")
+        } footer: {
+          Text(
+            "Priority the agent uses when writing fans. Higher values preempt lower. Defaults match other fan aware apps: normal curve at 10, boost at 50. Raise boost above 50 if you want boost to preempt an active lmd LLM run."
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        }
+
         Section {
           Toggle(isOn: overdriveBinding) {
             VStack(alignment: .leading, spacing: 2) {
@@ -687,84 +731,6 @@ struct AdvancedSettingsView: View {
           .font(.caption)
           .foregroundStyle(.secondary)
         }
-
-        Section {
-          Toggle("Raise fans under load", isOn: $loadFloorEnabled)
-
-          if loadFloorEnabled {
-            VStack(alignment: .leading, spacing: 4) {
-              HStack {
-                Text("Activate when CPU load exceeds")
-                Spacer()
-                Text("\(Int(loadFloorThreshold))%")
-                  .font(.caption.monospacedDigit())
-                  .foregroundStyle(.secondary)
-              }
-              Slider(value: $loadFloorThreshold, in: 20...95, step: 5)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-              HStack {
-                Text("Activate when GPU load exceeds")
-                Spacer()
-                Text("\(Int(gpuLoadFloorThreshold))%")
-                  .font(.caption.monospacedDigit())
-                  .foregroundStyle(.secondary)
-              }
-              Slider(value: $gpuLoadFloorThreshold, in: 20...95, step: 5)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-              HStack {
-                Text("Minimum fan speed while active")
-                Spacer()
-                Text("\(Int(loadFloorPercent))%")
-                  .font(.caption.monospacedDigit())
-                  .foregroundStyle(.secondary)
-              }
-              Slider(value: $loadFloorPercent, in: 10...100, step: 5)
-            }
-          }
-        } header: {
-          Text("Load Floor")
-        } footer: {
-          Text(
-            "Raises fan speed preemptively when CPU or GPU load stays above its threshold. Never lowers fans below the curve. Uses a short smoothing window to ignore brief spikes."
-          )
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        }
-
-        Section {
-          VStack(alignment: .leading, spacing: 4) {
-            HStack {
-              Text("Normal curve")
-              Spacer()
-              Text("\(Int(curveNormalPriority))")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-            }
-            Slider(value: $curveNormalPriority, in: 1...100, step: 1)
-          }
-          VStack(alignment: .leading, spacing: 4) {
-            HStack {
-              Text("When boost is on")
-              Spacer()
-              Text("\(Int(userBoostPriority))")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-            }
-            Slider(value: $userBoostPriority, in: 1...100, step: 1)
-          }
-        } header: {
-          Text("Client Priority")
-        } footer: {
-          Text(
-            "Priority the agent uses when writing fans. Higher values preempt lower. Defaults match other fan aware apps: normal curve at 10, boost at 50. Raise boost above 50 if you want boost to preempt an active lmd LLM run."
-          )
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        }
       }
       .formStyle(.grouped)
       .padding()
@@ -784,6 +750,33 @@ struct AdvancedSettingsView: View {
       Text(
         "Underdrive lets the curve force fans to 0 RPM in manual mode. Without airflow your machine can overheat under load and throttle or shut down. Only enable if you know your thermal limits."
       )
+    }
+  }
+
+  @ViewBuilder
+  private func prioritySliderRow(title: String, value: Binding<Double>, help: String) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(alignment: .center) {
+        Text(title)
+        Spacer()
+        Text("\(Int(value.wrappedValue.rounded()))")
+          .font(.system(.body, design: .rounded).weight(.semibold))
+          .monospacedDigit()
+          .padding(.horizontal, 10)
+          .padding(.vertical, 4)
+          .background(
+            Capsule()
+              .fill(Color.primary.opacity(0.07))
+          )
+      }
+      Slider(
+        value: Binding(
+          get: { value.wrappedValue },
+          set: { value.wrappedValue = $0.rounded() }
+        ),
+        in: 1...100
+      )
+      .help(help)
     }
   }
 }
