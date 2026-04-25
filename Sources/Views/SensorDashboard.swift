@@ -186,10 +186,6 @@ struct SensorDashboard: View {
       boost ? "Stop Boost" : "Boost Fans",
       systemImage: "bolt.fill")
     if #available(macOS 26.0, *) {
-      // Liquid Glass button. Off state uses a tinted orange glass so
-      // the capsule edge is visible against the dark sidebar. On state
-      // fills the capsule with solid orange for a clear state change.
-      // Both paths keep text at full contrast against their backgrounds.
       let orange = Color(nsColor: .systemOrange)
       Button { boost.toggle() } label: {
         ZStack {
@@ -215,7 +211,6 @@ struct SensorDashboard: View {
         Capsule()
           .stroke(orange.opacity(boost ? 0 : 0.45), lineWidth: 0.8)
       )
-      .glassEffect(.regular.tint(orange.opacity(0.25)), in: Capsule())
       .help(boostHelp)
     } else if boost {
       Button { boost.toggle() } label: {
