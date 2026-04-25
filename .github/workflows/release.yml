@@ -45,6 +45,9 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install xcodegen
+        run: brew install xcodegen
+
       - name: Install signing certificate
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
