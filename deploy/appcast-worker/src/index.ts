@@ -11,7 +11,8 @@ export default {
       ? "/appcast.xml"
       : url.pathname.slice("/fancurve".length)
 
-    const assetURL = new URL(assetPath, "https://assets.local")
+    const assetURL = new URL(request.url)
+    assetURL.pathname = assetPath
     return env.ASSETS.fetch(assetURL)
   },
 }
