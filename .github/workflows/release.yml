@@ -55,12 +55,27 @@ jobs:
         run: |
           CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          export CERT_PATH
 
           if [ -n "$BUILD_CERTIFICATE_BASE64" ]; then
-            printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERT_PATH"
+            python3 - <<'PY'
+import base64, os
+data = os.environ["BUILD_CERTIFICATE_BASE64"]
+with open(os.environ["CERT_PATH"], "wb") as f:
+    f.write(base64.b64decode(data))
+PY
           else
-            printf '%s%s' "$BUILD_CERTIFICATE_BASE64_PART1" "$BUILD_CERTIFICATE_BASE64_PART2" | base64 --decode -o "$CERT_PATH"
+            python3 - <<'PY'
+import base64, os
+data = os.environ["BUILD_CERTIFICATE_BASE64_PART1"] + os.environ["BUILD_CERTIFICATE_BASE64_PART2"]
+with open(os.environ["CERT_PATH"], "wb") as f:
+    f.write(base64.b64decode(data))
+PY
           fi
+
+          ls -l "$CERT_PATH"
+          file "$CERT_PATH"
+          openssl pkcs12 -in "$CERT_PATH" -nokeys -passin pass:"$P12_PASSWORD" >/dev/null
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
