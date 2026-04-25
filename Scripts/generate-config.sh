@@ -9,9 +9,9 @@ mkdir -p "${GENERATED_DIR}"
 GIT_COMMIT=$(git -C "${SRCROOT}" rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_VERSION=$(git -C "${SRCROOT}" describe --tags --always --dirty 2>/dev/null || echo "dev")
 GIT_DIRTY=$(git -C "${SRCROOT}" diff --quiet 2>/dev/null && echo "false" || echo "true")
-GIT_DATE=$(git -C "${SRCROOT}" log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M' 2>/dev/null || echo "unknown")
+GIT_DATE=$(TZ=America/Los_Angeles git -C "${SRCROOT}" log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M %Z' 2>/dev/null || echo "unknown")
 GIT_BRANCH=$(git -C "${SRCROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+BUILD_DATE=$(TZ=America/Los_Angeles date +"%Y-%m-%d %H:%M %Z")
 SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-}"
 SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}"
 

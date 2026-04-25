@@ -433,23 +433,26 @@ struct AboutContentView: View {
             set: { appUpdater.setAutomaticallyChecksForUpdates($0) }))
         .disabled(!appUpdater.isConfigured)
 
-        HStack {
-          VStack(alignment: .leading, spacing: 2) {
-            Label(updateStatusLabel, systemImage: updateStatusIcon)
-              .foregroundColor(statusColor)
-              .symbolRenderingMode(.hierarchical)
-            if !appUpdater.isConfigured {
-              Text(err)
+        if appUpdater.isConfigured {
+          HStack {
+            VStack(alignment: .leading, spacing: 2) {
+              Label(updateStatusLabel, systemImage: updateStatusIcon)
+                .foregroundColor(statusColor)
+                .symbolRenderingMode(.hierarchical)
+              Text("Updates are delivered automatically from goodkind.io.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
             }
+
+            Spacer()
+
+            Button("Check Now") { appUpdater.checkForUpdates() }
+              .disabled(!appUpdater.canCheckForUpdates)
           }
-
-          Spacer()
-
-          Button("Check Now") { appUpdater.checkForUpdates() }
-            .disabled(!appUpdater.isConfigured || !appUpdater.canCheckForUpdates)
+        } else {
+          Label("Software updates are available in release builds.", systemImage: "hammer")
+            .foregroundStyle(.secondary)
+            .symbolRenderingMode(.hierarchical)
         }
       } header: {
         Text("Software Updates")
@@ -508,13 +511,8 @@ struct AboutContentView: View {
     .formStyle(.grouped)
   }
 
-  private var err: String {
-    "Sparkle is not configured for this build. Set SPARKLE_FEED_URL and SPARKLE_PUBLIC_ED_KEY for release builds."
-  }
-
   private var updateStatusLabel: String {
-    if !appUpdater.isConfigured { return "Updates unavailable in this build" }
-    if appUpdater.canCheckForUpdates { return "Updates are managed by Sparkle" }
+    if appUpdater.canCheckForUpdates { return "Automatic updates are on" }
     return "Updater is starting"
   }
 
@@ -550,11 +548,11 @@ struct AboutContentView: View {
   }
 
   private var updateStatusIcon: String {
-    appUpdater.isConfigured ? "arrow.triangle.2.circlepath.circle" : "exclamationmark.triangle"
+    "arrow.triangle.2.circlepath.circle"
   }
 
   private var statusColor: Color {
-    appUpdater.isConfigured ? Color(nsColor: .systemBlue) : Color(nsColor: .systemOrange)
+    Color(nsColor: .systemBlue)
   }
 }
 
