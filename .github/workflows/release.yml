@@ -100,13 +100,16 @@ jobs:
             SPARKLE_PUBLIC_ED_KEY="${{ secrets.SPARKLE_PUBLIC_ED_KEY }}"
 
       - name: Notarize DMG
-        if: ${{ secrets.APPLE_NOTARY_KEY_ID != '' && secrets.APPLE_NOTARY_ISSUER_ID != '' && secrets.APPLE_NOTARY_PRIVATE_KEY != '' }}
         env:
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
           APPLE_NOTARY_PRIVATE_KEY: ${{ secrets.APPLE_NOTARY_PRIVATE_KEY }}
           BUILD_VERSION: ${{ steps.meta.outputs.build_version }}
         run: |
+          if [ -z "$APPLE_NOTARY_KEY_ID" ] || [ -z "$APPLE_NOTARY_ISSUER_ID" ] || [ -z "$APPLE_NOTARY_PRIVATE_KEY" ]; then
+            echo "Notary credentials not configured; skipping notarization."
+            exit 0
+          fi
           KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
           printf '%s' "$APPLE_NOTARY_PRIVATE_KEY" > "$KEY_PATH"
           xcrun notarytool submit "Products/FanCurve-${BUILD_VERSION}.dmg" \
@@ -152,10 +155,13 @@ jobs:
             GITHUB_RELEASE_BASE_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/"
 
       - name: Deploy appcast worker
-        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Cloudflare credentials not configured; skipping worker deploy."
+            exit 0
+          fi
           cp build/sparkle-updates/appcast.xml deploy/appcast-worker/public/appcast.xml
           npx wrangler deploy --config deploy/appcast-worker/wrangler.toml
