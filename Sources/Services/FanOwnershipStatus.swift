@@ -34,6 +34,8 @@ final class FanOwnershipStatus: ObservableObject {
   @Published var reachable: Bool = false
   @Published var rows: [ArbiterRow] = []
   @Published var lastError: String?
+  @Published var hasLoaded: Bool = false
+  @Published var isMonitoring: Bool = false
 
   private let client: SMCFanXPCClient = {
     // See XPCClient: init throws for source compat only.
@@ -53,6 +55,7 @@ final class FanOwnershipStatus: ObservableObject {
 
   func startMonitoring(intervalSeconds: TimeInterval = 1.0) {
     self.stopMonitoring()
+    self.isMonitoring = true
     log.debug(
       "ownership_status.start interval=\(intervalSeconds, privacy: .public)"
     )
@@ -65,6 +68,7 @@ final class FanOwnershipStatus: ObservableObject {
   func stopMonitoring() {
     self.timer?.invalidate()
     self.timer = nil
+    self.isMonitoring = false
     log.debug("ownership_status.stop")
   }
 
@@ -83,9 +87,11 @@ final class FanOwnershipStatus: ObservableObject {
       self.rows = rows
       self.reachable = true
       self.lastError = nil
+      self.hasLoaded = true
     } catch {
       self.reachable = false
       self.lastError = error.localizedDescription
+      self.hasLoaded = true
       log.debug(
         "ownership_status.unreachable error=\(error.localizedDescription, privacy: .public)"
       )

@@ -15,7 +15,6 @@ private let log = AppLog.make(category: "AgentMain")
 struct FanCurveApp: App {
   @StateObject private var xpcClient = XPCClient()
   @StateObject private var curveModel = FanCurveModel()
-  @StateObject private var usage = SystemUsage()
 
   init() {
     AppLog.bootstrap(subsystem: "io.goodkind.fan")
@@ -60,9 +59,15 @@ struct FanCurveApp: App {
       ContentView()
         .environmentObject(xpcClient)
         .environmentObject(curveModel)
-        .environmentObject(usage)
     }
     .commands {
+      CommandGroup(replacing: .appSettings) {
+        Button("Settings...") {
+          openWindow(id: "settings")
+        }
+        .keyboardShortcut(",")
+      }
+
       // Replace the default "About Fan Curve" menu command with one
       // that opens our custom About window so the same view is used
       // in both the menu and Settings > About.
@@ -79,11 +84,12 @@ struct FanCurveApp: App {
     }
     .windowResizability(.contentSize)
 
-    Settings {
+    Window("Settings", id: "settings") {
       SettingsView()
         .environmentObject(xpcClient)
         .environmentObject(curveModel)
-        .environmentObject(usage)
     }
+    .defaultSize(width: 720, height: 620)
+    .windowResizability(.contentMinSize)
   }
 }

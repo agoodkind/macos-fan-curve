@@ -8,7 +8,7 @@
 
 import Foundation
 
-struct CurvePoint: Identifiable, Codable, Sendable {
+struct CurvePoint: Identifiable, Codable, Sendable, Equatable {
   let id: UUID
   var temperature: Double
   var fanPercent: Double
@@ -37,10 +37,16 @@ enum SharedConfigKeys {
   static let loadFloorThreshold = "loadFloorThreshold"
   static let gpuLoadFloorThreshold = "gpuLoadFloorThreshold"
   static let loadFloorPercent = "loadFloorPercent"
+  static let cpuLoadAssistEnabled = "cpuLoadAssistEnabled"
+  static let gpuLoadAssistEnabled = "gpuLoadAssistEnabled"
+  static let cpuLoadAssistCurvePoints = "cpuLoadAssistCurvePoints"
+  static let gpuLoadAssistCurvePoints = "gpuLoadAssistCurvePoints"
+  static let loadAssistMigrationVersion = "loadAssistMigrationVersion"
   static let applyInBackground = "applyInBackground"
   static let agentPID = "agentPID"
   static let agentLastTick = "agentLastTick"
   static let agentLastError = "agentLastError"
+  static let agentSnapshot = "agentSnapshot"
   static let overdriveTargetRPMMeasured = "overdriveTargetRPMMeasured"
   /// Priority the agent uses for the normal curve write. Default 10.
   static let curveNormalPriority = "curveNormalPriority"

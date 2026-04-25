@@ -3,24 +3,51 @@
 CONFIGURATION = Release
 BUILD_DIR = build
 PRODUCTS_DIR = Products
+APP_NAME = FanCurve
+DMG_NAME = $(APP_NAME)-$(CONFIGURATION)
+DMG_VOLUME_NAME = $(APP_NAME)
+DMG_STAGING_DIR = $(BUILD_DIR)/dmg
+XCODE_PRODUCTS_DIR = $(BUILD_DIR)/Build/Products/$(CONFIGURATION)
+APP_SOURCE = $(XCODE_PRODUCTS_DIR)/$(APP_NAME).app
+APP_DEST = $(PRODUCTS_DIR)/$(APP_NAME).app
+DMG_PATH = $(PRODUCTS_DIR)/$(DMG_NAME).dmg
 
-.PHONY: all clean generate-project test format run log-audit
+.PHONY: all build app dmg clean generate-project test format run log-audit
 
 generate-project:
 	xcodegen generate
 
-all: generate-project
+all: app
+
+build: generate-project
 	xcodebuild -project FanCurveApp.xcodeproj \
 		-scheme FanCurve \
 		-configuration $(CONFIGURATION) \
 		-derivedDataPath $(BUILD_DIR) \
 		ONLY_ACTIVE_ARCH=YES \
 		build
-	@mkdir -p $(PRODUCTS_DIR)
-	@cp -R "$(BUILD_DIR)/Build/Products/$(CONFIGURATION)/FanCurve.app" "$(PRODUCTS_DIR)/"
 
-run: all
-	open "$(PRODUCTS_DIR)/FanCurve.app"
+app: build
+	@mkdir -p $(PRODUCTS_DIR)
+	@rm -rf "$(APP_DEST)"
+	@cp -R "$(APP_SOURCE)" "$(PRODUCTS_DIR)/"
+
+dmg: app
+	@mkdir -p "$(PRODUCTS_DIR)" "$(DMG_STAGING_DIR)"
+	@rm -rf "$(DMG_STAGING_DIR)/$(APP_NAME).app" "$(DMG_STAGING_DIR)/Applications" "$(DMG_PATH)"
+	@cp -R "$(APP_DEST)" "$(DMG_STAGING_DIR)/"
+	@ln -s /Applications "$(DMG_STAGING_DIR)/Applications"
+	hdiutil create -volname "$(DMG_VOLUME_NAME)" \
+		-srcfolder "$(DMG_STAGING_DIR)" \
+		-fs HFS+ \
+		-format UDZO \
+		-ov "$(DMG_PATH)"
+	@if [ -n "$(DMG_SIGN_IDENTITY)" ]; then \
+		codesign --force --sign "$(DMG_SIGN_IDENTITY)" "$(DMG_PATH)"; \
+	fi
+
+run: app
+	open "$(APP_DEST)"
 
 test:
 	swift test
