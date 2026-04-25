@@ -13,10 +13,17 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SPARKLE_FEED_URL: ""
+    SPARKLE_PUBLIC_ED_KEY: ""
 
 packages:
   FanCurve:
     path: .
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.9.1
 
 targetTemplates:
   CommonConfig:
@@ -53,6 +60,8 @@ targets:
         product: SMCFanXPCClient
       - package: FanCurve
         product: SMCFanProtocol
+      - package: Sparkle
+        product: Sparkle
       - target: FanCurveAgent
         embed: false
     settings:

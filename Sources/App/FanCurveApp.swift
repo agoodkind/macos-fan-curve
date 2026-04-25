@@ -15,6 +15,7 @@ private let log = AppLog.make(category: "AgentMain")
 struct FanCurveApp: App {
   @StateObject private var xpcClient = XPCClient()
   @StateObject private var curveModel = FanCurveModel()
+  @StateObject private var appUpdater = AppUpdater()
 
   init() {
     AppLog.bootstrap(subsystem: "io.goodkind.fan")
@@ -59,6 +60,7 @@ struct FanCurveApp: App {
       ContentView()
         .environmentObject(xpcClient)
         .environmentObject(curveModel)
+        .environmentObject(appUpdater)
     }
     .commands {
       CommandGroup(replacing: .appSettings) {
@@ -76,10 +78,18 @@ struct FanCurveApp: App {
           openWindow(id: "about")
         }
       }
+
+      CommandGroup(after: .appInfo) {
+        Button("Check for Updates…") {
+          appUpdater.checkForUpdates()
+        }
+        .disabled(!appUpdater.isConfigured || !appUpdater.canCheckForUpdates)
+      }
     }
 
     Window("About Fan Curve", id: "about") {
       AboutContentView()
+        .environmentObject(appUpdater)
         .frame(minWidth: 480, idealWidth: 520, minHeight: 420, idealHeight: 460)
     }
     .windowResizability(.contentSize)
@@ -88,6 +98,7 @@ struct FanCurveApp: App {
       SettingsView()
         .environmentObject(xpcClient)
         .environmentObject(curveModel)
+        .environmentObject(appUpdater)
     }
     .defaultSize(width: 720, height: 620)
     .windowResizability(.contentMinSize)

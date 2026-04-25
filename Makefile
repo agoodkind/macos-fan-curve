@@ -5,17 +5,30 @@ BUILD_DIR = build
 PRODUCTS_DIR = Products
 APP_NAME = FanCurve
 DMG_NAME = $(APP_NAME)-$(CONFIGURATION)
+MARKETING_VERSION ?= 0.1.0
+CURRENT_PROJECT_VERSION ?= 1
+SPARKLE_FEED_URL ?=
+SPARKLE_PUBLIC_ED_KEY ?=
+RELEASE_TAG ?= $(CURRENT_PROJECT_VERSION)-$(shell git rev-parse --short HEAD)
 DMG_VOLUME_NAME = $(APP_NAME)
 DMG_STAGING_DIR = $(BUILD_DIR)/dmg
 XCODE_PRODUCTS_DIR = $(BUILD_DIR)/Build/Products/$(CONFIGURATION)
 APP_SOURCE = $(XCODE_PRODUCTS_DIR)/$(APP_NAME).app
 APP_DEST = $(PRODUCTS_DIR)/$(APP_NAME).app
 DMG_PATH = $(PRODUCTS_DIR)/$(DMG_NAME).dmg
+RELEASE_DMG_NAME = $(APP_NAME)-$(CURRENT_PROJECT_VERSION).dmg
+RELEASE_DMG_PATH = $(PRODUCTS_DIR)/$(RELEASE_DMG_NAME)
+SPARKLE_UPDATES_DIR = $(BUILD_DIR)/sparkle-updates
+SPARKLE_APPCAST_PATH = $(SPARKLE_UPDATES_DIR)/appcast.xml
+GITHUB_RELEASE_BASE_URL ?= https://github.com/agoodkind/macos-fan-curve/releases/download/$(RELEASE_TAG)/
 
-.PHONY: all build app dmg clean generate-project test format run log-audit
+.PHONY: all build app dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project open-project test format run log-audit
 
 generate-project:
 	xcodegen generate
+
+open-project: generate-project
+	open FanCurveApp.xcodeproj
 
 all: app
 
@@ -25,6 +38,10 @@ build: generate-project
 		-configuration $(CONFIGURATION) \
 		-derivedDataPath $(BUILD_DIR) \
 		ONLY_ACTIVE_ARCH=YES \
+		MARKETING_VERSION="$(MARKETING_VERSION)" \
+		CURRENT_PROJECT_VERSION="$(CURRENT_PROJECT_VERSION)" \
+		SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" \
+		SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)" \
 		build
 
 app: build
@@ -45,6 +62,28 @@ dmg: app
 	@if [ -n "$(DMG_SIGN_IDENTITY)" ]; then \
 		codesign --force --sign "$(DMG_SIGN_IDENTITY)" "$(DMG_PATH)"; \
 	fi
+
+release-assets: dmg
+	@cp "$(DMG_PATH)" "$(RELEASE_DMG_PATH)"
+
+prepare-sparkle-updates:
+	@test -f "$(RELEASE_DMG_PATH)"
+	@rm -rf "$(SPARKLE_UPDATES_DIR)"
+	@mkdir -p "$(SPARKLE_UPDATES_DIR)"
+	@cp "$(RELEASE_DMG_PATH)" "$(SPARKLE_UPDATES_DIR)/"
+	@SPARKLE_APPCAST_TOOL="$$(Scripts/find-sparkle-tool.sh "$(BUILD_DIR)" generate_appcast)"; \
+	if [ -n "$${SPARKLE_PRIVATE_KEY_FILE:-}" ]; then \
+		"$${SPARKLE_APPCAST_TOOL}" \
+			--ed-key-file "$${SPARKLE_PRIVATE_KEY_FILE}" \
+			--download-url-prefix "$(GITHUB_RELEASE_BASE_URL)" \
+			"$(SPARKLE_UPDATES_DIR)"; \
+	else \
+		"$${SPARKLE_APPCAST_TOOL}" \
+			--download-url-prefix "$(GITHUB_RELEASE_BASE_URL)" \
+			"$(SPARKLE_UPDATES_DIR)"; \
+	fi
+
+sparkle-appcast: release-assets prepare-sparkle-updates
 
 run: app
 	open "$(APP_DEST)"

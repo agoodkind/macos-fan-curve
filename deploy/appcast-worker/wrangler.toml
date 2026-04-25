@@ -1,0 +1,11 @@
+name = "fancurve-appcast"
+main = "src/index.ts"
+compatibility_date = "2026-04-24"
+workers_dev = false
+
+[assets]
+directory = "./public"
+
+[[routes]]
+pattern = "goodkind.io/fancurve*"
+zone_id = "13ccc5ba064b1661495c0ec86511e9a7"

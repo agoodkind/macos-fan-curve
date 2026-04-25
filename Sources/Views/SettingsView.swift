@@ -421,21 +421,24 @@ struct AboutSettingsView: View {
 /// standalone About window that replaces macOS's default panel. Keeps
 /// version, update check, author, and build hashes in one place.
 struct AboutContentView: View {
-  @AppStorage("autoCheckUpdates") private var autoCheck: Bool = true
-
-  @StateObject private var checker = UpdateChecker()
+  @EnvironmentObject private var appUpdater: AppUpdater
 
   var body: some View {
     Form {
       Section {
-        Toggle("Automatically check on launch", isOn: $autoCheck)
+        Toggle(
+          "Automatically check for updates",
+          isOn: Binding(
+            get: { appUpdater.automaticallyChecksForUpdates },
+            set: { appUpdater.setAutomaticallyChecksForUpdates($0) }))
+        .disabled(!appUpdater.isConfigured)
 
         HStack {
           VStack(alignment: .leading, spacing: 2) {
-            Label(statusLabel, systemImage: statusIcon)
+            Label(updateStatusLabel, systemImage: updateStatusIcon)
               .foregroundColor(statusColor)
               .symbolRenderingMode(.hierarchical)
-            if let err = checker.error {
+            if !appUpdater.isConfigured {
               Text(err)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -445,20 +448,8 @@ struct AboutContentView: View {
 
           Spacer()
 
-          Button("Check Now") {
-            Task { await checker.check() }
-          }
-          .disabled(checker.isChecking)
-        }
-
-        if let latest = checker.latestTag, checker.isUpdateAvailable {
-          Button {
-            NSWorkspace.shared.open(
-              URL(string: "https://github.com/agoodkind/macos-fan-curve/releases/tag/\(latest)")!)
-          } label: {
-            Label("Download \(latest)", systemImage: "arrow.down.circle.fill")
-          }
-          .buttonStyle(.borderedProminent)
+          Button("Check Now") { appUpdater.checkForUpdates() }
+            .disabled(!appUpdater.isConfigured || !appUpdater.canCheckForUpdates)
         }
       } header: {
         Text("Software Updates")
@@ -515,19 +506,16 @@ struct AboutContentView: View {
       }
     }
     .formStyle(.grouped)
-    .task {
-      if autoCheck { await checker.check() }
-    }
   }
 
-  private var statusLabel: String {
-    if checker.isChecking { return "Checking..." }
-    if checker.error != nil { return "Couldn't check for updates" }
-    if checker.isUpdateAvailable, let tag = checker.latestTag {
-      return "Update available: \(tag)"
-    }
-    if checker.latestTag != nil { return "You are up to date" }
-    return "Not checked yet"
+  private var err: String {
+    "Sparkle is not configured for this build. Set SPARKLE_FEED_URL and SPARKLE_PUBLIC_ED_KEY for release builds."
+  }
+
+  private var updateStatusLabel: String {
+    if !appUpdater.isConfigured { return "Updates unavailable in this build" }
+    if appUpdater.canCheckForUpdates { return "Updates are managed by Sparkle" }
+    return "Updater is starting"
   }
 
   /// Single-line version summary. Matches the compact style used by
@@ -561,63 +549,12 @@ struct AboutContentView: View {
     }
   }
 
-  private var statusIcon: String {
-    if checker.isChecking { return "arrow.triangle.2.circlepath" }
-    if checker.error != nil { return "exclamationmark.triangle" }
-    if checker.isUpdateAvailable { return "arrow.down.circle.fill" }
-    if checker.latestTag != nil { return "checkmark.circle.fill" }
-    return "questionmark.circle"
+  private var updateStatusIcon: String {
+    appUpdater.isConfigured ? "arrow.triangle.2.circlepath.circle" : "exclamationmark.triangle"
   }
 
   private var statusColor: Color {
-    if checker.error != nil { return Color(nsColor: .systemOrange) }
-    if checker.isUpdateAvailable { return Color(nsColor: .systemBlue) }
-    if checker.latestTag != nil { return Color(nsColor: .systemGreen) }
-    return .secondary
-  }
-}
-
-/// Polls the GitHub releases API. Not a full Sparkle replacement. Sufficient
-/// for this project until auto-update is needed.
-@MainActor
-final class UpdateChecker: ObservableObject {
-  @Published var latestTag: String?
-  @Published var isUpdateAvailable = false
-  @Published var isChecking = false
-  @Published var error: String?
-
-  private let releasesURL = URL(
-    string: "https://api.github.com/repos/agoodkind/macos-fan-curve/releases/latest")!
-
-  func check() async {
-    isChecking = true
-    error = nil
-    defer { isChecking = false }
-
-    do {
-      var req = URLRequest(url: releasesURL)
-      req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-      let (data, _) = try await URLSession.shared.data(for: req)
-      let decoded = try JSONDecoder().decode(Release.self, from: data)
-      latestTag = decoded.tagName
-      isUpdateAvailable = compareVersion(decoded.tagName, against: generatedGitVersion)
-    } catch {
-      self.error = error.localizedDescription
-    }
-  }
-
-  private func compareVersion(_ latest: String, against current: String) -> Bool {
-    // Strip leading 'v' if present, then compare as version-sortable strings.
-    // Any mismatch counts as an update; precise semver comparison is overkill here.
-    let l = latest.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
-    let c = current.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
-    return l != c && !c.contains(l)
-  }
-
-  private struct Release: Decodable {
-    let tagName: String
-
-    enum CodingKeys: String, CodingKey { case tagName = "tag_name" }
+    appUpdater.isConfigured ? Color(nsColor: .systemBlue) : Color(nsColor: .systemOrange)
   }
 }
 

@@ -11,3 +11,8 @@ APP_BUNDLE_ID = com.example.fancurve
 // Optional: sign the DMG itself after it is created.
 // Usually the same identity as CODE_SIGN_IDENTITY.
 DMG_SIGN_IDENTITY = Developer ID Application
+
+// Sparkle feed configuration. SUPublicEDKey is safe to commit; the
+// corresponding private key must stay out of the repo.
+SPARKLE_FEED_URL = https://goodkind.io/fancurve/appcast.xml
+SPARKLE_PUBLIC_ED_KEY =

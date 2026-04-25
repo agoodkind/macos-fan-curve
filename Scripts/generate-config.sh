@@ -12,6 +12,8 @@ GIT_DIRTY=$(git -C "${SRCROOT}" diff --quiet 2>/dev/null && echo "false" || echo
 GIT_DATE=$(git -C "${SRCROOT}" log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M' 2>/dev/null || echo "unknown")
 GIT_BRANCH=$(git -C "${SRCROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-}"
+SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}"
 
 find "${TEMPLATES_DIR}" -name '*.template' | while read -r template; do
   filename=$(basename "${template}" .template)
@@ -28,5 +30,7 @@ find "${TEMPLATES_DIR}" -name '*.template' | while read -r template; do
     -e "s|@@GIT_DATE@@|${GIT_DATE}|g" \
     -e "s|@@GIT_BRANCH@@|${GIT_BRANCH}|g" \
     -e "s|@@BUILD_DATE@@|${BUILD_DATE}|g" \
+    -e "s|@@SPARKLE_FEED_URL@@|${SPARKLE_FEED_URL}|g" \
+    -e "s|@@SPARKLE_PUBLIC_ED_KEY@@|${SPARKLE_PUBLIC_ED_KEY}|g" \
     "${template}" > "${GENERATED_DIR}/${filename}"
 done
