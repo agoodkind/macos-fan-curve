@@ -126,10 +126,15 @@ enum LearnResultPublisher {
   /// maintainer can group submissions by hardware revision.
   private static func hardwareModel() -> String {
     var size: size_t = 0
-    sysctlbyname("hw.model", nil, &size, nil, 0)
+    guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else {
+      return "Unknown Mac"
+    }
     var model = [CChar](repeating: 0, count: size)
-    sysctlbyname("hw.model", &model, &size, nil, 0)
-    return String(cString: model)
+    guard sysctlbyname("hw.model", &model, &size, nil, 0) == 0 else {
+      return "Unknown Mac"
+    }
+    let bytes = model.prefix { $0 != 0 }.map(UInt8.init(bitPattern:))
+    return String(decoding: bytes, as: UTF8.self)
   }
 
   enum PublishError: LocalizedError {

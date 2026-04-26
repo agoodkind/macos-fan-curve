@@ -1,0 +1,33 @@
+{
+  "originHash" : "aef74ec9ed89ae6bf53057d5e562f4440dabc17fa7fbe7c77ca6205e3647268f",
+  "pins" : [
+    {
+      "identity" : "macos-smc-fan",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/agoodkind/macos-smc-fan.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "ef2a9b7ab0e45e190c3adf1c34aa879c27c4a334"
+      }
+    },
+    {
+      "identity" : "sparkle",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sparkle-project/Sparkle",
+      "state" : {
+        "revision" : "066e75a8b3e99962685d6a90cdd5293ebffd9261",
+        "version" : "2.9.1"
+      }
+    },
+    {
+      "identity" : "swift-log",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-log.git",
+      "state" : {
+        "revision" : "5073617dac96330a486245e4c0179cb0a6fd2256",
+        "version" : "1.12.0"
+      }
+    }
+  ],
+  "version" : 3
+}

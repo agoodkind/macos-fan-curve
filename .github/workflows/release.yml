@@ -14,10 +14,20 @@ jobs:
     permissions:
       contents: write
 
+    env:
+      APPLE_TEAM_ID: H3BMXM4W7H
+      APPLE_CODE_SIGN_IDENTITY: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
+      APPLE_NOTARY_KEY_ID: JHC8GR65Q3
+
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - uses: jdx/mise-action@v2
+
+      - name: Install Tuist dependencies
+        run: tuist install
 
       - name: Compute release metadata
         id: meta
@@ -45,9 +55,6 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install xcodegen
-        run: brew install xcodegen
-
       - name: Install signing certificate
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
@@ -55,15 +62,17 @@ jobs:
           BUILD_CERTIFICATE_BASE64_PART2: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64_PART2 }}
           P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          APPLE_CODE_SIGN_IDENTITY: ${{ env.APPLE_CODE_SIGN_IDENTITY }}
         run: |
           CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
           export CERT_PATH
+          KEYCHAIN_PASSWORD="${KEYCHAIN_PASSWORD:-$P12_PASSWORD}"
 
           if [ -n "$BUILD_CERTIFICATE_BASE64" ]; then
-            python3 -c 'import base64, os; open(os.environ["CERT_PATH"], "wb").write(base64.b64decode(os.environ["BUILD_CERTIFICATE_BASE64"]))'
+            printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
           else
-            python3 -c 'import base64, os; open(os.environ["CERT_PATH"], "wb").write(base64.b64decode(os.environ["BUILD_CERTIFICATE_BASE64_PART1"] + os.environ["BUILD_CERTIFICATE_BASE64_PART2"]))'
+            printf '%s%s' "$BUILD_CERTIFICATE_BASE64_PART1" "$BUILD_CERTIFICATE_BASE64_PART2" | base64 --decode > "$CERT_PATH"
           fi
 
           ls -l "$CERT_PATH"
@@ -76,22 +85,30 @@ jobs:
           security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          DEVELOPER_ID_SIGN_IDENTITY_SHA1="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -v identity="\"$APPLE_CODE_SIGN_IDENTITY\"" 'index($0, identity) { print $2; exit }')"
+          if [ -z "$DEVELOPER_ID_SIGN_IDENTITY_SHA1" ]; then
+            echo "Developer ID Application signing identity was not found in imported keychain" >&2
+            exit 1
+          fi
+          echo "DEVELOPER_ID_SIGN_IDENTITY_SHA1=$DEVELOPER_ID_SIGN_IDENTITY_SHA1" >> "$GITHUB_ENV"
+          echo "DMG_SIGN_IDENTITY=$DEVELOPER_ID_SIGN_IDENTITY_SHA1" >> "$GITHUB_ENV"
 
       - name: Write CI xcconfig
         env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_CODE_SIGN_IDENTITY: ${{ secrets.APPLE_CODE_SIGN_IDENTITY }}
+          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+          CODE_SIGN_IDENTITY: ${{ env.DEVELOPER_ID_SIGN_IDENTITY_SHA1 }}
           SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         run: |
           cat > Config/local.xcconfig <<EOF
-          CODE_SIGN_IDENTITY = ${APPLE_CODE_SIGN_IDENTITY}
+          CODE_SIGN_IDENTITY = ${CODE_SIGN_IDENTITY}
           DEVELOPMENT_TEAM = ${APPLE_TEAM_ID}
           BUNDLE_ID_PREFIX = io.goodkind
           HELPER_BUNDLE_ID = io.goodkind.smcfanhelper
           APP_BUNDLE_ID = io.goodkind.fancurve
           AGENT_BUNDLE_ID = io.goodkind.fancurveagent
           SHARED_SUITE_ID = io.goodkind.fancurve.shared
-          DMG_SIGN_IDENTITY = ${APPLE_CODE_SIGN_IDENTITY}
+          DMG_SIGN_IDENTITY = ${CODE_SIGN_IDENTITY}
           SPARKLE_FEED_URL = https://goodkind.io/fancurve/appcast.xml
           SPARKLE_PUBLIC_ED_KEY = ${SPARKLE_PUBLIC_ED_KEY}
           EOF
@@ -109,22 +126,35 @@ jobs:
 
       - name: Notarize DMG
         env:
-          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_KEY_ID: ${{ env.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-          APPLE_NOTARY_PRIVATE_KEY: ${{ secrets.APPLE_NOTARY_PRIVATE_KEY }}
           BUILD_VERSION: ${{ steps.meta.outputs.build_version }}
         run: |
-          if [ -z "$APPLE_NOTARY_KEY_ID" ] || [ -z "$APPLE_NOTARY_ISSUER_ID" ] || [ -z "$APPLE_NOTARY_PRIVATE_KEY" ]; then
-            echo "Notary credentials not configured; skipping notarization."
-            exit 0
-          fi
           KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
-          printf '%s' "$APPLE_NOTARY_PRIVATE_KEY" > "$KEY_PATH"
+          NOTARY_OUTPUT="$RUNNER_TEMP/notarytool-submit.json"
+          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          set +e
           xcrun notarytool submit "Products/FanCurve-${BUILD_VERSION}.dmg" \
             --key "$KEY_PATH" \
             --key-id "$APPLE_NOTARY_KEY_ID" \
             --issuer "$APPLE_NOTARY_ISSUER_ID" \
-            --wait
+            --wait \
+            --output-format json > "$NOTARY_OUTPUT"
+          NOTARY_STATUS=$?
+          set -e
+          cat "$NOTARY_OUTPUT"
+          SUBMISSION_ID="$(plutil -extract id raw -o - "$NOTARY_OUTPUT" 2>/dev/null || true)"
+          SUBMISSION_STATUS="$(plutil -extract status raw -o - "$NOTARY_OUTPUT" 2>/dev/null || true)"
+          if [ -n "$SUBMISSION_ID" ]; then
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --key "$KEY_PATH" \
+              --key-id "$APPLE_NOTARY_KEY_ID" \
+              --issuer "$APPLE_NOTARY_ISSUER_ID" || true
+          fi
+          if [ "$NOTARY_STATUS" -ne 0 ] || [ "$SUBMISSION_STATUS" != "Accepted" ]; then
+            exit 1
+          fi
           xcrun stapler staple "Products/FanCurve-${BUILD_VERSION}.dmg"
 
       - name: Create GitHub release

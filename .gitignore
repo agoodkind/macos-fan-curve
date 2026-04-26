@@ -5,12 +5,17 @@ build/
 # Xcode
 xcuserdata/
 *.xcodeproj
+*.xcworkspace
 DerivedData/
+Derived/
 
 # Swift Package Manager
 .build/
 .swiftpm/
 Package.resolved
+!Tuist/Package.resolved
+Tuist/.build/
+.tuist-cache/
 .DS_Store
 
 # Local configuration (developer-specific)
