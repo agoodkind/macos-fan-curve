@@ -69,7 +69,7 @@ class FanCurveModel: ObservableObject {
   /// aggressive preset from Settings if they want.
   static let defaultCurve: [CurvePoint] = CurvePresets.appleSilent.curvePoints()
 
-  static let tempRange: ClosedRange<Double> = 20...110
+  static let tempRange: ClosedRange<Double> = CurveColumns.tempRange
 
   init() {
     let loaded = Self.load() ?? Self.defaultCurve
@@ -78,18 +78,10 @@ class FanCurveModel: ObservableObject {
     self.isActive = sharedDefaults().bool(forKey: SharedConfigKeys.curveActive)
   }
 
-  /// Ensures the curve has an explicit grabber at the plot's left edge
-  /// so the user can always drag the starting fan percent directly. If
-  /// the first stored point already sits at or below tempRange.lowerBound,
-  /// returns the curve unchanged.
+  /// Re-samples any imported/saved curve onto the editor's fixed column grid
+  /// so presets, learned curves, and legacy saved curves all behave the same.
   private static func normalizedCurve(_ points: [CurvePoint]) -> [CurvePoint] {
-    guard let first = points.first else { return points }
-    if first.temperature <= tempRange.lowerBound { return points }
-    var updated = points
-    updated.insert(
-      CurvePoint(temperature: tempRange.lowerBound, fanPercent: first.fanPercent),
-      at: 0)
-    return updated
+    CurveColumns.normalize(points)
   }
 
   func evaluate(at temperature: Double) -> Double {
@@ -106,7 +98,11 @@ class FanCurveModel: ObservableObject {
   }
 
   func resetToDefault() {
-    controlPoints = Self.defaultCurve
+    replaceCurve(Self.defaultCurve)
+  }
+
+  func replaceCurve(_ points: [CurvePoint]) {
+    controlPoints = Self.normalizedCurve(points)
   }
 
   func save() {

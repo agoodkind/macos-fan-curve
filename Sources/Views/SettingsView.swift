@@ -20,6 +20,20 @@ private enum SettingsTab: Hashable {
   case about
 }
 
+private enum ServiceRowState {
+  case healthy
+  case degraded
+  case inactive
+
+  var color: Color {
+    switch self {
+    case .healthy: return Color(nsColor: .systemGreen)
+    case .degraded: return Color(nsColor: .systemOrange)
+    case .inactive: return Color(nsColor: .systemGray)
+    }
+  }
+}
+
 /// Root Settings window. Uses the macOS Settings scene (Cmd-comma).
 /// Three tabs ordered by how often a user reaches for them. Profiles is
 /// the hero since it holds the curve itself. General covers everything
@@ -96,6 +110,7 @@ struct GeneralSettingsView: View {
 
       Section {
         agentRow
+        agentAction
       } header: {
         Text("Background Agent")
       } footer: {
@@ -124,30 +139,32 @@ struct GeneralSettingsView: View {
     .formStyle(.grouped)
     .onAppear {
       installState.startMonitoring(xpcClient: xpcClient)
+      ownershipStatus.startMonitoring(intervalSeconds: 1.5)
     }
     .onDisappear {
       installState.stopMonitoring()
       ownershipStatus.stopMonitoring()
     }
-    .onChange(of: showOwnership) { nowShowing in
-      if nowShowing {
-        ownershipStatus.startMonitoring(intervalSeconds: 1.5)
-      } else {
-        ownershipStatus.stopMonitoring()
+  }
+
+  private var ownershipSummary: some View {
+    HStack(spacing: 8) {
+      Text(ownershipSummaryText)
+        .font(.caption)
+      if ownershipStatus.isMonitoring && !ownershipStatus.hasLoaded {
+        ProgressView()
+          .controlSize(.small)
+          .scaleEffect(0.7)
       }
     }
   }
 
-  private var ownershipSummary: some View {
+  private var ownershipSummaryText: String {
     let count = ownershipStatus.rows.count
-    let label: String = {
-      if !showOwnership && !ownershipStatus.hasLoaded { return "Current Owners" }
-      if ownershipStatus.isMonitoring && !ownershipStatus.hasLoaded { return "Current Owners (checking helper...)" }
-      if !ownershipStatus.reachable { return "Current Owners (helper unreachable)" }
-      if count == 0 { return "Current Owners (no fans claimed)" }
-      return "Current Owners (\(count) claimed)"
-    }()
-    return Text(label).font(.caption)
+    if ownershipStatus.isMonitoring && !ownershipStatus.hasLoaded { return "Current Owners" }
+    if !ownershipStatus.reachable { return "Current Owners (helper unreachable)" }
+    if count == 0 { return "Current Owners (no fans claimed)" }
+    return "Current Owners (\(count) claimed)"
   }
 
   @ViewBuilder
@@ -197,58 +214,68 @@ struct GeneralSettingsView: View {
     return "\(minutes)m ago"
   }
 
-  private var helperRow: some View {
+  private func statusRow(title: String, subtitle: String, status: String, state: ServiceRowState) -> some View {
     HStack {
-      statusDot(ok: installState.helperReachable)
+      Circle()
+        .fill(state.color)
+        .frame(width: 8, height: 8)
       VStack(alignment: .leading, spacing: 2) {
-        Text("SMC Fan Helper")
+        Text(title)
           .font(.body)
-        Text("smcfanhelper")
+        Text(subtitle)
           .font(.caption)
           .foregroundStyle(.secondary)
       }
       Spacer()
-      Text(installState.helperReachable ? "Running" : "Stopped")
+      Text(status)
         .font(.caption)
         .foregroundStyle(.secondary)
     }
   }
 
+  private var helperRow: some View {
+    statusRow(
+      title: "SMC Fan Helper",
+      subtitle: generatedHelperBundleID,
+      status: installState.helperReachable ? "Running" : "Stopped",
+      state: helperRowState
+    )
+  }
+
   private var agentRow: some View {
-    HStack(alignment: .center) {
-      agentStatusDot
-      VStack(alignment: .leading, spacing: 2) {
-        Text("Fan Curve Agent")
-          .font(.body)
-        Text(agentSubtitle)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      Spacer()
-      if installState.agentEnabled, !installState.agentLive {
-        Button("Restart") { restartAgent() }
-          .controlSize(.small)
-      } else if installState.agentEnabled {
-        Text("Installed")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      } else {
-        Button("Install") { installState.registerAgent() }
-          .controlSize(.small)
-      }
+    statusRow(
+      title: "Fan Curve Agent",
+      subtitle: generatedAgentBundleID,
+      status: agentStatusText,
+      state: agentRowState
+    )
+  }
+
+  private var helperRowState: ServiceRowState {
+    installState.helperReachable ? .healthy : .inactive
+  }
+
+  private var agentRowState: ServiceRowState {
+    if installState.agentLive { return .healthy }
+    if installState.agentEnabled { return .degraded }
+    return .inactive
+  }
+
+  @ViewBuilder
+  private var agentAction: some View {
+    if installState.agentEnabled, !installState.agentLive {
+      Button("Restart") { restartAgent() }
+        .controlSize(.small)
+    } else if !installState.agentEnabled {
+      Button("Install") { installState.registerAgent() }
+        .controlSize(.small)
     }
   }
 
-  private var agentSubtitle: String {
-    if !installState.agentEnabled { return "Not installed" }
-    if !installState.agentLive {
-      if !installState.agentLastError.isEmpty {
-        return "Stopped: \(installState.agentLastError)"
-      }
-      return "Process stopped. Click Restart to relaunch."
-    }
-    return "Healthy"
+  private var agentStatusText: String {
+    if installState.agentLive { return "Running" }
+    if installState.agentEnabled { return "Installed" }
+    return "Not Installed"
   }
 
   /// Unregister then register the agent to force a fresh launch. macOS
@@ -300,7 +327,7 @@ struct ProfilesSettingsView: View {
   @ViewBuilder
   private func presetRow(_ preset: CurvePreset) -> some View {
     Button {
-      curveModel.controlPoints = preset.curvePoints()
+      curveModel.replaceCurve(preset.curvePoints())
     } label: {
       HStack(alignment: .center, spacing: 8) {
         VStack(alignment: .leading, spacing: 2) {

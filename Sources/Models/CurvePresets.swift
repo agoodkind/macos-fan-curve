@@ -21,7 +21,8 @@ struct CurvePreset: Identifiable, Hashable {
   func hash(into hasher: inout Hasher) { hasher.combine(id) }
 
   func curvePoints() -> [CurvePoint] {
-    points.map { CurvePoint(temperature: $0.temp, fanPercent: $0.percent) }
+    CurveColumns.normalize(
+      points.map { CurvePoint(temperature: $0.temp, fanPercent: $0.percent) })
   }
 }
 

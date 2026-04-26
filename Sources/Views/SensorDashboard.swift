@@ -12,6 +12,7 @@ struct SensorDashboard: View {
   @ObservedObject var runtime: AgentSnapshotState
   @ObservedObject var curveModel: FanCurveModel
   @ObservedObject var installState: InstallationState
+  @State private var isAppActive: Bool = NSApp.isActive
 
   @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
 
@@ -44,6 +45,13 @@ struct SensorDashboard: View {
       fallbackFill: Color(nsColor: .windowBackgroundColor))
     .onAppear {
       LoadAssistStore.migrateLegacyIfNeeded(defaults: Self.suite)
+      isAppActive = NSApp.isActive
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      isAppActive = true
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+      isAppActive = false
     }
   }
 
@@ -472,9 +480,16 @@ struct SensorDashboard: View {
 
   @ViewBuilder
   private func fanIcon(spinning: Bool) -> some View {
-    Image(systemName: "fan.fill")
-      .font(.caption)
-      .foregroundColor(spinning ? Color.accentColor : .secondary)
+    if #available(macOS 15.0, *) {
+      Image(systemName: "fan.fill")
+        .font(.caption)
+        .foregroundColor(spinning ? Color.accentColor : .secondary)
+        .symbolEffect(.rotate, options: .repeating, isActive: spinning && isAppActive)
+    } else {
+      Image(systemName: "fan.fill")
+        .font(.caption)
+        .foregroundColor(spinning ? Color.accentColor : .secondary)
+    }
   }
 
   /// Liquid Glass capsule for the load floor caption. On macOS 26 it

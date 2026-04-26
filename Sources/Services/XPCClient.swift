@@ -54,7 +54,7 @@ class XPCClient: ObservableObject, @unchecked Sendable {
   @Published var state: ConnectionState = .disconnected
 
   init(
-    clientName: String = "fancurve",
+    clientName: String = generatedAppBundleID,
     defaultPriority: Int = SMCFanPriority.curveNormal
   ) {
     // SMCFanXPCClient's init declares throws for source compatibility but

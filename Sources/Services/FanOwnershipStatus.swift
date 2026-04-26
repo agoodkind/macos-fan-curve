@@ -40,7 +40,7 @@ final class FanOwnershipStatus: ObservableObject {
   private let client: SMCFanXPCClient = {
     // See XPCClient: init throws for source compat only.
     try! SMCFanXPCClient(
-      clientName: "fancurve-settings",
+      clientName: "\(generatedAppBundleID).settings",
       defaultPriority: 0
     )
   }()

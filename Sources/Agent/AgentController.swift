@@ -12,14 +12,38 @@ import SMCFanKit
 
 private let log = AppLog.make(category: "AgentController")
 
+private actor TickCoordinator {
+    private var tickInFlight = false
+    private var tickPending = false
+
+    func requestTick() -> Bool {
+        if tickInFlight {
+            tickPending = true
+            return false
+        }
+        tickInFlight = true
+        return true
+    }
+
+    func finishTick() -> Bool {
+        if tickPending {
+            tickPending = false
+            return true
+        }
+        tickInFlight = false
+        return false
+    }
+}
+
 /// Runs the curve application loop in the background agent process.
 /// Reads curve config from the shared UserDefaults suite every tick and
 /// applies it via the privileged helper over XPC.
 final class AgentController: @unchecked Sendable {
-    private let xpcClient = XPCClient()
+    private let xpcClient = XPCClient(clientName: generatedAgentBundleID)
     private let sharedConfig = SharedConfig()
     private let loadSampler = CPULoadSampler()
     private let eventWriter = EventArtifactWriter()
+    private let tickCoordinator = TickCoordinator()
     private var timer: Timer?
     private var cachedFanCount: UInt = 2
     private var lastActive: Bool? = nil
@@ -74,10 +98,10 @@ final class AgentController: @unchecked Sendable {
     func start() {
         log.notice("agent.started pollInterval=\(pollInterval, privacy: .public)s")
         timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
-            Task { await self?.tick() }
+            self?.requestTick()
         }
         registerDarwinObserver()
-        Task { await tick() }
+        requestTick()
     }
 
     func stop() {
@@ -98,7 +122,7 @@ final class AgentController: @unchecked Sendable {
                 guard let observer else { return }
                 let controller = Unmanaged<AgentController>
                     .fromOpaque(observer).takeUnretainedValue()
-                Task { await controller.tick() }
+                controller.requestTick()
             },
             SharedConfigPush.notificationName,
             nil,
@@ -125,6 +149,25 @@ final class AgentController: @unchecked Sendable {
             log.notice("agent.fans.reset.auto")
         } catch {
             log.error("agent.fans.reset.failed error=\(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func requestTick() {
+        Task { [weak self] in
+            guard let self else { return }
+            guard await tickCoordinator.requestTick() else { return }
+            await runTickLoop()
+        }
+    }
+
+    private func runTickLoop() async {
+        while true {
+            await tick()
+
+            if await tickCoordinator.finishTick() {
+                continue
+            }
+            return
         }
     }
 

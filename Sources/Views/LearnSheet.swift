@@ -286,7 +286,7 @@ struct LearnSheet: View {
 
         Button("Apply Curve") {
           if let curve = learner.learnedCurve {
-            curveModel.controlPoints = curve
+            curveModel.replaceCurve(curve)
           }
           dismiss()
         }
