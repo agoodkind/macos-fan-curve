@@ -19,12 +19,15 @@ Tuist/.build/
 .DS_Store
 
 # Local configuration (developer-specific)
-App/Config/local.xcconfig
+Config/local.xcconfig
 
 # Misc
 *.profraw
 .mypy_cache/
 .swift-version
+
+# Design source files
+Design/
 
 # Research files
 research/
