@@ -1,5 +1,7 @@
 -include Config/local.xcconfig
 
+TUIST := $(shell command -v tuist 2>/dev/null || printf '%s' "mise x tuist@4.186.2 -- tuist")
+
 CONFIGURATION = Release
 BUILD_DIR = build
 PRODUCTS_DIR = Products
@@ -22,27 +24,28 @@ SPARKLE_UPDATES_DIR = $(BUILD_DIR)/sparkle-updates
 SPARKLE_APPCAST_PATH = $(SPARKLE_UPDATES_DIR)/appcast.xml
 GITHUB_RELEASE_BASE_URL ?= https://github.com/agoodkind/macos-fan-curve/releases/download/$(RELEASE_TAG)/
 
-.PHONY: all build app dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project open-project test format run log-audit
+.PHONY: all install-dependencies build app dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project open-project test format run log-audit
+
+install-dependencies:
+	$(TUIST) install
 
 generate-project:
-	xcodegen generate
+	$(TUIST) generate --no-open
 
 open-project: generate-project
-	open FanCurveApp.xcodeproj
+	open FanCurveApp.xcworkspace
 
 all: app
 
 build: generate-project
-	xcodebuild -project FanCurveApp.xcodeproj \
+	xcodebuild -workspace FanCurveApp.xcworkspace \
 		-scheme FanCurve \
 		-configuration $(CONFIGURATION) \
 		-derivedDataPath $(BUILD_DIR) \
-		ONLY_ACTIVE_ARCH=YES \
 		MARKETING_VERSION="$(MARKETING_VERSION)" \
 		CURRENT_PROJECT_VERSION="$(CURRENT_PROJECT_VERSION)" \
 		SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" \
-		SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)" \
-		build
+		SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
 
 app: build
 	@mkdir -p $(PRODUCTS_DIR)
@@ -88,14 +91,18 @@ sparkle-appcast: release-assets prepare-sparkle-updates
 run: app
 	open "$(APP_DEST)"
 
-test:
-	swift test
+test: generate-project
+	xcodebuild -workspace FanCurveApp.xcworkspace \
+		-scheme FanCurve \
+		-configuration Debug \
+		-derivedDataPath $(BUILD_DIR) \
+		test
 
 format:
 	swift-format format --in-place --recursive Sources/
 
 clean:
-	rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) FanCurveApp.xcodeproj
+	rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) FanCurveApp.xcworkspace FanCurveApp.xcodeproj
 
 # Guard A from the AppLog rules. Fails if any Swift source uses
 # print(), NSLog, swift-log Logger(), or os_log directly. The bridge

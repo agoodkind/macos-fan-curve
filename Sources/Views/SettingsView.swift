@@ -723,7 +723,7 @@ enum BuildHashes {
   static let appHash: String = shortHash(of: Bundle.main.executableURL)
   static let agentHash: String = shortHash(
     of: Bundle.main.bundleURL
-      .appendingPathComponent("Contents/MacOS/\(generatedAgentBundleID)"))
+      .appendingPathComponent("Contents/MacOS/\(generatedAgentExecutableName)"))
 
   private static func shortHash(of url: URL?) -> String {
     guard let url, let data = try? Data(contentsOf: url) else { return "n/a" }

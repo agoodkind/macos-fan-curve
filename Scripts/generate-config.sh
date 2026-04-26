@@ -14,6 +14,7 @@ GIT_BRANCH=$(git -C "${SRCROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo
 BUILD_DATE=$(TZ=America/Los_Angeles date +"%Y-%m-%d %H:%M %Z")
 SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-}"
 SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}"
+AGENT_EXECUTABLE_NAME="${AGENT_EXECUTABLE_NAME:-FanCurveAgent}"
 
 find "${TEMPLATES_DIR}" -name '*.template' | while read -r template; do
   filename=$(basename "${template}" .template)
@@ -21,6 +22,7 @@ find "${TEMPLATES_DIR}" -name '*.template' | while read -r template; do
     -e "s|@@HELPER_BUNDLE_ID@@|${HELPER_BUNDLE_ID}|g" \
     -e "s|@@APP_BUNDLE_ID@@|${APP_BUNDLE_ID}|g" \
     -e "s|@@AGENT_BUNDLE_ID@@|${AGENT_BUNDLE_ID}|g" \
+    -e "s|@@AGENT_EXECUTABLE_NAME@@|${AGENT_EXECUTABLE_NAME}|g" \
     -e "s|@@SHARED_SUITE_ID@@|${SHARED_SUITE_ID}|g" \
     -e "s|@@DEVELOPMENT_TEAM@@|${DEVELOPMENT_TEAM}|g" \
     -e "s|@@BUNDLE_ID_PREFIX@@|${BUNDLE_ID_PREFIX}|g" \
