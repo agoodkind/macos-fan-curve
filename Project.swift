@@ -30,6 +30,27 @@ let generatedConfigScript = TargetScript.pre(
 let bundleAgentScript = TargetScript.post(
     script: """
     set -euo pipefail
+
+    sign_nested_code() {
+      if [ "${CODE_SIGNING_ALLOWED:-NO}" != "YES" ]; then
+        return 0
+      fi
+      if [ -z "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
+        return 0
+      fi
+      if [ ! -e "$1" ]; then
+        return 0
+      fi
+
+      if [ "${ENABLE_HARDENED_RUNTIME:-NO}" = "YES" ]; then
+        codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" \
+          --options runtime ${OTHER_CODE_SIGN_FLAGS:-} "$1"
+      else
+        codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" \
+          ${OTHER_CODE_SIGN_FLAGS:-} "$1"
+      fi
+    }
+
     AGENT_SRC="${BUILT_PRODUCTS_DIR}/${AGENT_EXECUTABLE_NAME}"
     APP_DIR="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app"
     AGENTS_DIR="${APP_DIR}/Contents/Library/LaunchAgents"
@@ -38,6 +59,13 @@ let bundleAgentScript = TargetScript.post(
     cp "${AGENT_SRC}" "${MACOS_DIR}/"
     cp "${DERIVED_FILE_DIR}/Generated/agent-launchd.plist" \
        "${AGENTS_DIR}/${AGENT_BUNDLE_ID}.plist"
+
+    SPARKLE_DIR="${APP_DIR}/Contents/Frameworks/Sparkle.framework/Versions/Current"
+    sign_nested_code "${SPARKLE_DIR}/Updater.app"
+    sign_nested_code "${SPARKLE_DIR}/XPCServices/Downloader.xpc"
+    sign_nested_code "${SPARKLE_DIR}/XPCServices/Installer.xpc"
+    sign_nested_code "${SPARKLE_DIR}/Autoupdate"
+    sign_nested_code "${SPARKLE_DIR}"
     """,
     name: "Bundle agent into app",
     outputPaths: [
