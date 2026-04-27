@@ -90,8 +90,9 @@ struct FanCurveApp: App {
     Window("About Fan Curve", id: "about") {
       AboutContentView()
         .environmentObject(appUpdater)
-        .frame(minWidth: 480, idealWidth: 520, minHeight: 420, idealHeight: 460)
+        .frame(minWidth: 560, idealWidth: 620, minHeight: 420, idealHeight: 500)
     }
+    .defaultSize(width: 620, height: 500)
     .windowResizability(.contentSize)
 
     Window("Settings", id: "settings") {

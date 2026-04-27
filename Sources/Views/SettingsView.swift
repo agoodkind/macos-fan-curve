@@ -7,6 +7,7 @@
 //
 
 import AppLog
+import AppKit
 import CryptoKit
 import ServiceManagement
 
@@ -453,6 +454,27 @@ struct AboutContentView: View {
   var body: some View {
     Form {
       Section {
+        HStack(alignment: .center, spacing: 16) {
+          Image("AboutHeroIcon")
+            .resizable()
+            .interpolation(.high)
+            .aspectRatio(contentMode: .fit)
+            .frame(width: 112, height: 112)
+
+          VStack(alignment: .leading, spacing: 4) {
+            Text("Fan Curve")
+              .font(.title2.weight(.semibold))
+            Text("Quiet fan control for Apple Silicon")
+              .font(.subheadline)
+              .foregroundStyle(.secondary)
+          }
+
+          Spacer()
+        }
+        .padding(.vertical, 4)
+      }
+
+      Section {
         Toggle(
           "Automatically check for updates",
           isOn: Binding(
@@ -528,14 +550,23 @@ struct AboutContentView: View {
           .help("Open GitHub profile")
           .accessibilityLabel("Source")
         }
+      } header: {
+        Text("Contact")
+      }
 
-        buildInfoRow(label: "Version", value: versionLine)
+      Section {
+        buildInfoRow(label: "Version", value: semanticVersion)
+        buildInfoRow(label: "Build", value: buildIdentifier)
+        buildInfoRow(label: "Branch", value: generatedGitBranch)
+        buildInfoRow(label: "Built", value: generatedBuildDate)
         buildInfoRow(label: "Binaries", value: binariesLine)
       } header: {
-        Text("About")
+        Text("Build Details")
       }
     }
     .formStyle(.grouped)
+    .frame(maxWidth: 680)
+    .frame(maxWidth: .infinity, alignment: .center)
   }
 
   private var updateStatusLabel: String {
@@ -543,20 +574,19 @@ struct AboutContentView: View {
     return "Updater is starting"
   }
 
-  /// Single-line version summary. Matches the compact style used by
-  /// lm-review and agent-gate in their logs: version, commit, branch,
-  /// and build date separated by middle dots.
-  private var versionLine: String {
-    let version = generatedGitVersion
+  private var semanticVersion: String {
+    Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+  }
+
+  private var buildIdentifier: String {
+    generatedGitVersion
       .trimmingCharacters(in: CharacterSet(charactersIn: "v"))
-    return "\(version) · \(generatedGitBranch) · built \(generatedBuildDate)"
   }
 
   /// Compact hash pairing for the app and agent binaries.
   private var binariesLine: String {
-    "app \(BuildHashes.appHash) · agent \(BuildHashes.agentHash)"
+    "FanCurve \(BuildHashes.appHash) · FanCurveAgent \(BuildHashes.agentHash)"
   }
-
   /// One line in the About section for a labeled build attribute. Uses
   /// a monospaced value so hashes and dates align.
   @ViewBuilder
