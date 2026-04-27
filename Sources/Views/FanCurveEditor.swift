@@ -50,7 +50,8 @@ struct FanCurveEditor: View {
   private let rightPad: CGFloat = 24
   private let minimumPointSpacing: Double = 2
 
-  private let tempRange: ClosedRange<Double> = 20...100
+  private let controlTempRange: ClosedRange<Double> = CurveColumns.tempRange
+  private let plotTempRange: ClosedRange<Double> = CurveColumns.tempRange
   private let curveColor = Color.accentColor
 
   @AppStorage(SharedConfigKeys.overdriveEnabled, store: Self.suite)
@@ -76,10 +77,14 @@ struct FanCurveEditor: View {
   }
 
   private let markerSmoothingInterval: UInt64 = 16_000_000
-  private let committedMarkerTemperatureHalfLife: Double = 0.9
-  private let committedMarkerPercentHalfLife: Double = 0.78
-  private let rawMarkerTemperatureHalfLife: Double = 0.38
-  private let rawMarkerPercentHalfLife: Double = 0.3
+  private let committedMarkerTemperatureHalfLife: Double = 2.6
+  private let committedMarkerPercentHalfLife: Double = 1.8
+  private let rawMarkerTemperatureHalfLife: Double = 3.2
+  private let rawMarkerPercentHalfLife: Double = 2.2
+  private let committedMarkerTemperatureLimitCPerSecond: Double = 7.0
+  private let rawMarkerTemperatureLimitCPerSecond: Double = 5.0
+  private let committedMarkerPercentLimitPerSecond: Double = 0.22
+  private let rawMarkerPercentLimitPerSecond: Double = 0.18
 
   var body: some View {
     GeometryReader { geo in
@@ -255,24 +260,69 @@ struct FanCurveEditor: View {
     if runtime.curveActive {
       targetCommittedPercent = runtime.committedPercent
       targetCommittedTemperature = committedMarkerTemperatureTarget()
-      targetRawTemperature = runtime.rawPressureTemperature ?? runtime.governingTemperature
+      targetRawTemperature = runtime.committedTemperature > 0
+        ? runtime.committedTemperature
+        : runtime.rawPressureTemperature ?? runtime.governingTemperature
       targetRawPercent = runtime.rawBaselinePercent
     } else {
-      let livePercent = liveFanPercent()
-      targetCommittedPercent = livePercent
-      targetCommittedTemperature = projectedCurveTemperature(
-        for: livePercent,
-        points: CurvePresets.appleSilent.curvePoints(),
-        mode: .catmullRom
-      ) ?? runtime.governingTemperature
-      targetRawTemperature = runtime.governingTemperature
-      targetRawPercent = livePercent
+      let liveTemperature = runtime.committedTemperature > 0
+        ? runtime.committedTemperature
+        : runtime.rawPressureTemperature ?? runtime.governingTemperature
+      guard liveTemperature > 0 else {
+        targetCommittedTemperature = 0
+        targetCommittedPercent = 0
+        targetRawTemperature = 0
+        targetRawPercent = 0
+        return
+      }
+
+      let clampedTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, liveTemperature))
+      let previewPercent = CurveInterpolation.evaluate(
+        at: clampedTemperature,
+        points: model.controlPoints,
+        mode: model.interpolationMode
+      )
+
+      // Fan Control off means the app is not commanding a target, but the
+      // chart should still preview where the visible curve would land for
+      // the current CPU temperature. Actual fan RPM can legitimately read as
+      // zero in system-auto mode, so using RPM here incorrectly parks the
+      // markers at the origin.
+      targetCommittedTemperature = stableMarkerTemperatureTarget(
+        currentTarget: targetCommittedTemperature,
+        proposedTemperature: clampedTemperature,
+        proposedPercent: previewPercent
+      )
+      targetCommittedPercent = previewPercent
+      targetRawTemperature = targetCommittedTemperature
+      targetRawPercent = previewPercent
     }
+  }
+
+  private func stableMarkerTemperatureTarget(
+    currentTarget: Double,
+    proposedTemperature: Double,
+    proposedPercent: Double
+  ) -> Double {
+    guard currentTarget > 0 else { return proposedTemperature }
+    let currentPercent = CurveInterpolation.evaluate(
+      at: currentTarget,
+      points: model.controlPoints,
+      mode: model.interpolationMode
+    )
+    // Flat or near-flat spans do not have a meaningful unique X position for
+    // a fan-speed target. Keep the target anchored unless the fan percent
+    // materially changes; otherwise tiny CPU temp jitter turns into stressful
+    // horizontal marker motion.
+    if abs(currentPercent - proposedPercent) < 0.006 {
+      return currentTarget
+    }
+    return proposedTemperature
   }
 
   private func committedMarkerTemperatureTarget() -> Double {
     guard runtime.committedPercent > 0 else {
-      return tempRange.lowerBound
+      return plotTempRange.lowerBound
     }
 
     // Keep the primary marker on the authored curve so the chart remains
@@ -295,16 +345,22 @@ struct FanCurveEditor: View {
     mode: InterpolationMode
   ) -> Double? {
     let clampedPercent = max(0, min(1, percent))
-    let minCurvePercent = CurveInterpolation.evaluate(at: tempRange.lowerBound, points: points, mode: mode)
-    let maxCurvePercent = CurveInterpolation.evaluate(at: tempRange.upperBound, points: points, mode: mode)
+    let minCurvePercent = CurveInterpolation.evaluate(
+      at: controlTempRange.lowerBound,
+      points: points,
+      mode: mode)
+    let maxCurvePercent = CurveInterpolation.evaluate(
+      at: controlTempRange.upperBound,
+      points: points,
+      mode: mode)
 
     guard clampedPercent >= minCurvePercent - 0.0005,
           clampedPercent <= maxCurvePercent + 0.0005 else {
       return nil
     }
 
-    var lower = tempRange.lowerBound
-    var upper = tempRange.upperBound
+    var lower = controlTempRange.lowerBound
+    var upper = controlTempRange.upperBound
 
     for _ in 0..<28 {
       let mid = (lower + upper) / 2
@@ -317,13 +373,6 @@ struct FanCurveEditor: View {
     }
 
     return (lower + upper) / 2
-  }
-
-  private func liveFanPercent() -> Double {
-    guard let fan = runtime.fans.first else { return 0 }
-    let span = max(1, fan.maxRPM - fan.minRPM)
-    let normalized = Double((fan.actualRPM - fan.minRPM) / span)
-    return max(0, min(1, normalized))
   }
 
   @ViewBuilder
@@ -402,17 +451,24 @@ struct FanCurveEditor: View {
       context.draw(rpmText, at: CGPoint(x: plotLeft - 30, y: y + 11), anchor: .center)
     }
 
-    // Vertical gridlines and X axis labels
-    for temp in stride(from: 20.0, through: 100.0, by: 10.0) {
-      let x = dataToPixel(temp: temp, percent: 0, in: size).x
+    // Vertical gridlines and X axis labels use a separate visual scale.
+    // The draggable curve itself stays on fixed editor columns below; this
+    // axis only communicates that hot temperatures deserve more visual room.
+    for temp in stride(
+      from: plotTempRange.lowerBound,
+      through: plotTempRange.upperBound,
+      by: 10.0
+    ) {
+      let x = axisTempToPixel(temp: temp, in: size)
       var line = Path()
       line.move(to: CGPoint(x: x, y: plotTop))
       line.addLine(to: CGPoint(x: x, y: plotBottom))
       context.stroke(line, with: .color(gridColor), lineWidth: 0.5)
 
-      if Int(temp) % 20 == 0 {
+      let labeledTemps: Set<Int> = [20, 40, 60, 70, 80, 90, 100, 110]
+      if labeledTemps.contains(Int(temp.rounded())) {
         let text = Text("\(displayTemp(temp))\(unit.symbol)")
-          .font(.system(.caption2, design: .rounded))
+          .font(.system(size: 10, design: .rounded).weight(.medium))
           .foregroundColor(labelColor)
         context.draw(text, at: CGPoint(x: x, y: plotBottom + 14), anchor: .center)
       }
@@ -450,7 +506,7 @@ struct FanCurveEditor: View {
 
     let pathPoints = CurveInterpolation.pathPoints(
       points: model.controlPoints, mode: model.interpolationMode,
-      tempRange: tempRange, steps: 300)
+      tempRange: plotTempRange, steps: 300)
     guard !pathPoints.isEmpty else { return }
 
     let pixelPoints = pathPoints.map { dataToPixel(temp: $0.0, percent: $0.1, in: size) }
@@ -525,7 +581,7 @@ struct FanCurveEditor: View {
     let ghostPoints = CurvePresets.appleSilent.curvePoints()
     let pathPoints = CurveInterpolation.pathPoints(
       points: ghostPoints, mode: .catmullRom,
-      tempRange: tempRange, steps: 300)
+      tempRange: plotTempRange, steps: 300)
     guard !pathPoints.isEmpty else { return }
 
     let pixelPoints = pathPoints.map { dataToPixel(temp: $0.0, percent: $0.1, in: size) }
@@ -542,7 +598,7 @@ struct FanCurveEditor: View {
     guard let mouse = mouseLocation else { return }
     guard draggedIndex == nil, hoveredIndex == nil else { return }
     let data = pixelToData(mouse, in: size)
-    guard data.x >= tempRange.lowerBound, data.x <= tempRange.upperBound else { return }
+    guard data.x >= plotTempRange.lowerBound, data.x <= plotTempRange.upperBound else { return }
 
     let percent = model.evaluate(at: data.x)
     let pos = dataToPixel(temp: data.x, percent: percent, in: size)
@@ -618,7 +674,7 @@ struct FanCurveEditor: View {
   private func hoverTooltipOverlay(size: CGSize) -> some View {
     if let mouse = mouseLocation, draggedIndex == nil, hoveredIndex == nil {
       let data = pixelToData(mouse, in: size)
-      if data.x >= tempRange.lowerBound, data.x <= tempRange.upperBound {
+      if data.x >= plotTempRange.lowerBound, data.x <= plotTempRange.upperBound {
         let percent = model.evaluate(at: data.x)
         let pos = dataToPixel(temp: data.x, percent: percent, in: size)
         let rpm = Int(rpmRange.min + Float(percent) * (rpmRange.max - rpmRange.min))
@@ -717,44 +773,52 @@ struct FanCurveEditor: View {
         }
         self.lastMarkerUpdateTime = now
 
-        displayedCommittedTemperature = exponentiallyApproach(
+        displayedCommittedTemperature = smoothlyApproach(
           current: displayedCommittedTemperature,
           target: targetCommittedTemperature,
           deltaSeconds: deltaSeconds,
-          halfLife: committedMarkerTemperatureHalfLife
+          halfLife: committedMarkerTemperatureHalfLife,
+          maxDeltaPerSecond: committedMarkerTemperatureLimitCPerSecond
         )
-        displayedCommittedPercent = exponentiallyApproach(
+        displayedCommittedPercent = smoothlyApproach(
           current: displayedCommittedPercent,
           target: targetCommittedPercent,
           deltaSeconds: deltaSeconds,
-          halfLife: committedMarkerPercentHalfLife
+          halfLife: committedMarkerPercentHalfLife,
+          maxDeltaPerSecond: committedMarkerPercentLimitPerSecond
         )
-        displayedRawTemperature = exponentiallyApproach(
+        displayedRawTemperature = smoothlyApproach(
           current: displayedRawTemperature,
           target: targetRawTemperature,
           deltaSeconds: deltaSeconds,
-          halfLife: rawMarkerTemperatureHalfLife
+          halfLife: rawMarkerTemperatureHalfLife,
+          maxDeltaPerSecond: rawMarkerTemperatureLimitCPerSecond
         )
-        displayedRawPercent = exponentiallyApproach(
+        displayedRawPercent = smoothlyApproach(
           current: displayedRawPercent,
           target: targetRawPercent,
           deltaSeconds: deltaSeconds,
-          halfLife: rawMarkerPercentHalfLife
+          halfLife: rawMarkerPercentHalfLife,
+          maxDeltaPerSecond: rawMarkerPercentLimitPerSecond
         )
         try? await Task.sleep(nanoseconds: markerSmoothingInterval)
       }
     }
   }
 
-  private func exponentiallyApproach(
+  private func smoothlyApproach(
     current: Double,
     target: Double,
     deltaSeconds: Double,
-    halfLife: Double
+    halfLife: Double,
+    maxDeltaPerSecond: Double
   ) -> Double {
     guard halfLife > 0, deltaSeconds > 0 else { return target }
     let decay = pow(0.5, deltaSeconds / halfLife)
-    let next = target + (current - target) * decay
+    let unconstrained = target + (current - target) * decay
+    let maxStep = maxDeltaPerSecond * deltaSeconds
+    let delta = max(-maxStep, min(maxStep, unconstrained - current))
+    let next = current + delta
     return abs(next - target) < 0.0001 ? target : next
   }
 
@@ -787,11 +851,9 @@ struct FanCurveEditor: View {
   private func dataToPixel(temp: Double, percent: Double, in size: CGSize) -> CGPoint {
     let w = size.width - leftPad - rightPad
     let h = size.height - topPad - bottomPad
-    let clampedTemp = max(tempRange.lowerBound, min(tempRange.upperBound, temp))
+    let clampedTemp = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, temp))
     let clampedPercent = max(0, min(1, percent))
-    let x =
-      leftPad
-      + CGFloat((clampedTemp - tempRange.lowerBound) / (tempRange.upperBound - tempRange.lowerBound)) * w
+    let x = leftPad + CGFloat(editorFraction(for: clampedTemp)) * w
     let y = topPad + CGFloat(1 - clampedPercent) * h
     return CGPoint(x: x, y: y)
   }
@@ -799,11 +861,68 @@ struct FanCurveEditor: View {
   private func pixelToData(_ pt: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
     let w = size.width - leftPad - rightPad
     let h = size.height - topPad - bottomPad
-    let temp =
-      tempRange.lowerBound + Double((pt.x - leftPad) / w)
-      * (tempRange.upperBound - tempRange.lowerBound)
+    let fraction = Double((pt.x - leftPad) / w)
+    let temp = editorTemperature(for: fraction)
     let percent = 1.0 - Double((pt.y - topPad) / h)
     return (temp, percent)
+  }
+
+  /// Editor coordinates are fixed, evenly spaced columns. This keeps
+  /// dragging predictable and gives the upper thermal range more authored
+  /// control points without making handles ride the warped axis labels.
+  private func editorFraction(for temp: Double) -> Double {
+    let columns = CurveColumns.temperatures()
+    guard columns.count > 1 else { return 0 }
+    let clamped = max(columns[0], min(columns[columns.count - 1], temp))
+
+    for index in 0..<(columns.count - 1) {
+      let lower = columns[index]
+      let upper = columns[index + 1]
+      guard clamped <= upper || index == columns.count - 2 else { continue }
+      let local = upper == lower ? 0 : (clamped - lower) / (upper - lower)
+      return (Double(index) + local) / Double(columns.count - 1)
+    }
+
+    return 1
+  }
+
+  private func editorTemperature(for fraction: Double) -> Double {
+    let columns = CurveColumns.temperatures()
+    guard columns.count > 1 else { return columns.first ?? plotTempRange.lowerBound }
+    let clamped = max(0, min(1, fraction))
+    let scaled = clamped * Double(columns.count - 1)
+    let index = min(columns.count - 2, max(0, Int(floor(scaled))))
+    let local = scaled - Double(index)
+    return columns[index] + (columns[index + 1] - columns[index]) * local
+  }
+
+  /// Visual-only x axis scale. Low temperatures are compressed; the hot
+  /// range is expanded. It intentionally does not define handle positions.
+  private func axisTempToPixel(temp: Double, in size: CGSize) -> CGFloat {
+    let w = size.width - leftPad - rightPad
+    return leftPad + CGFloat(axisFraction(for: temp)) * w
+  }
+
+  private func axisFraction(for temp: Double) -> Double {
+    let anchors: [(temp: Double, fraction: Double)] = [
+      (20, 0.00),
+      (40, 0.08),
+      (60, 0.20),
+      (80, 0.50),
+      (100, 0.82),
+      (110, 1.00)
+    ]
+    let clamped = max(anchors[0].temp, min(anchors[anchors.count - 1].temp, temp))
+
+    for index in 0..<(anchors.count - 1) {
+      let lower = anchors[index]
+      let upper = anchors[index + 1]
+      guard clamped <= upper.temp || index == anchors.count - 2 else { continue }
+      let linear = (clamped - lower.temp) / (upper.temp - lower.temp)
+      return lower.fraction + (upper.fraction - lower.fraction) * linear
+    }
+
+    return 1
   }
 }
 
