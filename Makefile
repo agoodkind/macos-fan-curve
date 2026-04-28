@@ -17,6 +17,7 @@ DMG_STAGING_DIR = $(BUILD_DIR)/dmg
 XCODE_PRODUCTS_DIR = $(BUILD_DIR)/Build/Products/$(CONFIGURATION)
 APP_SOURCE = $(XCODE_PRODUCTS_DIR)/$(APP_NAME).app
 APP_DEST = $(PRODUCTS_DIR)/$(APP_NAME).app
+ICON_HASH_STAMP = $(BUILD_DIR)/.app-icon.sha
 DMG_PATH = $(PRODUCTS_DIR)/$(DMG_NAME).dmg
 RELEASE_DMG_NAME = $(APP_NAME)-$(CURRENT_PROJECT_VERSION).dmg
 RELEASE_DMG_PATH = $(PRODUCTS_DIR)/$(RELEASE_DMG_NAME)
@@ -24,7 +25,7 @@ SPARKLE_UPDATES_DIR = $(BUILD_DIR)/sparkle-updates
 SPARKLE_APPCAST_PATH = $(SPARKLE_UPDATES_DIR)/appcast.xml
 GITHUB_RELEASE_BASE_URL ?= https://github.com/agoodkind/macos-fan-curve/releases/download/$(RELEASE_TAG)/
 
-.PHONY: all install-dependencies build app dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project open-project test format run log-audit
+.PHONY: all install-dependencies build app dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project open-project test format run log-audit icons
 
 install-dependencies:
 	$(TUIST) install
@@ -37,7 +38,10 @@ open-project: generate-project
 
 all: app
 
-build: generate-project
+icons:
+	./Scripts/generate-icons.sh
+
+build: icons generate-project
 	xcodebuild -workspace FanCurveApp.xcworkspace \
 		-scheme FanCurve \
 		-configuration $(CONFIGURATION) \
@@ -49,8 +53,10 @@ build: generate-project
 
 app: build
 	@mkdir -p $(PRODUCTS_DIR)
+	@./Scripts/refresh-icon-cache.sh "$(APP_SOURCE)" "$(ICON_HASH_STAMP)"
 	@rm -rf "$(APP_DEST)"
 	@cp -R "$(APP_SOURCE)" "$(PRODUCTS_DIR)/"
+	@./Scripts/refresh-icon-cache.sh "$(APP_DEST)" "$(ICON_HASH_STAMP)"
 
 dmg: app
 	@mkdir -p "$(PRODUCTS_DIR)" "$(DMG_STAGING_DIR)"

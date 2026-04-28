@@ -11,13 +11,34 @@ Tuist-generated macOS app with Sparkle-based updates.
 
 ## Common Commands
 
-- `tuist install` — resolve Swift package dependencies into `Tuist/Package.resolved`
-- `make generate-project` — regenerate `FanCurveApp.xcworkspace`
-- `make open-project` — regenerate and open the workspace in Xcode
-- `make app` — regenerate, build, and stage `/Users/agoodkind/Sites/macos-fan-curve/Products/FanCurve.app`
-- `make dmg` — build and package `/Users/agoodkind/Sites/macos-fan-curve/Products/FanCurve-Release.dmg`
-- `make release-assets CURRENT_PROJECT_VERSION=... MARKETING_VERSION=...` — build a versioned DMG for a release
-- `make prepare-sparkle-updates CURRENT_PROJECT_VERSION=... RELEASE_TAG=... GITHUB_RELEASE_BASE_URL=.../` — generate `build/sparkle-updates/appcast.xml`
+- `tuist install`: resolve Swift package dependencies into `Tuist/Package.resolved`
+- `make generate-project`: regenerate `FanCurveApp.xcworkspace`
+- `make open-project`: regenerate and open the workspace in Xcode
+- `make app`: regenerate, build, and stage `/Users/agoodkind/Sites/macos-fan-curve/Products/FanCurve.app`
+- `make dmg`: build and package `/Users/agoodkind/Sites/macos-fan-curve/Products/FanCurve-Release.dmg`
+- `make release-assets CURRENT_PROJECT_VERSION=... MARKETING_VERSION=...`: build a versioned DMG for a release
+- `make prepare-sparkle-updates CURRENT_PROJECT_VERSION=... RELEASE_TAG=... GITHUB_RELEASE_BASE_URL=.../`: generate `build/sparkle-updates/appcast.xml`
+
+## Icon Pipeline
+
+The four SVGs below are the only icon sources of truth. Replace these files in place and rebuild. Do not edit the generated PNGs by hand.
+
+- `Design/fancurve-tier1-favicon.svg` -> smallest reps
+- `Design/fancurve-tier2-menubar.svg` -> next reps
+- `Design/fancurve-tier3-dock.svg` -> dock and medium-large reps
+- `Design/fancurve-tier4-full.svg` -> largest reps and About hero
+
+Workflow:
+
+1. Replace one or more of those four SVG files. Keep the same filenames.
+2. Run `make app` or `make build`.
+3. The build regenerates `Sources/App/Assets.xcassets/AppIcon.appiconset` and `AboutHeroIcon.imageset` automatically via `Scripts/generate-icons.sh`.
+
+Notes:
+
+- `AppIcon.appiconset` is flattened to an opaque dark background. This prevents the Dock from reintroducing the white system plate.
+- `AboutHeroIcon` stays transparent. This lets the About page use the detailed icon without the dark square background.
+- Do not hand-edit the generated PNGs unless you are intentionally changing the generation script itself.
 
 ## Release Shape
 
