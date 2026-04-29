@@ -103,41 +103,46 @@ struct OnboardingView: View {
 
   private var titleText: String {
     switch state.step {
-    case .checking: return "Checking installation"
-    case .helperMissing: return "Install the system helper"
-    case .helperAwaitingApproval: return "Approve the helper in System Settings"
-    case .agentMissing: return "Enable background fan control"
-    case .agentAwaitingApproval: return "Allow FanCurve at login"
-    case .ready: return "All set"
+    case .checking: return L10n.tr("Checking installation")
+    case .helperMissing: return L10n.tr("Install the system helper")
+    case .helperAwaitingApproval: return L10n.tr("Approve the helper in System Settings")
+    case .agentMissing: return L10n.tr("Enable background fan control")
+    case .agentAwaitingApproval: return L10n.tr("Allow FanCurve at login")
+    case .ready: return L10n.tr("All set")
     }
   }
 
   private var subtitleText: String {
     switch state.step {
     case .checking:
-      return "Looking for the helper and background agent."
+      return L10n.tr("Looking for the helper and background agent.")
     case .helperMissing:
-      return
+      return L10n.tr(
         "FanCurve needs a privileged helper to read temperatures and control fans. Install it from the macos-smc-fan project, then return here."
+      )
     case .helperAwaitingApproval:
-      return "Open Login Items in System Settings and enable the helper. FanCurve will continue as soon as it is running."
+      return L10n.tr(
+        "Open Login Items in System Settings and enable the helper. FanCurve will continue as soon as it is running."
+      )
     case .agentMissing:
-      return
+      return L10n.tr(
         "The background agent applies your curve even when FanCurve is closed. It starts automatically at login. Click to install."
+      )
     case .agentAwaitingApproval:
-      return
+      return L10n.tr(
         "Open Login Items in System Settings and enable FanCurve so the agent can start at login."
+      )
     case .ready:
-      return "Everything is running."
+      return L10n.tr("Everything is running.")
     }
   }
 
   private var primaryAction: (String, () -> Void)? {
     switch state.step {
     case .agentMissing:
-      return ("Install Background Agent", { state.registerAgent() })
+      return (L10n.tr("Install Background Agent"), { state.registerAgent() })
     case .agentAwaitingApproval, .helperAwaitingApproval:
-      return ("Open Login Items", { state.openLoginItemsSettings() })
+      return (L10n.tr("Open Login Items"), { state.openLoginItemsSettings() })
     case .helperMissing:
       return nil
     case .ready, .checking:

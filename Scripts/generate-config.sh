@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-GENERATED_DIR="${DERIVED_FILE_DIR}/Generated"
+GENERATED_DIR="${SRCROOT}/Derived/Generated/${TARGET_NAME}"
 TEMPLATES_DIR="${SRCROOT}/Templates"
 
 mkdir -p "${GENERATED_DIR}"

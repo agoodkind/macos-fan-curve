@@ -22,8 +22,8 @@ let generatedConfigScript = TargetScript.pre(
     """,
     name: "Generate Config from xcconfig",
     outputPaths: [
-        "$(DERIVED_FILE_DIR)/Generated/Config.generated.swift",
-        "$(DERIVED_FILE_DIR)/Generated/agent-launchd.plist",
+        "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/Config.generated.swift",
+        "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/agent-launchd.plist",
     ]
 )
 
@@ -57,7 +57,7 @@ let bundleAgentScript = TargetScript.post(
     MACOS_DIR="${APP_DIR}/Contents/MacOS"
     mkdir -p "${AGENTS_DIR}"
     cp "${AGENT_SRC}" "${MACOS_DIR}/"
-    cp "${DERIVED_FILE_DIR}/Generated/agent-launchd.plist" \
+    cp "${SRCROOT}/Derived/Generated/${TARGET_NAME}/agent-launchd.plist" \
        "${AGENTS_DIR}/${AGENT_BUNDLE_ID}.plist"
 
     SPARKLE_DIR="${APP_DIR}/Contents/Frameworks/Sparkle.framework/Versions/Current"
@@ -152,7 +152,7 @@ let project = Project(
                 "Sources/Views/**",
                 "Sources/Services/**",
                 "Sources/Common/**",
-                .generated("$(DERIVED_FILE_DIR)/Generated/Config.generated.swift"),
+                .generated("Derived/Generated/FanCurve/Config.generated.swift"),
             ],
             resources: [
                 "Sources/App/Base.lproj/**",
@@ -184,10 +184,11 @@ let project = Project(
             infoPlist: .default,
             sources: [
                 "Sources/Agent/**",
+                "Sources/App/L10n.swift",
                 "Sources/Models/**",
                 "Sources/Services/XPCClient.swift",
                 "Sources/Common/**",
-                .generated("$(DERIVED_FILE_DIR)/Generated/Config.generated.swift"),
+                .generated("Derived/Generated/FanCurveAgent/Config.generated.swift"),
             ],
             scripts: [
                 generatedConfigScript,

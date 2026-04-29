@@ -14,8 +14,8 @@ enum LoadAssistKind: String, CaseIterable, Codable, Sendable {
 
   var title: String {
     switch self {
-    case .cpu: return "CPU Load Assist"
-    case .gpu: return "GPU Load Assist"
+    case .cpu: return L10n.tr("CPU Load Assist")
+    case .gpu: return L10n.tr("GPU Load Assist")
     }
   }
 

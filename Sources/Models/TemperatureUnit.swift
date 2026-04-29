@@ -25,8 +25,8 @@ enum TemperatureUnit: String, CaseIterable, Identifiable {
 
   var displayName: String {
     switch self {
-    case .celsius: return "Celsius"
-    case .fahrenheit: return "Fahrenheit"
+    case .celsius: return L10n.tr("Celsius")
+    case .fahrenheit: return L10n.tr("Fahrenheit")
     }
   }
 
