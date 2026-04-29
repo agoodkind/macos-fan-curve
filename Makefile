@@ -5,6 +5,12 @@ TUIST := $(shell command -v tuist 2>/dev/null || printf '%s' "mise x tuist@4.186
 CONFIGURATION = Release
 BUILD_DIR = build
 PRODUCTS_DIR = Products
+SWIFT_FORMAT_FILES = Sources Tests Project.swift Tuist.swift Tuist/Package.swift $(wildcard Workspace.swift)
+SWIFTLINT_CONFIG = .swiftlint.yml
+PERIPHERY_CONFIG = .periphery.yml
+ANALYZE_BUILD_DIR = $(BUILD_DIR)/Analyze
+SWIFTLINT_ANALYZE_DERIVED_DATA = $(ANALYZE_BUILD_DIR)/SwiftLintDerivedData
+SWIFTLINT_ANALYZE_LOG = $(ANALYZE_BUILD_DIR)/swiftlint-xcodebuild.log
 APP_NAME = FanCurve
 DMG_NAME = $(APP_NAME)-$(CONFIGURATION)
 MARKETING_VERSION ?= 0.1.0
@@ -27,10 +33,22 @@ SPARKLE_UPDATES_DIR = $(BUILD_DIR)/sparkle-updates
 SPARKLE_APPCAST_PATH = $(SPARKLE_UPDATES_DIR)/appcast.xml
 GITHUB_RELEASE_BASE_URL ?= https://github.com/agoodkind/macos-fan-curve/releases/download/$(RELEASE_TAG)/
 
-.PHONY: all install-dependencies build app install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project open-project test format run log-audit icons
+.PHONY: all install-dependencies install-analysis-tools build app install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project open-project test format format-check lint swiftlint-lint analyze xcode-analyze swiftlint-analyze periphery-scan quality run log-audit icons
 
 install-dependencies:
 	$(TUIST) install
+
+install-analysis-tools:
+	@if ! command -v swift-format >/dev/null 2>&1; then \
+		echo "swift-format not found. Install the Swift toolchain or swift-format before running analysis."; \
+		exit 127; \
+	fi
+	@if ! command -v swiftlint >/dev/null 2>&1; then \
+		brew install swiftlint; \
+	fi
+	@if ! command -v periphery >/dev/null 2>&1; then \
+		brew install periphery; \
+	fi
 
 generate-project:
 	$(TUIST) generate --no-open
@@ -119,7 +137,45 @@ test: generate-project
 		test
 
 format:
-	swift-format format --in-place --recursive Sources/
+	swift-format format --in-place --recursive $(SWIFT_FORMAT_FILES)
+
+format-check:
+	swift-format lint --strict --recursive $(SWIFT_FORMAT_FILES)
+
+swiftlint-lint:
+	swiftlint lint --strict --config "$(SWIFTLINT_CONFIG)"
+
+lint: format-check swiftlint-lint log-audit
+
+xcode-analyze: generate-project
+	xcodebuild -workspace FanCurveApp.xcworkspace \
+		-scheme FanCurve \
+		-configuration Debug \
+		-derivedDataPath $(BUILD_DIR) \
+		analyze
+
+swiftlint-analyze: generate-project
+	@rm -rf "$(SWIFTLINT_ANALYZE_DERIVED_DATA)"
+	@mkdir -p "$(ANALYZE_BUILD_DIR)"
+	xcodebuild -workspace FanCurveApp.xcworkspace \
+		-scheme FanCurve \
+		-configuration Debug \
+		-derivedDataPath "$(SWIFTLINT_ANALYZE_DERIVED_DATA)" \
+		clean build > "$(SWIFTLINT_ANALYZE_LOG)"
+	swiftlint analyze --strict \
+		--config "$(SWIFTLINT_CONFIG)" \
+		--compiler-log-path "$(SWIFTLINT_ANALYZE_LOG)"
+
+periphery-scan: generate-project
+	@if ! command -v periphery >/dev/null 2>&1; then \
+		echo "periphery not found. Install it with: brew install periphery"; \
+		exit 127; \
+	fi
+	periphery scan --config "$(PERIPHERY_CONFIG)"
+
+analyze: xcode-analyze swiftlint-analyze periphery-scan
+
+quality: lint analyze test
 
 clean:
 	rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) FanCurveApp.xcworkspace FanCurveApp.xcodeproj

@@ -1,0 +1,10 @@
+workspace: FanCurveApp.xcworkspace
+schemes:
+  - FanCurve
+  - FanCurveAgent
+retain_public: true
+retain_objc_accessible: true
+retain_codable_properties: true
+format: xcode
+strict: true
+index_store_path: build/Index.noindex/DataStore
