@@ -28,19 +28,19 @@ private let log = AppLog.make(category: "XPCClient")
 private typealias UpstreamFanInfo = SMCFanProtocol.FanInfo
 
 private func toLocal(_ up: UpstreamFanInfo) -> FanInfo {
-  FanInfo(
-    actualRPM: up.actualRPM,
-    targetRPM: up.targetRPM,
-    minRPM: up.minRPM,
-    maxRPM: up.maxRPM,
-    manualMode: up.manualMode
-  )
+    FanInfo(
+        actualRPM: up.actualRPM,
+        targetRPM: up.targetRPM,
+        minRPM: up.minRPM,
+        maxRPM: up.maxRPM,
+        manualMode: up.manualMode
+    )
 }
 
 enum ConnectionState: Sendable {
-  case disconnected
-  case connected
-  case error(String)
+    case disconnected
+    case connected
+    case error(String)
 }
 
 /// Thin wrapper around `SMCFanXPCClient` that preserves the `@Published`
@@ -48,173 +48,173 @@ enum ConnectionState: Sendable {
 /// reconnect, `ResumeGuard`) is handled by `SMCFanXPCClient` internally,
 /// and the privileged helper arbitrates priority.
 class XPCClient: ObservableObject, @unchecked Sendable {
-  private let client: SMCFanXPCClient
-  private let stateLock = NSLock()
+    private let client: SMCFanXPCClient
+    private let stateLock = NSLock()
 
-  @Published var state: ConnectionState = .disconnected
+    @Published var state: ConnectionState = .disconnected
 
-  init(
-    clientName: String = generatedAppBundleID,
-    defaultPriority: Int = SMCFanPriority.curveNormal
-  ) {
-    // SMCFanXPCClient's init declares throws for source compatibility but
-    // does not actually perform any failable work. A trap here would mean
-    // upstream changed that contract; crashing loudly at init time is the
-    // correct signal.
-    self.client = try! SMCFanXPCClient(
-      clientName: clientName,
-      defaultPriority: defaultPriority
-    )
-    log.debug(
-      "xpc.client_init name=\(clientName, privacy: .public) default_priority=\(defaultPriority, privacy: .public)"
-    )
-  }
-
-  /// Invalidate on app termination.
-  func shutdown() {
-    self.client.shutdown()
-    Task { @MainActor [weak self] in self?.state = .disconnected }
-    log.debug("xpc.shutdown")
-  }
-
-  // MARK: - SMC Operations
-
-  func getFanCount() async throws -> UInt {
-    do {
-      let count = try await client.getFanCount()
-      self.markConnected()
-      return count
-    } catch {
-      self.markError(error)
-      throw error
-    }
-  }
-
-  func getFanInfo(_ index: UInt) async throws -> FanInfo {
-    do {
-      let info = try await client.getFanInfo(index)
-      self.markConnected()
-      return toLocal(info)
-    } catch {
-      self.markError(error)
-      throw error
-    }
-  }
-
-  func setFanRPM(_ index: UInt, rpm: Float) async throws {
-    try await self.setFanRPM(index, rpm: rpm, priority: nil)
-  }
-
-  func setFanRPM(_ index: UInt, rpm: Float, priority: Int?) async throws {
-    do {
-      if let priority = priority {
-        try await client.setFanRPM(index, rpm: rpm, priority: priority)
-      } else {
-        try await client.setFanRPM(index, rpm: rpm)
-      }
-      self.markConnected()
-    } catch let err as SMCXPCConflictError {
-      // Preempted by a higher priority client (for example lmd while an
-      // LLM is running). Not an error from the curve's point of view;
-      // skip this write and let the next tick retry.
-      log.debug(
-        "xpc.write_preempted fan=\(index, privacy: .public) reason=\(err.message, privacy: .public)"
-      )
-    } catch {
-      self.markError(error)
-      throw error
-    }
-  }
-
-  func setFanAuto(_ index: UInt) async throws {
-    try await self.setFanAuto(index, priority: nil)
-  }
-
-  func setFanAuto(_ index: UInt, priority: Int?) async throws {
-    do {
-      if let priority = priority {
-        try await client.setFanAuto(index, priority: priority)
-      } else {
-        try await client.setFanAuto(index)
-      }
-      self.markConnected()
-    } catch let err as SMCXPCConflictError {
-      log.debug(
-        "xpc.auto_preempted fan=\(index, privacy: .public) reason=\(err.message, privacy: .public)"
-      )
-    } catch {
-      self.markError(error)
-      throw error
-    }
-  }
-
-  func readKey(_ key: String) async throws -> Float {
-    do {
-      let v = try await client.readKey(key)
-      self.markConnected()
-      return v
-    } catch {
-      self.markError(error)
-      throw error
-    }
-  }
-
-  // MARK: - Batched read + apply
-
-  struct BatchReadResult: Sendable {
-    let fans: [FanInfo]
-    let temps: [String: Float]
-  }
-
-  func readAndApply(
-    fanCount: UInt,
-    tempKeys: [String],
-    setFans: [(index: UInt, rpm: Float)]?,
-    autoFans: [UInt]?,
-    priority: Int? = nil
-  ) async throws -> BatchReadResult {
-    var fans: [FanInfo] = []
-    if fanCount > 0 {
-      for i in 0..<fanCount {
-        if let info = try? await self.getFanInfo(i) { fans.append(info) }
-      }
+    init(
+        clientName: String = generatedAppBundleID,
+        defaultPriority: Int = SMCFanPriority.curveNormal
+    ) {
+        // SMCFanXPCClient's init declares throws for source compatibility but
+        // does not actually perform any failable work. A trap here would mean
+        // upstream changed that contract; crashing loudly at init time is the
+        // correct signal.
+        self.client = try! SMCFanXPCClient(
+            clientName: clientName,
+            defaultPriority: defaultPriority
+        )
+        log.debug(
+            "xpc.client_init name=\(clientName, privacy: .public) default_priority=\(defaultPriority, privacy: .public)"
+        )
     }
 
-    var temps: [String: Float] = [:]
-    for key in tempKeys {
-      if let value = try? await self.readKey(key), value > 0, value < 150 {
-        temps[key] = value
-      }
+    /// Invalidate on app termination.
+    func shutdown() {
+        self.client.shutdown()
+        Task { @MainActor [weak self] in self?.state = .disconnected }
+        log.debug("xpc.shutdown")
     }
 
-    if let setFans {
-      for f in setFans {
-        try? await self.setFanRPM(f.index, rpm: f.rpm, priority: priority)
-      }
+    // MARK: - SMC Operations
+
+    func getFanCount() async throws -> UInt {
+        do {
+            let count = try await client.getFanCount()
+            self.markConnected()
+            return count
+        } catch {
+            self.markError(error)
+            throw error
+        }
     }
-    if let autoFans {
-      for i in autoFans {
-        try? await self.setFanAuto(i, priority: priority)
-      }
+
+    func getFanInfo(_ index: UInt) async throws -> FanInfo {
+        do {
+            let info = try await client.getFanInfo(index)
+            self.markConnected()
+            return toLocal(info)
+        } catch {
+            self.markError(error)
+            throw error
+        }
     }
 
-    return BatchReadResult(fans: fans, temps: temps)
-  }
-
-  // MARK: - State transitions
-
-  private func markConnected() {
-    self.stateLock.lock()
-    let wasConnected: Bool
-    if case .connected = self.state { wasConnected = true } else { wasConnected = false }
-    self.stateLock.unlock()
-    if !wasConnected {
-      Task { @MainActor [weak self] in self?.state = .connected }
+    func setFanRPM(_ index: UInt, rpm: Float) async throws {
+        try await self.setFanRPM(index, rpm: rpm, priority: nil)
     }
-  }
 
-  private func markError(_ error: Error) {
-    let msg = error.localizedDescription
-    Task { @MainActor [weak self] in self?.state = .error(msg) }
-  }
+    func setFanRPM(_ index: UInt, rpm: Float, priority: Int?) async throws {
+        do {
+            if let priority {
+                try await client.setFanRPM(index, rpm: rpm, priority: priority)
+            } else {
+                try await client.setFanRPM(index, rpm: rpm)
+            }
+            self.markConnected()
+        } catch let err as SMCXPCConflictError {
+            // Preempted by a higher priority client (for example lmd while an
+            // LLM is running). Not an error from the curve's point of view;
+            // skip this write and let the next tick retry.
+            log.debug(
+                "xpc.write_preempted fan=\(index, privacy: .public) reason=\(err.message, privacy: .public)"
+            )
+        } catch {
+            self.markError(error)
+            throw error
+        }
+    }
+
+    func setFanAuto(_ index: UInt) async throws {
+        try await self.setFanAuto(index, priority: nil)
+    }
+
+    func setFanAuto(_ index: UInt, priority: Int?) async throws {
+        do {
+            if let priority {
+                try await client.setFanAuto(index, priority: priority)
+            } else {
+                try await client.setFanAuto(index)
+            }
+            self.markConnected()
+        } catch let err as SMCXPCConflictError {
+            log.debug(
+                "xpc.auto_preempted fan=\(index, privacy: .public) reason=\(err.message, privacy: .public)"
+            )
+        } catch {
+            self.markError(error)
+            throw error
+        }
+    }
+
+    func readKey(_ key: String) async throws -> Float {
+        do {
+            let v = try await client.readKey(key)
+            self.markConnected()
+            return v
+        } catch {
+            self.markError(error)
+            throw error
+        }
+    }
+
+    // MARK: - Batched read + apply
+
+    struct BatchReadResult: Sendable {
+        let fans: [FanInfo]
+        let temps: [String: Float]
+    }
+
+    func readAndApply(
+        fanCount: UInt,
+        tempKeys: [String],
+        setFans: [(index: UInt, rpm: Float)]?,
+        autoFans: [UInt]?,
+        priority: Int? = nil
+    ) async -> BatchReadResult {
+        var fans: [FanInfo] = []
+        if fanCount > 0 {
+            for i in 0..<fanCount {
+                if let info = try? await self.getFanInfo(i) { fans.append(info) }
+            }
+        }
+
+        var temps: [String: Float] = [:]
+        for key in tempKeys {
+            if let value = try? await self.readKey(key), value > 0, value < 150 {
+                temps[key] = value
+            }
+        }
+
+        if let setFans {
+            for f in setFans {
+                try? await self.setFanRPM(f.index, rpm: f.rpm, priority: priority)
+            }
+        }
+        if let autoFans {
+            for i in autoFans {
+                try? await self.setFanAuto(i, priority: priority)
+            }
+        }
+
+        return BatchReadResult(fans: fans, temps: temps)
+    }
+
+    // MARK: - State transitions
+
+    private func markConnected() {
+        self.stateLock.lock()
+        let wasConnected: Bool
+        if case .connected = self.state { wasConnected = true } else { wasConnected = false }
+        self.stateLock.unlock()
+        if !wasConnected {
+            Task { @MainActor [weak self] in self?.state = .connected }
+        }
+    }
+
+    private func markError(_ error: Error) {
+        let msg = error.localizedDescription
+        Task { @MainActor [weak self] in self?.state = .error(msg) }
+    }
 }

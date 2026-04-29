@@ -22,18 +22,18 @@ private let log = AppLog.make(category: "SharedConfigPush")
 /// is empty. The Agent re-reads the shared suite on every tick, so it
 /// does not need to know what changed, only that something did.
 enum SharedConfigPush {
-  static let notificationNameString = "io.goodkind.fancurve.configChanged"
+    static let notificationNameString = "io.goodkind.fancurve.configChanged"
 
-  static var notificationName: CFString { notificationNameString as CFString }
+    static var notificationName: CFString { notificationNameString as CFString }
 
-  /// GUI posts this after any write to the shared suite.
-  static func post() {
-    log.debug("config.pushed notification=\(notificationNameString, privacy: .public)")
-    CFNotificationCenterPostNotification(
-      CFNotificationCenterGetDarwinNotifyCenter(),
-      CFNotificationName(notificationNameString as CFString),
-      nil,
-      nil,
-      true)
-  }
+    /// GUI posts this after any write to the shared suite.
+    static func post() {
+        log.debug("config.pushed notification=\(notificationNameString, privacy: .public)")
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName(notificationNameString as CFString),
+            nil,
+            nil,
+            true)
+    }
 }

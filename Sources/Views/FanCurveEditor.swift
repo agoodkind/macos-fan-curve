@@ -9,893 +9,898 @@
 import SwiftUI
 
 struct FanCurveEditor: View {
-  @ObservedObject var model: FanCurveModel
-  @ObservedObject var runtime: AgentSnapshotState
-  let renderMode: AppRenderMode
-  @State private var hoveredIndex: Int?
-  @State private var draggedIndex: Int?
-  @State private var dragBaselinePercents: [Double]?
-  @State private var mouseLocation: CGPoint?
-  @State private var targetCommittedTemperature: Double = 0
-  @State private var targetCommittedPercent: Double = 0
-  @State private var targetRawTemperature: Double = 0
-  @State private var targetRawPercent: Double = 0
-  @State private var displayedCommittedTemperature: Double = 0
-  @State private var displayedCommittedPercent: Double = 0
-  @State private var displayedRawTemperature: Double = 0
-  @State private var displayedRawPercent: Double = 0
-  @State private var markerSmoothingTask: Task<Void, Never>?
-  @State private var lastMarkerUpdateTime: ContinuousClock.Instant?
-  private let controlPointHitRadius: CGFloat = 14
+    @ObservedObject var model: FanCurveModel
+    @ObservedObject var runtime: AgentSnapshotState
+    let renderMode: AppRenderMode
+    @State private var hoveredIndex: Int?
+    @State private var draggedIndex: Int?
+    @State private var dragBaselinePercents: [Double]?
+    @State private var mouseLocation: CGPoint?
+    @State private var targetCommittedTemperature: Double = 0
+    @State private var targetCommittedPercent: Double = 0
+    @State private var targetRawTemperature: Double = 0
+    @State private var targetRawPercent: Double = 0
+    @State private var displayedCommittedTemperature: Double = 0
+    @State private var displayedCommittedPercent: Double = 0
+    @State private var displayedRawTemperature: Double = 0
+    @State private var displayedRawPercent: Double = 0
+    @State private var markerSmoothingTask: Task<Void, Never>?
+    @State private var lastMarkerUpdateTime: ContinuousClock.Instant?
+    private let controlPointHitRadius: CGFloat = 14
 
-  @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
+    @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
 
-  private var unit: TemperatureUnit {
-    TemperatureUnit(rawValue: unitRaw) ?? .celsius
-  }
+    private var unit: TemperatureUnit {
+        TemperatureUnit(rawValue: unitRaw) ?? .celsius
+    }
 
-  private func displayTemp(_ celsius: Double) -> Int {
-    Int(unit.convert(fromCelsius: celsius).rounded())
-  }
+    private func displayTemp(_ celsius: Double) -> Int {
+        Int(unit.convert(fromCelsius: celsius).rounded())
+    }
 
-  /// Crossfade driver between active and inactive curve rendering. 1 is
-  /// fully active (blue solid user curve, no ghost). 0 is fully inactive
-  /// (gray dashed user curve, accent-colored Apple ghost). SwiftUI
-  /// animates this on toggle so Canvas redraws with interpolated opacity
-  /// each frame, giving a smooth transition.
-  @State private var activePhase: Double = 1.0
+    /// Crossfade driver between active and inactive curve rendering. 1 is
+    /// fully active (blue solid user curve, no ghost). 0 is fully inactive
+    /// (gray dashed user curve, accent-colored Apple ghost). SwiftUI
+    /// animates this on toggle so Canvas redraws with interpolated opacity
+    /// each frame, giving a smooth transition.
+    @State private var activePhase: Double = 1.0
 
-  private let topPad: CGFloat = 56
-  private let bottomPad: CGFloat = 44
-  private let leftPad: CGFloat = 72
-  private let rightPad: CGFloat = 24
+    private let topPad: CGFloat = 56
+    private let bottomPad: CGFloat = 44
+    private let leftPad: CGFloat = 72
+    private let rightPad: CGFloat = 24
 
-  private let plotTempRange: ClosedRange<Double> = CurveColumns.tempRange
-  private let curveColor = Color.accentColor
+    private let plotTempRange: ClosedRange<Double> = CurveColumns.tempRange
+    private let curveColor = Color.accentColor
 
-  @AppStorage(SharedConfigKeys.overdriveEnabled, store: Self.suite)
-  private var overdriveEnabled: Bool = false
+    @AppStorage(SharedConfigKeys.overdriveEnabled, store: Self.suite)
+    private var overdriveEnabled: Bool = false
 
-  @AppStorage(SharedConfigKeys.underdriveEnabled, store: Self.suite)
-  private var underdriveEnabled: Bool = false
+    @AppStorage(SharedConfigKeys.underdriveEnabled, store: Self.suite)
+    private var underdriveEnabled: Bool = false
 
-  @AppStorage(SharedConfigKeys.boostEnabled, store: Self.suite)
-  private var boostEnabled: Bool = false
+    @AppStorage(SharedConfigKeys.boostEnabled, store: Self.suite)
+    private var boostEnabled: Bool = false
 
-  private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+    private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
 
-  /// Visual scale for the Y axis follows the effective fan control range.
-  /// Overdrive extends the top to the configured target. Underdrive drops
-  /// the bottom to zero. When neither is on the axis uses the firmware
-  /// reported minimum and maximum.
-  private var rpmRange: (min: Float, max: Float) {
-    guard let fan = runtime.fans.first else { return (0, 8000) }
-    let minR: Float = underdriveEnabled ? 0 : fan.minRPM
-    let maxR: Float = overdriveEnabled ? max(fan.maxRPM, overdriveTargetRPM) : fan.maxRPM
-    return (minR, maxR)
-  }
+    /// Visual scale for the Y axis follows the effective fan control range.
+    /// Overdrive extends the top to the configured target. Underdrive drops
+    /// the bottom to zero. When neither is on the axis uses the firmware
+    /// reported minimum and maximum.
+    private var rpmRange: (min: Float, max: Float) {
+        guard let fan = runtime.fans.first else { return (0, 8_000) }
+        let minR: Float = underdriveEnabled ? 0 : fan.minRPM
+        let maxR: Float = overdriveEnabled ? max(fan.maxRPM, overdriveTargetRPM) : fan.maxRPM
+        return (minR, maxR)
+    }
 
-  private let markerSmoothingInterval: UInt64 = 16_000_000
-  private let committedMarkerTemperatureHalfLife: Double = 2.6
-  private let committedMarkerPercentHalfLife: Double = 1.8
-  private let rawMarkerTemperatureHalfLife: Double = 3.2
-  private let rawMarkerPercentHalfLife: Double = 2.2
-  private let committedMarkerTemperatureLimitCPerSecond: Double = 7.0
-  private let rawMarkerTemperatureLimitCPerSecond: Double = 5.0
-  private let committedMarkerPercentLimitPerSecond: Double = 0.22
-  private let rawMarkerPercentLimitPerSecond: Double = 0.18
+    private let markerSmoothingInterval: UInt64 = 16_000_000
+    private let committedMarkerTemperatureHalfLife: Double = 2.6
+    private let committedMarkerPercentHalfLife: Double = 1.8
+    private let rawMarkerTemperatureHalfLife: Double = 3.2
+    private let rawMarkerPercentHalfLife: Double = 2.2
+    private let committedMarkerTemperatureLimitCPerSecond: Double = 7.0
+    private let rawMarkerTemperatureLimitCPerSecond: Double = 5.0
+    private let committedMarkerPercentLimitPerSecond: Double = 0.22
+    private let rawMarkerPercentLimitPerSecond: Double = 0.18
 
-  var body: some View {
-    GeometryReader { geo in
-      let size = geo.size
+    var body: some View {
+        GeometryReader { geo in
+            let size = geo.size
 
-      ZStack {
-        Canvas { context, canvasSize in
-          drawGrid(context: context, size: canvasSize)
-          drawCurve(context: context, size: canvasSize)
-          drawHoverLine(context: context, size: canvasSize)
-          drawAxisTitles(context: context, size: canvasSize)
+            ZStack {
+                Canvas { context, canvasSize in
+                    drawGrid(context: context, size: canvasSize)
+                    drawCurve(context: context, size: canvasSize)
+                    drawHoverLine(context: context, size: canvasSize)
+                    drawAxisTitles(context: context, size: canvasSize)
+                }
+                .contentShape(Rectangle())
+                // Point dragging is the only editing mode in this pass.
+                // Disabling segment dragging keeps the monotonic rules
+                // predictable while we tighten the core curve behavior.
+
+                controlPointsOverlay(size: size)
+                // Current position and Now label render last so they sit on top
+                // of the curve line and all control points.
+                currentPositionOverlay(size: size)
+                hoverTooltipOverlay(size: size)
+                chartLegendOverlay
+                appleAutoLabelOverlay(size: size)
+            }
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    mouseLocation = location
+                    if draggedIndex == nil {
+                        hoveredIndex = hoveredControlPointIndex(at: location, in: size)
+                    }
+                case .ended:
+                    mouseLocation = nil
+                    if draggedIndex == nil {
+                        hoveredIndex = nil
+                    }
+                }
+            }
         }
-        .contentShape(Rectangle())
-        // Point dragging is the only editing mode in this pass.
-        // Disabling segment dragging keeps the monotonic rules
-        // predictable while we tighten the core curve behavior.
-
-        controlPointsOverlay(size: size)
-        // Current position and Now label render last so they sit on top
-        // of the curve line and all control points.
-        currentPositionOverlay(size: size)
-        hoverTooltipOverlay(size: size)
-        chartLegendOverlay
-        appleAutoLabelOverlay(size: size)
-      }
-      .onContinuousHover { phase in
-        switch phase {
-        case .active(let location):
-          mouseLocation = location
-          if draggedIndex == nil {
-            hoveredIndex = hoveredControlPointIndex(at: location, in: size)
-          }
-        case .ended:
-          mouseLocation = nil
-          if draggedIndex == nil {
-            hoveredIndex = nil
-          }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .fancurveGlassCard(cornerRadius: 12)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .onAppear { activePhase = model.isActive ? 1.0 : 0.0 }
+        .onChange(of: model.isActive) { newActive in
+            withAnimation(.easeInOut(duration: 0.35)) {
+                activePhase = newActive ? 1.0 : 0.0
+            }
         }
-      }
+        .onAppear {
+            refreshRuntimeMarkerTargets()
+            displayedCommittedTemperature = targetCommittedTemperature
+            displayedCommittedPercent = targetCommittedPercent
+            displayedRawTemperature = targetRawTemperature
+            displayedRawPercent = targetRawPercent
+            startMarkerSmoothing()
+        }
+        .onChange(of: runtime.committedTemperature) { _ in
+            refreshRuntimeMarkerTargets()
+        }
+        .onChange(of: runtime.committedPercent) { _ in
+            refreshRuntimeMarkerTargets()
+        }
+        .onChange(of: runtime.rawPressureTemperature) { _ in
+            refreshRuntimeMarkerTargets()
+        }
+        .onChange(of: runtime.rawBaselinePercent) { _ in
+            refreshRuntimeMarkerTargets()
+        }
+        .onChange(of: runtime.activeAssistKinds) { _ in
+            refreshRuntimeMarkerTargets()
+        }
+        .onChange(of: boostEnabled) { _ in
+            refreshRuntimeMarkerTargets()
+        }
+        .onChange(of: renderMode) { _ in
+            startMarkerSmoothing()
+        }
+        .onDisappear {
+            markerSmoothingTask?.cancel()
+            markerSmoothingTask = nil
+            lastMarkerUpdateTime = nil
+        }
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    .fancurveGlassCard(cornerRadius: 12)
-    .clipShape(RoundedRectangle(cornerRadius: 12))
-    .onAppear { activePhase = model.isActive ? 1.0 : 0.0 }
-    .onChange(of: model.isActive) { newActive in
-      withAnimation(.easeInOut(duration: 0.35)) {
-        activePhase = newActive ? 1.0 : 0.0
-      }
-    }
-    .onAppear {
-      refreshRuntimeMarkerTargets()
-      displayedCommittedTemperature = targetCommittedTemperature
-      displayedCommittedPercent = targetCommittedPercent
-      displayedRawTemperature = targetRawTemperature
-      displayedRawPercent = targetRawPercent
-      startMarkerSmoothing()
-    }
-    .onChange(of: runtime.committedTemperature) { newTemperature in
-      refreshRuntimeMarkerTargets()
-    }
-    .onChange(of: runtime.committedPercent) { newPercent in
-      refreshRuntimeMarkerTargets()
-    }
-    .onChange(of: runtime.rawPressureTemperature) { newTemperature in
-      refreshRuntimeMarkerTargets()
-    }
-    .onChange(of: runtime.rawBaselinePercent) { newPercent in
-      refreshRuntimeMarkerTargets()
-    }
-    .onChange(of: runtime.activeAssistKinds) { _ in
-      refreshRuntimeMarkerTargets()
-    }
-    .onChange(of: boostEnabled) { _ in
-      refreshRuntimeMarkerTargets()
-    }
-    .onChange(of: renderMode) { _ in
-      startMarkerSmoothing()
-    }
-    .onDisappear {
-      markerSmoothingTask?.cancel()
-      markerSmoothingTask = nil
-      lastMarkerUpdateTime = nil
-    }
-  }
 
-  // MARK: - Header
+    // MARK: - Header
 
-  /// Compact caption above the chart. The window title already says
-  /// FanCurve, so a second H1 here would be redundant. A single caption
-  /// line carries the operational state and keeps the chart as the hero.
-  private var header: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      if model.isActive {
-        Circle()
-          .fill(Color(nsColor: .systemGreen))
-          .frame(width: 6, height: 6)
-        Text("Fans are following this curve")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      } else {
-        Circle()
-          .fill(Color.secondary.opacity(0.5))
-          .frame(width: 6, height: 6)
-        Text("Preview only. Turn on Fan Control to apply.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-      Spacer()
+    /// Compact caption above the chart. The window title already says
+    /// FanCurve, so a second H1 here would be redundant. A single caption
+    /// line carries the operational state and keeps the chart as the hero.
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if model.isActive {
+                Circle()
+                    .fill(Color(nsColor: .systemGreen))
+                    .frame(width: 6, height: 6)
+                Text("Fans are following this curve")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Circle()
+                    .fill(Color.secondary.opacity(0.5))
+                    .frame(width: 6, height: 6)
+                Text("Preview only. Turn on Fan Control to apply.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
     }
-  }
 
-  // MARK: - Current Position Overlay
+    // MARK: - Current Position Overlay
 
-  @ViewBuilder
-  private func currentPositionOverlay(size: CGSize) -> some View {
-    Group {
-      let committedTemp = displayedCommittedTemperature
-      let committedPercent = displayedCommittedPercent
-      let rawTemp = displayedRawTemperature
-      let rawPercent = displayedRawPercent
-      if committedTemp > 0, rawTemp > 0 {
-        let committedPos = dataToPixel(temp: committedTemp, percent: committedPercent, in: size)
-        let demandPercent = max(0, min(1, rawPercent))
-        let demandPos = dataToPixel(temp: rawTemp, percent: demandPercent, in: size)
-        let rawPos = CGPoint(
-          x: demandPos.x,
-          y: max(topPad + 10, min(size.height - bottomPad - 10, demandPos.y))
+    @ViewBuilder
+    private func currentPositionOverlay(size: CGSize) -> some View {
+        Group {
+            let committedTemp = displayedCommittedTemperature
+            let committedPercent = displayedCommittedPercent
+            let rawTemp = displayedRawTemperature
+            let rawPercent = displayedRawPercent
+            if committedTemp > 0, rawTemp > 0 {
+                let committedPos = dataToPixel(temp: committedTemp, percent: committedPercent, in: size)
+                let demandPercent = max(0, min(1, rawPercent))
+                let demandPos = dataToPixel(temp: rawTemp, percent: demandPercent, in: size)
+                let rawPos = CGPoint(
+                    x: demandPos.x,
+                    y: max(topPad + 10, min(size.height - bottomPad - 10, demandPos.y))
+                )
+                let plotLeft = leftPad
+                let zeroY = dataToPixel(temp: 20, percent: 0, in: size).y
+                let dashLine = StrokeStyle(lineWidth: 1, dash: [4, 4])
+
+                // Vertical dashed line from the actual dot down to the X axis.
+                // Uses a Shape with explicit height so .position() animates smoothly
+                // alongside the orange dot when the temperature changes.
+                DashedLine(axis: .vertical)
+                    .stroke(Color(nsColor: .systemOrange).opacity(0.25), style: dashLine)
+                    .frame(width: 1, height: max(0, zeroY - committedPos.y))
+                    .position(x: committedPos.x, y: (committedPos.y + zeroY) / 2)
+
+                // Horizontal dashed line from the Y axis to the actual dot.
+                // Balances the vertical guide and surfaces the current fan percent.
+                DashedLine(axis: .horizontal)
+                    .stroke(Color(nsColor: .systemOrange).opacity(0.25), style: dashLine)
+                    .frame(width: max(0, committedPos.x - plotLeft), height: 1)
+                    .position(x: (plotLeft + committedPos.x) / 2, y: committedPos.y)
+
+                Path { path in
+                    path.move(to: rawPos)
+                    path.addLine(to: committedPos)
+                }
+                .stroke(Color(nsColor: .systemOrange).opacity(0.24), style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
+
+                Circle()
+                    .fill(Color(nsColor: .windowBackgroundColor).opacity(0.96))
+                    .overlay(
+                        Circle().stroke(Color(nsColor: .systemOrange).opacity(0.58), lineWidth: 1.4)
+                    )
+                    .frame(width: 9, height: 9)
+                    .shadow(color: Color(nsColor: .systemOrange).opacity(0.18), radius: 2)
+                    .position(rawPos)
+                    .animation(.easeInOut(duration: 0.42), value: rawPos)
+
+                Circle()
+                    .fill(Color(nsColor: .systemOrange))
+                    .frame(width: 10, height: 10)
+                    .shadow(color: Color(nsColor: .systemOrange).opacity(0.5), radius: 6)
+                    .position(committedPos)
+                    .animation(.timingCurve(0.18, 0.82, 0.22, 1.0, duration: 0.55), value: committedPos)
+
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func refreshRuntimeMarkerTargets() {
+        if runtime.curveActive {
+            let committedTemperature =
+                runtime.committedTemperature > 0
+                ? runtime.committedTemperature
+                : runtime.governingTemperature
+            let demandTemperature = runtime.rawPressureTemperature ?? runtime.governingTemperature
+
+            targetCommittedPercent = runtime.committedPercent
+            targetCommittedTemperature = max(
+                plotTempRange.lowerBound, min(plotTempRange.upperBound, committedTemperature))
+            targetRawTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, demandTemperature))
+            targetRawPercent = runtime.rawBaselinePercent
+        } else {
+            let liveTemperature =
+                runtime.committedTemperature > 0
+                ? runtime.committedTemperature
+                : runtime.rawPressureTemperature ?? runtime.governingTemperature
+            guard liveTemperature > 0 else {
+                targetCommittedTemperature = 0
+                targetCommittedPercent = 0
+                targetRawTemperature = 0
+                targetRawPercent = 0
+                return
+            }
+
+            let clampedTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, liveTemperature))
+            let previewPercent = CurveInterpolation.evaluate(
+                at: clampedTemperature,
+                points: model.controlPoints,
+                mode: model.interpolationMode
+            )
+
+            // Fan Control off means the app is not commanding a target, but the
+            // chart should still preview where the visible curve would land for
+            // the current CPU temperature. Actual fan RPM can legitimately read as
+            // zero in system-auto mode, so using RPM here incorrectly parks the
+            // markers at the origin.
+            targetCommittedTemperature = stableMarkerTemperatureTarget(
+                currentTarget: targetCommittedTemperature,
+                proposedTemperature: clampedTemperature,
+                proposedPercent: previewPercent
+            )
+            targetCommittedPercent = previewPercent
+            targetRawTemperature = targetCommittedTemperature
+            targetRawPercent = previewPercent
+        }
+    }
+
+    private func stableMarkerTemperatureTarget(
+        currentTarget: Double,
+        proposedTemperature: Double,
+        proposedPercent: Double
+    ) -> Double {
+        guard currentTarget > 0 else { return proposedTemperature }
+        let currentPercent = CurveInterpolation.evaluate(
+            at: currentTarget,
+            points: model.controlPoints,
+            mode: model.interpolationMode
         )
+        // Flat or near-flat spans do not have a meaningful unique X position for
+        // a fan-speed target. Keep the target anchored unless the fan percent
+        // materially changes; otherwise tiny CPU temp jitter turns into stressful
+        // horizontal marker motion.
+        if abs(currentPercent - proposedPercent) < 0.006 {
+            return currentTarget
+        }
+        return proposedTemperature
+    }
+
+    @ViewBuilder
+    private var chartLegendOverlay: some View {
+        VStack {
+            HStack {
+                Spacer()
+                HStack(spacing: 12) {
+                    legendItem(
+                        fill: Color(nsColor: .systemOrange),
+                        stroke: nil,
+                        label: "Fan Now"
+                    )
+                    legendItem(
+                        fill: Color(nsColor: .windowBackgroundColor).opacity(0.96),
+                        stroke: Color(nsColor: .systemOrange).opacity(0.58),
+                        label: "Thermal Demand"
+                    )
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .fancurveGlassPill(
+                    in: Capsule(),
+                    fallbackFill: Color(nsColor: .windowBackgroundColor).opacity(0.92)
+                )
+            }
+            Spacer()
+        }
+        .padding(.top, 10)
+        .padding(.trailing, 12)
+        .allowsHitTesting(false)
+    }
+
+    private func legendItem(fill: Color, stroke: Color?, label: String) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(fill)
+                .overlay(
+                    Circle().stroke(stroke ?? .clear, lineWidth: stroke == nil ? 0 : 1.25)
+                )
+                .frame(width: 8, height: 8)
+            Text(label)
+                .font(.system(.caption2, design: .rounded).weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Grid and Axes
+
+    private func drawGrid(context: GraphicsContext, size: CGSize) {
+        let gridColor = Color.primary.opacity(0.05)
+        let labelColor = Color.secondary
+
         let plotLeft = leftPad
+        let plotRight = size.width - rightPad
+        let plotTop = topPad
+        let plotBottom = size.height - bottomPad
+
+        // Horizontal gridlines and Y axis labels (percent plus RPM)
+        for pct in stride(from: 0.0, through: 1.0, by: 0.2) {
+            let y = dataToPixel(temp: 20, percent: pct, in: size).y
+            var line = Path()
+            line.move(to: CGPoint(x: plotLeft, y: y))
+            line.addLine(to: CGPoint(x: plotRight, y: y))
+            context.stroke(line, with: .color(gridColor), lineWidth: 0.5)
+
+            let pctText = Text("\(Int(pct * 100))%")
+                .font(.system(.caption2, design: .rounded))
+                .foregroundColor(labelColor)
+            context.draw(pctText, at: CGPoint(x: plotLeft - 30, y: y), anchor: .center)
+
+            let rpm = Int(rpmRange.min + Float(pct) * (rpmRange.max - rpmRange.min))
+            let rpmText = Text(rpm.formatted())
+                .font(.system(size: 9, design: .rounded))
+                .foregroundColor(labelColor.opacity(0.6))
+            context.draw(rpmText, at: CGPoint(x: plotLeft - 30, y: y + 11), anchor: .center)
+        }
+
+        // Vertical gridlines and X axis labels use a separate visual scale.
+        // The draggable curve itself stays on fixed editor columns below; this
+        // axis only communicates that hot temperatures deserve more visual room.
+        for temp in stride(
+            from: plotTempRange.lowerBound,
+            through: plotTempRange.upperBound,
+            by: 10.0
+        ) {
+            let x = axisTempToPixel(temp: temp, in: size)
+            var line = Path()
+            line.move(to: CGPoint(x: x, y: plotTop))
+            line.addLine(to: CGPoint(x: x, y: plotBottom))
+            context.stroke(line, with: .color(gridColor), lineWidth: 0.5)
+
+            let labeledTemps: Set<Int> = [20, 40, 60, 70, 80, 90, 100, 110]
+            if labeledTemps.contains(Int(temp.rounded())) {
+                let text = Text("\(displayTemp(temp))\(unit.symbol)")
+                    .font(.system(size: 10, design: .rounded).weight(.medium))
+                    .foregroundColor(labelColor)
+                context.draw(text, at: CGPoint(x: x, y: plotBottom + 14), anchor: .center)
+            }
+        }
+    }
+
+    private func drawAxisTitles(context: GraphicsContext, size: CGSize) {
+        let titleColor = Color.secondary.opacity(0.8)
+
+        let xTitle = Text("Temperature (\(unit.symbol))")
+            .font(.system(.caption2, design: .rounded).weight(.medium))
+            .foregroundColor(titleColor)
+        context.draw(
+            xTitle,
+            at: CGPoint(x: (leftPad + size.width - rightPad) / 2, y: size.height - 12),
+            anchor: .center)
+
+        // Y axis title sits above the top tick. topPad leaves 16pt of space
+        // above the 100% tick for this label so the two do not overlap.
+        let yTitle = Text("Fan Speed (% / RPM)")
+            .font(.system(.caption2, design: .rounded).weight(.medium))
+            .foregroundColor(titleColor)
+        context.draw(
+            yTitle,
+            at: CGPoint(x: leftPad - 48, y: topPad - 24),
+            anchor: .leading)
+    }
+
+    // MARK: - Curve
+
+    private func drawCurve(context: GraphicsContext, size: CGSize) {
+        // Ghost always drawn but scaled by (1 - activePhase) so it fades in
+        // as fan control turns off.
+        drawGhostCurve(context: context, size: size, opacity: 1.0 - activePhase)
+
+        let pathPoints = CurveInterpolation.pathPoints(
+            points: model.controlPoints, mode: model.interpolationMode,
+            tempRange: plotTempRange, steps: 300)
+        guard !pathPoints.isEmpty else { return }
+
+        let pixelPoints = pathPoints.map { dataToPixel(temp: $0.0, percent: $0.1, in: size) }
+        let firstPt = pixelPoints.first!
+        let lastPt = pixelPoints.last!
         let zeroY = dataToPixel(temp: 20, percent: 0, in: size).y
-        let dashLine = StrokeStyle(lineWidth: 1, dash: [4, 4])
 
-        // Vertical dashed line from the actual dot down to the X axis.
-        // Uses a Shape with explicit height so .position() animates smoothly
-        // alongside the orange dot when the temperature changes.
-        DashedLine(axis: .vertical)
-          .stroke(Color(nsColor: .systemOrange).opacity(0.25), style: dashLine)
-          .frame(width: 1, height: max(0, zeroY - committedPos.y))
-          .position(x: committedPos.x, y: (committedPos.y + zeroY) / 2)
+        // Line is the smoothed polyline. Fill reuses the line path but
+        // closes back to the baseline so the gradient under the curve is
+        // bounded by the same smoothed shape.
+        let line = smoothedPath(through: pixelPoints)
+        var fill = line
+        fill.addLine(to: CGPoint(x: lastPt.x, y: zeroY))
+        fill.addLine(to: CGPoint(x: firstPt.x, y: zeroY))
+        fill.closeSubpath()
 
-        // Horizontal dashed line from the Y axis to the actual dot.
-        // Balances the vertical guide and surfaces the current fan percent.
-        DashedLine(axis: .horizontal)
-          .stroke(Color(nsColor: .systemOrange).opacity(0.25), style: dashLine)
-          .frame(width: max(0, committedPos.x - plotLeft), height: 1)
-          .position(x: (plotLeft + committedPos.x) / 2, y: committedPos.y)
+        let phase = activePhase
+        let inversePhase = 1.0 - activePhase
 
-        Path { path in
-          path.move(to: rawPos)
-          path.addLine(to: committedPos)
+        if phase > 0.01 {
+            context.fill(
+                fill,
+                with: .linearGradient(
+                    Gradient(colors: [curveColor.opacity(0.18 * phase), curveColor.opacity(0.0)]),
+                    startPoint: CGPoint(x: 0, y: topPad),
+                    endPoint: CGPoint(x: 0, y: size.height - bottomPad)))
+
+            context.stroke(
+                line, with: .color(curveColor.opacity(0.15 * phase)),
+                style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
+            context.stroke(
+                line, with: .color(curveColor.opacity(phase)),
+                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
         }
-        .stroke(Color(nsColor: .systemOrange).opacity(0.24), style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
 
-        Circle()
-          .fill(Color(nsColor: .windowBackgroundColor).opacity(0.96))
-          .overlay(
-            Circle().stroke(Color(nsColor: .systemOrange).opacity(0.58), lineWidth: 1.4)
-          )
-          .frame(width: 9, height: 9)
-          .shadow(color: Color(nsColor: .systemOrange).opacity(0.18), radius: 2)
-          .position(rawPos)
-          .animation(.easeInOut(duration: 0.42), value: rawPos)
-
-        Circle()
-          .fill(Color(nsColor: .systemOrange))
-          .frame(width: 10, height: 10)
-          .shadow(color: Color(nsColor: .systemOrange).opacity(0.5), radius: 6)
-          .position(committedPos)
-          .animation(.timingCurve(0.18, 0.82, 0.22, 1.0, duration: 0.55), value: committedPos)
-
-      }
-    }
-    .allowsHitTesting(false)
-  }
-
-  private func refreshRuntimeMarkerTargets() {
-    if runtime.curveActive {
-      let committedTemperature = runtime.committedTemperature > 0
-        ? runtime.committedTemperature
-        : runtime.governingTemperature
-      let demandTemperature = runtime.rawPressureTemperature ?? runtime.governingTemperature
-
-      targetCommittedPercent = runtime.committedPercent
-      targetCommittedTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, committedTemperature))
-      targetRawTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, demandTemperature))
-      targetRawPercent = runtime.rawBaselinePercent
-    } else {
-      let liveTemperature = runtime.committedTemperature > 0
-        ? runtime.committedTemperature
-        : runtime.rawPressureTemperature ?? runtime.governingTemperature
-      guard liveTemperature > 0 else {
-        targetCommittedTemperature = 0
-        targetCommittedPercent = 0
-        targetRawTemperature = 0
-        targetRawPercent = 0
-        return
-      }
-
-      let clampedTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, liveTemperature))
-      let previewPercent = CurveInterpolation.evaluate(
-        at: clampedTemperature,
-        points: model.controlPoints,
-        mode: model.interpolationMode
-      )
-
-      // Fan Control off means the app is not commanding a target, but the
-      // chart should still preview where the visible curve would land for
-      // the current CPU temperature. Actual fan RPM can legitimately read as
-      // zero in system-auto mode, so using RPM here incorrectly parks the
-      // markers at the origin.
-      targetCommittedTemperature = stableMarkerTemperatureTarget(
-        currentTarget: targetCommittedTemperature,
-        proposedTemperature: clampedTemperature,
-        proposedPercent: previewPercent
-      )
-      targetCommittedPercent = previewPercent
-      targetRawTemperature = targetCommittedTemperature
-      targetRawPercent = previewPercent
-    }
-  }
-
-  private func stableMarkerTemperatureTarget(
-    currentTarget: Double,
-    proposedTemperature: Double,
-    proposedPercent: Double
-  ) -> Double {
-    guard currentTarget > 0 else { return proposedTemperature }
-    let currentPercent = CurveInterpolation.evaluate(
-      at: currentTarget,
-      points: model.controlPoints,
-      mode: model.interpolationMode
-    )
-    // Flat or near-flat spans do not have a meaningful unique X position for
-    // a fan-speed target. Keep the target anchored unless the fan percent
-    // materially changes; otherwise tiny CPU temp jitter turns into stressful
-    // horizontal marker motion.
-    if abs(currentPercent - proposedPercent) < 0.006 {
-      return currentTarget
-    }
-    return proposedTemperature
-  }
-
-  @ViewBuilder
-  private var chartLegendOverlay: some View {
-    VStack {
-      HStack {
-        Spacer()
-        HStack(spacing: 12) {
-          legendItem(
-            fill: Color(nsColor: .systemOrange),
-            stroke: nil,
-            label: "Fan Now"
-          )
-          legendItem(
-            fill: Color(nsColor: .windowBackgroundColor).opacity(0.96),
-            stroke: Color(nsColor: .systemOrange).opacity(0.58),
-            label: "Thermal Demand"
-          )
+        if inversePhase > 0.01 {
+            context.stroke(
+                line, with: .color(Color.secondary.opacity(0.3 * inversePhase)),
+                style: StrokeStyle(lineWidth: 1.25, lineCap: .round, lineJoin: .round, dash: [4, 5]))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .fancurveGlassPill(
-          in: Capsule(),
-          fallbackFill: Color(nsColor: .windowBackgroundColor).opacity(0.92)
-        )
-      }
-      Spacer()
-    }
-    .padding(.top, 10)
-    .padding(.trailing, 12)
-    .allowsHitTesting(false)
-  }
-
-  private func legendItem(fill: Color, stroke: Color?, label: String) -> some View {
-    HStack(spacing: 5) {
-      Circle()
-        .fill(fill)
-        .overlay(
-          Circle().stroke(stroke ?? .clear, lineWidth: stroke == nil ? 0 : 1.25)
-        )
-        .frame(width: 8, height: 8)
-      Text(label)
-        .font(.system(.caption2, design: .rounded).weight(.medium))
-        .foregroundStyle(.secondary)
-    }
-  }
-
-  // MARK: - Grid and Axes
-
-  private func drawGrid(context: GraphicsContext, size: CGSize) {
-    let gridColor = Color.primary.opacity(0.05)
-    let labelColor = Color.secondary
-
-    let plotLeft = leftPad
-    let plotRight = size.width - rightPad
-    let plotTop = topPad
-    let plotBottom = size.height - bottomPad
-
-    // Horizontal gridlines and Y axis labels (percent plus RPM)
-    for pct in stride(from: 0.0, through: 1.0, by: 0.2) {
-      let y = dataToPixel(temp: 20, percent: pct, in: size).y
-      var line = Path()
-      line.move(to: CGPoint(x: plotLeft, y: y))
-      line.addLine(to: CGPoint(x: plotRight, y: y))
-      context.stroke(line, with: .color(gridColor), lineWidth: 0.5)
-
-      let pctText = Text("\(Int(pct * 100))%")
-        .font(.system(.caption2, design: .rounded))
-        .foregroundColor(labelColor)
-      context.draw(pctText, at: CGPoint(x: plotLeft - 30, y: y), anchor: .center)
-
-      let rpm = Int(rpmRange.min + Float(pct) * (rpmRange.max - rpmRange.min))
-      let rpmText = Text(rpm.formatted())
-        .font(.system(size: 9, design: .rounded))
-        .foregroundColor(labelColor.opacity(0.6))
-      context.draw(rpmText, at: CGPoint(x: plotLeft - 30, y: y + 11), anchor: .center)
     }
 
-    // Vertical gridlines and X axis labels use a separate visual scale.
-    // The draggable curve itself stays on fixed editor columns below; this
-    // axis only communicates that hot temperatures deserve more visual room.
-    for temp in stride(
-      from: plotTempRange.lowerBound,
-      through: plotTempRange.upperBound,
-      by: 10.0
-    ) {
-      let x = axisTempToPixel(temp: temp, in: size)
-      var line = Path()
-      line.move(to: CGPoint(x: x, y: plotTop))
-      line.addLine(to: CGPoint(x: x, y: plotBottom))
-      context.stroke(line, with: .color(gridColor), lineWidth: 0.5)
-
-      let labeledTemps: Set<Int> = [20, 40, 60, 70, 80, 90, 100, 110]
-      if labeledTemps.contains(Int(temp.rounded())) {
-        let text = Text("\(displayTemp(temp))\(unit.symbol)")
-          .font(.system(size: 10, design: .rounded).weight(.medium))
-          .foregroundColor(labelColor)
-        context.draw(text, at: CGPoint(x: x, y: plotBottom + 14), anchor: .center)
-      }
-    }
-  }
-
-  private func drawAxisTitles(context: GraphicsContext, size: CGSize) {
-    let titleColor = Color.secondary.opacity(0.8)
-
-    let xTitle = Text("Temperature (\(unit.symbol))")
-      .font(.system(.caption2, design: .rounded).weight(.medium))
-      .foregroundColor(titleColor)
-    context.draw(
-      xTitle,
-      at: CGPoint(x: (leftPad + size.width - rightPad) / 2, y: size.height - 12),
-      anchor: .center)
-
-    // Y axis title sits above the top tick. topPad leaves 16pt of space
-    // above the 100% tick for this label so the two do not overlap.
-    let yTitle = Text("Fan Speed (% / RPM)")
-      .font(.system(.caption2, design: .rounded).weight(.medium))
-      .foregroundColor(titleColor)
-    context.draw(
-      yTitle,
-      at: CGPoint(x: leftPad - 48, y: topPad - 24),
-      anchor: .leading)
-  }
-
-  // MARK: - Curve
-
-  private func drawCurve(context: GraphicsContext, size: CGSize) {
-    // Ghost always drawn but scaled by (1 - activePhase) so it fades in
-    // as fan control turns off.
-    drawGhostCurve(context: context, size: size, opacity: 1.0 - activePhase)
-
-    let pathPoints = CurveInterpolation.pathPoints(
-      points: model.controlPoints, mode: model.interpolationMode,
-      tempRange: plotTempRange, steps: 300)
-    guard !pathPoints.isEmpty else { return }
-
-    let pixelPoints = pathPoints.map { dataToPixel(temp: $0.0, percent: $0.1, in: size) }
-    let firstPt = pixelPoints.first!
-    let lastPt = pixelPoints.last!
-    let zeroY = dataToPixel(temp: 20, percent: 0, in: size).y
-
-    // Line is the smoothed polyline. Fill reuses the line path but
-    // closes back to the baseline so the gradient under the curve is
-    // bounded by the same smoothed shape.
-    let line = smoothedPath(through: pixelPoints)
-    var fill = line
-    fill.addLine(to: CGPoint(x: lastPt.x, y: zeroY))
-    fill.addLine(to: CGPoint(x: firstPt.x, y: zeroY))
-    fill.closeSubpath()
-
-    let phase = activePhase
-    let inversePhase = 1.0 - activePhase
-
-    if phase > 0.01 {
-      context.fill(
-        fill,
-        with: .linearGradient(
-          Gradient(colors: [curveColor.opacity(0.18 * phase), curveColor.opacity(0.0)]),
-          startPoint: CGPoint(x: 0, y: topPad),
-          endPoint: CGPoint(x: 0, y: size.height - bottomPad)))
-
-      context.stroke(
-        line, with: .color(curveColor.opacity(0.15 * phase)),
-        style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
-      context.stroke(
-        line, with: .color(curveColor.opacity(phase)),
-        style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+    /// Builds a visually-smoothed path through a sampled polyline by
+    /// replacing straight segments with quadratic Beziers through the
+    /// midpoint of each pair. This rounds micro-corners that appear when
+    /// adjacent control points sit close in temperature with a big
+    /// percent jump. Evaluation stays authoritative; only rendering is
+    /// smoothed.
+    private func smoothedPath(through pts: [CGPoint]) -> Path {
+        var path = Path()
+        guard let first = pts.first else { return path }
+        path.move(to: first)
+        guard pts.count >= 3 else {
+            for p in pts.dropFirst() { path.addLine(to: p) }
+            return path
+        }
+        for i in 1..<(pts.count - 1) {
+            let mid = CGPoint(
+                x: (pts[i].x + pts[i + 1].x) / 2,
+                y: (pts[i].y + pts[i + 1].y) / 2)
+            path.addQuadCurve(to: mid, control: pts[i])
+        }
+        path.addLine(to: pts.last!)
+        return path
     }
 
-    if inversePhase > 0.01 {
-      context.stroke(
-        line, with: .color(Color.secondary.opacity(0.3 * inversePhase)),
-        style: StrokeStyle(lineWidth: 1.25, lineCap: .round, lineJoin: .round, dash: [4, 5]))
+    /// Renders the Apple Silent preset as a dashed accent-colored guide
+    /// showing roughly what macOS governs when the user curve is off. The
+    /// `opacity` parameter drives the crossfade from active to inactive.
+    private func drawGhostCurve(context: GraphicsContext, size: CGSize, opacity: Double) {
+        guard opacity > 0.01 else { return }
+        let ghostPoints = CurvePresets.appleSilent.curvePoints()
+        let pathPoints = CurveInterpolation.pathPoints(
+            points: ghostPoints, mode: .catmullRom,
+            tempRange: plotTempRange, steps: 300)
+        guard !pathPoints.isEmpty else { return }
+
+        let pixelPoints = pathPoints.map { dataToPixel(temp: $0.0, percent: $0.1, in: size) }
+        let line = smoothedPath(through: pixelPoints)
+        context.stroke(
+            line,
+            with: .color(curveColor.opacity(0.75 * opacity)),
+            style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round, dash: [5, 4]))
     }
-  }
 
-  /// Builds a visually-smoothed path through a sampled polyline by
-  /// replacing straight segments with quadratic Beziers through the
-  /// midpoint of each pair. This rounds micro-corners that appear when
-  /// adjacent control points sit close in temperature with a big
-  /// percent jump. Evaluation stays authoritative; only rendering is
-  /// smoothed.
-  private func smoothedPath(through pts: [CGPoint]) -> Path {
-    var path = Path()
-    guard let first = pts.first else { return path }
-    path.move(to: first)
-    guard pts.count >= 3 else {
-      for p in pts.dropFirst() { path.addLine(to: p) }
-      return path
-    }
-    for i in 1..<(pts.count - 1) {
-      let mid = CGPoint(
-        x: (pts[i].x + pts[i + 1].x) / 2,
-        y: (pts[i].y + pts[i + 1].y) / 2)
-      path.addQuadCurve(to: mid, control: pts[i])
-    }
-    path.addLine(to: pts.last!)
-    return path
-  }
+    // MARK: - Hover Tooltip
 
-  /// Renders the Apple Silent preset as a dashed accent-colored guide
-  /// showing roughly what macOS governs when the user curve is off. The
-  /// `opacity` parameter drives the crossfade from active to inactive.
-  private func drawGhostCurve(context: GraphicsContext, size: CGSize, opacity: Double) {
-    guard opacity > 0.01 else { return }
-    let ghostPoints = CurvePresets.appleSilent.curvePoints()
-    let pathPoints = CurveInterpolation.pathPoints(
-      points: ghostPoints, mode: .catmullRom,
-      tempRange: plotTempRange, steps: 300)
-    guard !pathPoints.isEmpty else { return }
+    private func drawHoverLine(context: GraphicsContext, size: CGSize) {
+        guard let mouse = mouseLocation else { return }
+        guard draggedIndex == nil, hoveredIndex == nil else { return }
+        let data = pixelToData(mouse, in: size)
+        guard data.x >= plotTempRange.lowerBound, data.x <= plotTempRange.upperBound else { return }
 
-    let pixelPoints = pathPoints.map { dataToPixel(temp: $0.0, percent: $0.1, in: size) }
-    let line = smoothedPath(through: pixelPoints)
-    context.stroke(
-      line,
-      with: .color(curveColor.opacity(0.75 * opacity)),
-      style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round, dash: [5, 4]))
-  }
-
-  // MARK: - Hover Tooltip
-
-  private func drawHoverLine(context: GraphicsContext, size: CGSize) {
-    guard let mouse = mouseLocation else { return }
-    guard draggedIndex == nil, hoveredIndex == nil else { return }
-    let data = pixelToData(mouse, in: size)
-    guard data.x >= plotTempRange.lowerBound, data.x <= plotTempRange.upperBound else { return }
-
-    let percent = model.evaluate(at: data.x)
-    let pos = dataToPixel(temp: data.x, percent: percent, in: size)
-    let plotTop = topPad
-    let plotBottom = size.height - bottomPad
-
-    var vLine = Path()
-    vLine.move(to: CGPoint(x: pos.x, y: plotTop))
-    vLine.addLine(to: CGPoint(x: pos.x, y: plotBottom))
-    context.stroke(vLine, with: .color(Color.primary.opacity(0.08)), lineWidth: 0.5)
-
-    let dotRect = CGRect(x: pos.x - 4, y: pos.y - 4, width: 8, height: 8)
-    context.fill(Circle().path(in: dotRect), with: .color(curveColor.opacity(0.6)))
-
-    // Tooltip text and pill are rendered outside of Canvas by
-    // `hoverTooltipOverlay`. This keeps the pill position animatable.
-    _ = plotTop
-    _ = plotBottom
-    _ = percent
-    _ = pos
-  }
-
-  /// "System Default" pill placed just below the ghost line in the open
-  /// triangle under the rising portion of the curve. Fades with
-  /// activePhase so it only shows when Fan Control is off. Uses the
-  /// same pill treatment as the Now label.
-  @ViewBuilder
-  private func appleAutoLabelOverlay(size: CGSize) -> some View {
-    let inverse = 1.0 - activePhase
-    if inverse > 0.01 {
-      // Anchor at the midpoint of the rising ramp, offset slightly
-      // below the line so it sits in the open area beneath the dash.
-      let ghostAt = CurveInterpolation.evaluate(
-        at: 92,
-        points: CurvePresets.appleSilent.curvePoints(),
-        mode: .catmullRom)
-      let anchor = dataToPixel(temp: 92, percent: ghostAt, in: size)
-      let text = Text("System Default")
-        .font(.system(.caption2, design: .rounded).weight(.medium))
-        .foregroundColor(curveColor)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-
-      text
-        .fancurveGlassPill(
-          in: RoundedRectangle(cornerRadius: 4),
-          fallbackFill: Color(nsColor: .windowBackgroundColor),
-          stroke: curveColor.opacity(0.35))
-      .opacity(inverse)
-      .position(x: anchor.x - 34, y: anchor.y + 16)
-      .allowsHitTesting(false)
-    }
-  }
-
-  /// Tooltip pill with Liquid Glass when available.
-  @ViewBuilder
-  private func tooltipPill(temp: Double, percent: Double, rpm: Int) -> some View {
-    let label = Text("\(displayTemp(temp))\(unit.symbol)  \(Int(percent * 100))%  \(rpm.formatted()) RPM")
-      .font(.system(.caption2, design: .rounded).weight(.medium))
-      .foregroundColor(Color.primary.opacity(0.95))
-      .padding(.horizontal, 7)
-      .padding(.vertical, 3)
-
-    label
-      .fancurveGlassPill(
-        in: RoundedRectangle(cornerRadius: 5),
-        fallbackFill: Color(nsColor: .windowBackgroundColor).opacity(0.92))
-  }
-
-  /// Tooltip rendered as a real SwiftUI view so its .position animates
-  /// between frames instead of snapping on every mouse sample.
-  @ViewBuilder
-  private func hoverTooltipOverlay(size: CGSize) -> some View {
-    if let mouse = mouseLocation, draggedIndex == nil, hoveredIndex == nil {
-      let data = pixelToData(mouse, in: size)
-      if data.x >= plotTempRange.lowerBound, data.x <= plotTempRange.upperBound {
         let percent = model.evaluate(at: data.x)
         let pos = dataToPixel(temp: data.x, percent: percent, in: size)
-        let rpm = Int(rpmRange.min + Float(percent) * (rpmRange.max - rpmRange.min))
-        let tooltipY = pos.y > topPad + 32 ? pos.y - 26 : pos.y + 26
+        let plotTop = topPad
+        let plotBottom = size.height - bottomPad
 
-        // Only show the tooltip when the mouse is close to (or below) the
-        // curve line. Far above it the user is not actually probing the
-        // curve and a floating pill just adds noise.
-        let distanceFromCurve = mouse.y - pos.y
-        let showTooltip = distanceFromCurve > -30
+        var vLine = Path()
+        vLine.move(to: CGPoint(x: pos.x, y: plotTop))
+        vLine.addLine(to: CGPoint(x: pos.x, y: plotBottom))
+        context.stroke(vLine, with: .color(Color.primary.opacity(0.08)), lineWidth: 0.5)
 
-        if showTooltip {
-          tooltipPill(temp: data.x, percent: percent, rpm: rpm)
-            .position(x: pos.x, y: tooltipY)
-            .animation(.easeOut(duration: 0.12), value: pos)
-            .transition(.opacity)
-            .allowsHitTesting(false)
-        }
-      }
+        let dotRect = CGRect(x: pos.x - 4, y: pos.y - 4, width: 8, height: 8)
+        context.fill(Circle().path(in: dotRect), with: .color(curveColor.opacity(0.6)))
+
+        // Tooltip text and pill are rendered outside of Canvas by
+        // `hoverTooltipOverlay`. This keeps the pill position animatable.
+        _ = plotTop
+        _ = plotBottom
+        _ = percent
+        _ = pos
     }
-  }
 
-  // MARK: - Control Points
+    /// "System Default" pill placed just below the ghost line in the open
+    /// triangle under the rising portion of the curve. Fades with
+    /// activePhase so it only shows when Fan Control is off. Uses the
+    /// same pill treatment as the Now label.
+    @ViewBuilder
+    private func appleAutoLabelOverlay(size: CGSize) -> some View {
+        let inverse = 1.0 - activePhase
+        if inverse > 0.01 {
+            // Anchor at the midpoint of the rising ramp, offset slightly
+            // below the line so it sits in the open area beneath the dash.
+            let ghostAt = CurveInterpolation.evaluate(
+                at: 92,
+                points: CurvePresets.appleSilent.curvePoints(),
+                mode: .catmullRom)
+            let anchor = dataToPixel(temp: 92, percent: ghostAt, in: size)
+            let text = Text("System Default")
+                .font(.system(.caption2, design: .rounded).weight(.medium))
+                .foregroundColor(curveColor)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
 
-  @ViewBuilder
-  private func controlPointsOverlay(size: CGSize) -> some View {
-    ForEach(Array(model.controlPoints.enumerated()), id: \.element.id) { index, point in
-      controlPointView(index: index, point: point, size: size)
-    }
-  }
-
-  private func controlPointView(index: Int, point: CurvePoint, size: CGSize) -> some View {
-    let pos = dataToPixel(temp: point.temperature, percent: point.fanPercent, in: size)
-    let isHighlighted = hoveredIndex == index || draggedIndex == index
-
-    let strokeColor: Color = model.isActive ? curveColor : Color.secondary
-    return Circle()
-      .fill(Color(nsColor: .textBackgroundColor))
-      .frame(width: isHighlighted ? 14 : 10, height: isHighlighted ? 14 : 10)
-      .overlay(Circle().stroke(strokeColor, lineWidth: isHighlighted ? 2.5 : 1.5))
-      .shadow(color: strokeColor.opacity(0.25), radius: isHighlighted ? 6 : 2)
-      .padding(controlPointHitRadius - ((isHighlighted ? 14 : 10) / 2))
-      .contentShape(Circle())
-      .position(pos)
-      .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHighlighted)
-      .animation(.easeInOut(duration: 0.35), value: model.isActive)
-      .gesture(dragGesture(index: index, size: size))
-  }
-
-  // MARK: - Gestures
-
-  private func dragGesture(index: Int, size: CGSize) -> some Gesture {
-    DragGesture(minimumDistance: 0)
-      .onChanged { value in
-        if draggedIndex != index || dragBaselinePercents == nil {
-          dragBaselinePercents = model.controlPoints.map(\.fanPercent)
+            text
+                .fancurveGlassPill(
+                    in: RoundedRectangle(cornerRadius: 4),
+                    fallbackFill: Color(nsColor: .windowBackgroundColor),
+                    stroke: curveColor.opacity(0.35)
+                )
+                .opacity(inverse)
+                .position(x: anchor.x - 34, y: anchor.y + 16)
+                .allowsHitTesting(false)
         }
-        draggedIndex = index
-        hoveredIndex = index
-        var data = pixelToData(value.location, in: size)
-        data.y = max(0, min(1, data.y))
-        applyDraggedPoint(at: index, proposedPercent: data.y)
-      }
-      .onEnded { value in
-        draggedIndex = nil
-        dragBaselinePercents = nil
-        hoveredIndex = hoveredControlPointIndex(at: value.location, in: size)
-      }
-  }
+    }
 
-  private func hoveredControlPointIndex(at location: CGPoint, in size: CGSize) -> Int? {
-    model.controlPoints.enumerated()
-      .compactMap { index, point -> (index: Int, distance: CGFloat)? in
+    /// Tooltip pill with Liquid Glass when available.
+    @ViewBuilder
+    private func tooltipPill(temp: Double, percent: Double, rpm: Int) -> some View {
+        let label = Text("\(displayTemp(temp))\(unit.symbol)  \(Int(percent * 100))%  \(rpm.formatted()) RPM")
+            .font(.system(.caption2, design: .rounded).weight(.medium))
+            .foregroundColor(Color.primary.opacity(0.95))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+
+        label
+            .fancurveGlassPill(
+                in: RoundedRectangle(cornerRadius: 5),
+                fallbackFill: Color(nsColor: .windowBackgroundColor).opacity(0.92))
+    }
+
+    /// Tooltip rendered as a real SwiftUI view so its .position animates
+    /// between frames instead of snapping on every mouse sample.
+    @ViewBuilder
+    private func hoverTooltipOverlay(size: CGSize) -> some View {
+        if let mouse = mouseLocation, draggedIndex == nil, hoveredIndex == nil {
+            let data = pixelToData(mouse, in: size)
+            if data.x >= plotTempRange.lowerBound, data.x <= plotTempRange.upperBound {
+                let percent = model.evaluate(at: data.x)
+                let pos = dataToPixel(temp: data.x, percent: percent, in: size)
+                let rpm = Int(rpmRange.min + Float(percent) * (rpmRange.max - rpmRange.min))
+                let tooltipY = pos.y > topPad + 32 ? pos.y - 26 : pos.y + 26
+
+                // Only show the tooltip when the mouse is close to (or below) the
+                // curve line. Far above it the user is not actually probing the
+                // curve and a floating pill just adds noise.
+                let distanceFromCurve = mouse.y - pos.y
+                let showTooltip = distanceFromCurve > -30
+
+                if showTooltip {
+                    tooltipPill(temp: data.x, percent: percent, rpm: rpm)
+                        .position(x: pos.x, y: tooltipY)
+                        .animation(.easeOut(duration: 0.12), value: pos)
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                }
+            }
+        }
+    }
+
+    // MARK: - Control Points
+
+    @ViewBuilder
+    private func controlPointsOverlay(size: CGSize) -> some View {
+        ForEach(Array(model.controlPoints.enumerated()), id: \.element.id) { index, point in
+            controlPointView(index: index, point: point, size: size)
+        }
+    }
+
+    private func controlPointView(index: Int, point: CurvePoint, size: CGSize) -> some View {
         let pos = dataToPixel(temp: point.temperature, percent: point.fanPercent, in: size)
-        let distance = hypot(pos.x - location.x, pos.y - location.y)
-        guard distance <= controlPointHitRadius else { return nil }
-        return (index, distance)
-      }
-      .min { lhs, rhs in lhs.distance < rhs.distance }?
-      .index
-  }
+        let isHighlighted = hoveredIndex == index || draggedIndex == index
 
-  private func startMarkerSmoothing() {
-    markerSmoothingTask?.cancel()
-    lastMarkerUpdateTime = nil
-    markerSmoothingTask = Task { @MainActor in
-      let clock = ContinuousClock()
-      while !Task.isCancelled {
-        let now = clock.now
-        let deltaSeconds: Double
-        if let lastMarkerUpdateTime {
-          deltaSeconds = Double(lastMarkerUpdateTime.duration(to: now).components.seconds)
-            + Double(lastMarkerUpdateTime.duration(to: now).components.attoseconds) / 1e18
-        } else {
-          deltaSeconds = Double(markerSmoothingInterval) / 1e9
+        let strokeColor: Color = model.isActive ? curveColor : Color.secondary
+        return Circle()
+            .fill(Color(nsColor: .textBackgroundColor))
+            .frame(width: isHighlighted ? 14 : 10, height: isHighlighted ? 14 : 10)
+            .overlay(Circle().stroke(strokeColor, lineWidth: isHighlighted ? 2.5 : 1.5))
+            .shadow(color: strokeColor.opacity(0.25), radius: isHighlighted ? 6 : 2)
+            .padding(controlPointHitRadius - ((isHighlighted ? 14 : 10) / 2))
+            .contentShape(Circle())
+            .position(pos)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHighlighted)
+            .animation(.easeInOut(duration: 0.35), value: model.isActive)
+            .gesture(dragGesture(index: index, size: size))
+    }
+
+    // MARK: - Gestures
+
+    private func dragGesture(index: Int, size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if draggedIndex != index || dragBaselinePercents == nil {
+                    dragBaselinePercents = model.controlPoints.map(\.fanPercent)
+                }
+                draggedIndex = index
+                hoveredIndex = index
+                var data = pixelToData(value.location, in: size)
+                data.y = max(0, min(1, data.y))
+                applyDraggedPoint(at: index, proposedPercent: data.y)
+            }
+            .onEnded { value in
+                draggedIndex = nil
+                dragBaselinePercents = nil
+                hoveredIndex = hoveredControlPointIndex(at: value.location, in: size)
+            }
+    }
+
+    private func hoveredControlPointIndex(at location: CGPoint, in size: CGSize) -> Int? {
+        model.controlPoints.enumerated()
+            .compactMap { index, point -> (index: Int, distance: CGFloat)? in
+                let pos = dataToPixel(temp: point.temperature, percent: point.fanPercent, in: size)
+                let distance = hypot(pos.x - location.x, pos.y - location.y)
+                guard distance <= controlPointHitRadius else { return nil }
+                return (index, distance)
+            }
+            .min { lhs, rhs in lhs.distance < rhs.distance }?
+            .index
+    }
+
+    private func startMarkerSmoothing() {
+        markerSmoothingTask?.cancel()
+        lastMarkerUpdateTime = nil
+        markerSmoothingTask = Task { @MainActor in
+            let clock = ContinuousClock()
+            while !Task.isCancelled {
+                let now = clock.now
+                let deltaSeconds: Double
+                if let lastMarkerUpdateTime {
+                    deltaSeconds =
+                        Double(lastMarkerUpdateTime.duration(to: now).components.seconds)
+                        + Double(lastMarkerUpdateTime.duration(to: now).components.attoseconds) / 1e18
+                } else {
+                    deltaSeconds = Double(markerSmoothingInterval) / 1e9
+                }
+                lastMarkerUpdateTime = now
+
+                displayedCommittedTemperature = smoothlyApproach(
+                    current: displayedCommittedTemperature,
+                    target: targetCommittedTemperature,
+                    deltaSeconds: deltaSeconds,
+                    halfLife: committedMarkerTemperatureHalfLife,
+                    maxDeltaPerSecond: committedMarkerTemperatureLimitCPerSecond
+                )
+                displayedCommittedPercent = smoothlyApproach(
+                    current: displayedCommittedPercent,
+                    target: targetCommittedPercent,
+                    deltaSeconds: deltaSeconds,
+                    halfLife: committedMarkerPercentHalfLife,
+                    maxDeltaPerSecond: committedMarkerPercentLimitPerSecond
+                )
+                displayedRawTemperature = smoothlyApproach(
+                    current: displayedRawTemperature,
+                    target: targetRawTemperature,
+                    deltaSeconds: deltaSeconds,
+                    halfLife: rawMarkerTemperatureHalfLife,
+                    maxDeltaPerSecond: rawMarkerTemperatureLimitCPerSecond
+                )
+                displayedRawPercent = smoothlyApproach(
+                    current: displayedRawPercent,
+                    target: targetRawPercent,
+                    deltaSeconds: deltaSeconds,
+                    halfLife: rawMarkerPercentHalfLife,
+                    maxDeltaPerSecond: rawMarkerPercentLimitPerSecond
+                )
+                try? await Task.sleep(nanoseconds: renderMode.markerSmoothingIntervalNanoseconds)
+            }
         }
-        self.lastMarkerUpdateTime = now
-
-        displayedCommittedTemperature = smoothlyApproach(
-          current: displayedCommittedTemperature,
-          target: targetCommittedTemperature,
-          deltaSeconds: deltaSeconds,
-          halfLife: committedMarkerTemperatureHalfLife,
-          maxDeltaPerSecond: committedMarkerTemperatureLimitCPerSecond
-        )
-        displayedCommittedPercent = smoothlyApproach(
-          current: displayedCommittedPercent,
-          target: targetCommittedPercent,
-          deltaSeconds: deltaSeconds,
-          halfLife: committedMarkerPercentHalfLife,
-          maxDeltaPerSecond: committedMarkerPercentLimitPerSecond
-        )
-        displayedRawTemperature = smoothlyApproach(
-          current: displayedRawTemperature,
-          target: targetRawTemperature,
-          deltaSeconds: deltaSeconds,
-          halfLife: rawMarkerTemperatureHalfLife,
-          maxDeltaPerSecond: rawMarkerTemperatureLimitCPerSecond
-        )
-        displayedRawPercent = smoothlyApproach(
-          current: displayedRawPercent,
-          target: targetRawPercent,
-          deltaSeconds: deltaSeconds,
-          halfLife: rawMarkerPercentHalfLife,
-          maxDeltaPerSecond: rawMarkerPercentLimitPerSecond
-        )
-        try? await Task.sleep(nanoseconds: renderMode.markerSmoothingIntervalNanoseconds)
-      }
-    }
-  }
-
-  private func smoothlyApproach(
-    current: Double,
-    target: Double,
-    deltaSeconds: Double,
-    halfLife: Double,
-    maxDeltaPerSecond: Double
-  ) -> Double {
-    guard halfLife > 0, deltaSeconds > 0 else { return target }
-    let decay = pow(0.5, deltaSeconds / halfLife)
-    let unconstrained = target + (current - target) * decay
-    let maxStep = maxDeltaPerSecond * deltaSeconds
-    let delta = max(-maxStep, min(maxStep, unconstrained - current))
-    let next = current + delta
-    return abs(next - target) < 0.0001 ? target : next
-  }
-
-  /// Fixed-column monotonic editor:
-  /// only Y values move. Dragging a point upward cascades rightward as needed;
-  /// dragging downward cascades leftward as needed.
-  private func applyDraggedPoint(at index: Int, proposedPercent: Double) {
-    var percents = model.controlPoints.map(\.fanPercent)
-    percents[index] = proposedPercent
-
-    if index > 0 {
-      for pointIndex in stride(from: index - 1, through: 0, by: -1) {
-        percents[pointIndex] = min(percents[pointIndex], percents[pointIndex + 1])
-      }
     }
 
-    if index < percents.count - 1 {
-      for pointIndex in (index + 1)..<percents.count {
-        percents[pointIndex] = max(percents[pointIndex], percents[pointIndex - 1])
-      }
+    private func smoothlyApproach(
+        current: Double,
+        target: Double,
+        deltaSeconds: Double,
+        halfLife: Double,
+        maxDeltaPerSecond: Double
+    ) -> Double {
+        guard halfLife > 0, deltaSeconds > 0 else { return target }
+        let decay = pow(0.5, deltaSeconds / halfLife)
+        let unconstrained = target + (current - target) * decay
+        let maxStep = maxDeltaPerSecond * deltaSeconds
+        let delta = max(-maxStep, min(maxStep, unconstrained - current))
+        let next = current + delta
+        return abs(next - target) < 0.0001 ? target : next
     }
 
-    for pointIndex in model.controlPoints.indices {
-      model.controlPoints[pointIndex].fanPercent = max(0.0, min(1.0, percents[pointIndex]))
-    }
-  }
+    /// Fixed-column monotonic editor:
+    /// only Y values move. Dragging a point upward cascades rightward as needed;
+    /// dragging downward cascades leftward as needed.
+    private func applyDraggedPoint(at index: Int, proposedPercent: Double) {
+        var percents = model.controlPoints.map(\.fanPercent)
+        percents[index] = proposedPercent
 
-  // MARK: - Coordinate Mapping
+        if index > 0 {
+            for pointIndex in stride(from: index - 1, through: 0, by: -1) {
+                percents[pointIndex] = min(percents[pointIndex], percents[pointIndex + 1])
+            }
+        }
 
-  private func dataToPixel(temp: Double, percent: Double, in size: CGSize) -> CGPoint {
-    let w = size.width - leftPad - rightPad
-    let h = size.height - topPad - bottomPad
-    let clampedTemp = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, temp))
-    let clampedPercent = max(0, min(1, percent))
-    let x = leftPad + CGFloat(editorFraction(for: clampedTemp)) * w
-    let y = topPad + CGFloat(1 - clampedPercent) * h
-    return CGPoint(x: x, y: y)
-  }
+        if index < percents.count - 1 {
+            for pointIndex in (index + 1)..<percents.count {
+                percents[pointIndex] = max(percents[pointIndex], percents[pointIndex - 1])
+            }
+        }
 
-  private func pixelToData(_ pt: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
-    let w = size.width - leftPad - rightPad
-    let h = size.height - topPad - bottomPad
-    let fraction = Double((pt.x - leftPad) / w)
-    let temp = editorTemperature(for: fraction)
-    let percent = 1.0 - Double((pt.y - topPad) / h)
-    return (temp, percent)
-  }
-
-  /// Editor coordinates are fixed, evenly spaced columns. This keeps
-  /// dragging predictable and gives the upper thermal range more authored
-  /// control points without making handles ride the warped axis labels.
-  private func editorFraction(for temp: Double) -> Double {
-    let columns = CurveColumns.temperatures()
-    guard columns.count > 1 else { return 0 }
-    let clamped = max(columns[0], min(columns[columns.count - 1], temp))
-
-    for index in 0..<(columns.count - 1) {
-      let lower = columns[index]
-      let upper = columns[index + 1]
-      guard clamped <= upper || index == columns.count - 2 else { continue }
-      let local = upper == lower ? 0 : (clamped - lower) / (upper - lower)
-      return (Double(index) + local) / Double(columns.count - 1)
+        for pointIndex in model.controlPoints.indices {
+            model.controlPoints[pointIndex].fanPercent = max(0.0, min(1.0, percents[pointIndex]))
+        }
     }
 
-    return 1
-  }
+    // MARK: - Coordinate Mapping
 
-  private func editorTemperature(for fraction: Double) -> Double {
-    let columns = CurveColumns.temperatures()
-    guard columns.count > 1 else { return columns.first ?? plotTempRange.lowerBound }
-    let clamped = max(0, min(1, fraction))
-    let scaled = clamped * Double(columns.count - 1)
-    let index = min(columns.count - 2, max(0, Int(floor(scaled))))
-    let local = scaled - Double(index)
-    return columns[index] + (columns[index + 1] - columns[index]) * local
-  }
-
-  /// Visual-only x axis scale. Low temperatures are compressed; the hot
-  /// range is expanded. It intentionally does not define handle positions.
-  private func axisTempToPixel(temp: Double, in size: CGSize) -> CGFloat {
-    let w = size.width - leftPad - rightPad
-    return leftPad + CGFloat(axisFraction(for: temp)) * w
-  }
-
-  private func axisFraction(for temp: Double) -> Double {
-    let anchors: [(temp: Double, fraction: Double)] = [
-      (20, 0.00),
-      (40, 0.08),
-      (60, 0.20),
-      (80, 0.50),
-      (100, 0.82),
-      (110, 1.00)
-    ]
-    let clamped = max(anchors[0].temp, min(anchors[anchors.count - 1].temp, temp))
-
-    for index in 0..<(anchors.count - 1) {
-      let lower = anchors[index]
-      let upper = anchors[index + 1]
-      guard clamped <= upper.temp || index == anchors.count - 2 else { continue }
-      let linear = (clamped - lower.temp) / (upper.temp - lower.temp)
-      return lower.fraction + (upper.fraction - lower.fraction) * linear
+    private func dataToPixel(temp: Double, percent: Double, in size: CGSize) -> CGPoint {
+        let w = size.width - leftPad - rightPad
+        let h = size.height - topPad - bottomPad
+        let clampedTemp = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, temp))
+        let clampedPercent = max(0, min(1, percent))
+        let x = leftPad + CGFloat(editorFraction(for: clampedTemp)) * w
+        let y = topPad + CGFloat(1 - clampedPercent) * h
+        return CGPoint(x: x, y: y)
     }
 
-    return 1
-  }
+    private func pixelToData(_ pt: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
+        let w = size.width - leftPad - rightPad
+        let h = size.height - topPad - bottomPad
+        let fraction = Double((pt.x - leftPad) / w)
+        let temp = editorTemperature(for: fraction)
+        let percent = 1.0 - Double((pt.y - topPad) / h)
+        return (temp, percent)
+    }
+
+    /// Editor coordinates are fixed, evenly spaced columns. This keeps
+    /// dragging predictable and gives the upper thermal range more authored
+    /// control points without making handles ride the warped axis labels.
+    private func editorFraction(for temp: Double) -> Double {
+        let columns = CurveColumns.temperatures()
+        guard columns.count > 1 else { return 0 }
+        let clamped = max(columns[0], min(columns[columns.count - 1], temp))
+
+        for index in 0..<(columns.count - 1) {
+            let lower = columns[index]
+            let upper = columns[index + 1]
+            guard clamped <= upper || index == columns.count - 2 else { continue }
+            let local = upper == lower ? 0 : (clamped - lower) / (upper - lower)
+            return (Double(index) + local) / Double(columns.count - 1)
+        }
+
+        return 1
+    }
+
+    private func editorTemperature(for fraction: Double) -> Double {
+        let columns = CurveColumns.temperatures()
+        guard columns.count > 1 else { return columns.first ?? plotTempRange.lowerBound }
+        let clamped = max(0, min(1, fraction))
+        let scaled = clamped * Double(columns.count - 1)
+        let index = min(columns.count - 2, max(0, Int(floor(scaled))))
+        let local = scaled - Double(index)
+        return columns[index] + (columns[index + 1] - columns[index]) * local
+    }
+
+    /// Visual-only x axis scale. Low temperatures are compressed; the hot
+    /// range is expanded. It intentionally does not define handle positions.
+    private func axisTempToPixel(temp: Double, in size: CGSize) -> CGFloat {
+        let w = size.width - leftPad - rightPad
+        return leftPad + CGFloat(axisFraction(for: temp)) * w
+    }
+
+    private func axisFraction(for temp: Double) -> Double {
+        let anchors: [(temp: Double, fraction: Double)] = [
+            (20, 0.00),
+            (40, 0.08),
+            (60, 0.20),
+            (80, 0.50),
+            (100, 0.82),
+            (110, 1.00),
+        ]
+        let clamped = max(anchors[0].temp, min(anchors[anchors.count - 1].temp, temp))
+
+        for index in 0..<(anchors.count - 1) {
+            let lower = anchors[index]
+            let upper = anchors[index + 1]
+            guard clamped <= upper.temp || index == anchors.count - 2 else { continue }
+            let linear = (clamped - lower.temp) / (upper.temp - lower.temp)
+            return lower.fraction + (upper.fraction - lower.fraction) * linear
+        }
+
+        return 1
+    }
 }
 
 /// A straight dashed line shape that fills its frame along the given axis.
 /// Using a Shape instead of a `Path` literal lets the surrounding `.position`
 /// modifier animate the line smoothly as the anchor point changes.
 private struct DashedLine: Shape {
-  enum Axis { case horizontal, vertical }
-  let axis: Axis
+    enum Axis { case horizontal, vertical }
+    let axis: Axis
 
-  func path(in rect: CGRect) -> Path {
-    var p = Path()
-    switch axis {
-    case .horizontal:
-      let y = rect.midY
-      p.move(to: CGPoint(x: rect.minX, y: y))
-      p.addLine(to: CGPoint(x: rect.maxX, y: y))
-    case .vertical:
-      let x = rect.midX
-      p.move(to: CGPoint(x: x, y: rect.minY))
-      p.addLine(to: CGPoint(x: x, y: rect.maxY))
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        switch axis {
+        case .horizontal:
+            let y = rect.midY
+            p.move(to: CGPoint(x: rect.minX, y: y))
+            p.addLine(to: CGPoint(x: rect.maxX, y: y))
+        case .vertical:
+            let x = rect.midX
+            p.move(to: CGPoint(x: x, y: rect.minY))
+            p.addLine(to: CGPoint(x: x, y: rect.maxY))
+        }
+        return p
     }
-    return p
-  }
 }

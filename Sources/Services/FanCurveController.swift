@@ -26,12 +26,12 @@ final class FanCurveController: ObservableObject, @unchecked Sendable {
 
     private let tempKeys: [String] = SensorCatalog.keysForCurrentHardware()
         .filter { $0.type == .temperature }
-        .map { $0.key }
+        .map(\.key)
 
     private let cpuTempKeys: Set<String> = Set(
         SensorCatalog.keysForCurrentHardware()
             .filter { $0.type == .temperature && $0.group == .cpu }
-            .map { $0.key }
+            .map(\.key)
     )
 
     private let sensorLookup: [String: SensorKey] = {
@@ -96,18 +96,20 @@ final class FanCurveController: ObservableObject, @unchecked Sendable {
 
             var fans: [FanReading] = []
             for (i, info) in result.fans.enumerated() {
-                fans.append(FanReading(
-                    id: i, actualRPM: info.actualRPM, targetRPM: info.targetRPM,
-                    minRPM: info.minRPM, maxRPM: info.maxRPM, manualMode: info.manualMode))
+                fans.append(
+                    FanReading(
+                        id: i, actualRPM: info.actualRPM, targetRPM: info.targetRPM,
+                        minRPM: info.minRPM, maxRPM: info.maxRPM, manualMode: info.manualMode))
             }
 
             var temps: [SensorReading] = []
             var maxCPUTemp: Double = 0
             for (key, value) in result.temps {
                 let sensor = sensorLookup[key]
-                temps.append(SensorReading(
-                    id: key, name: sensor?.name ?? key,
-                    group: sensor?.group.rawValue ?? "Unknown", value: Double(value)))
+                temps.append(
+                    SensorReading(
+                        id: key, name: sensor?.name ?? key,
+                        group: sensor?.group.rawValue ?? "Unknown", value: Double(value)))
                 if cpuTempKeys.contains(key) {
                     maxCPUTemp = max(maxCPUTemp, Double(value))
                 }

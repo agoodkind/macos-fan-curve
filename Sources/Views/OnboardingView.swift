@@ -11,142 +11,142 @@ import SwiftUI
 /// Inline onboarding shown when the helper or agent is not installed.
 /// Replaces jarring popup alerts with a clean, reassuring flow.
 struct OnboardingView: View {
-  @ObservedObject var state: InstallationState
+    @ObservedObject var state: InstallationState
 
-  var body: some View {
-    VStack(spacing: 0) {
-      Spacer(minLength: 40)
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 40)
 
-      VStack(spacing: 24) {
-        icon
-        title
-        subtitle
-        action
-        errorMessage
-      }
-      .frame(maxWidth: 480)
-      .padding(32)
+            VStack(spacing: 24) {
+                icon
+                title
+                subtitle
+                action
+                errorMessage
+            }
+            .frame(maxWidth: 480)
+            .padding(32)
 
-      Spacer(minLength: 40)
+            Spacer(minLength: 40)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(Color(nsColor: .windowBackgroundColor))
-  }
 
-  @ViewBuilder
-  private var icon: some View {
-    ZStack {
-      Circle()
-        .fill(Color.accentColor.opacity(0.1))
-        .frame(width: 96, height: 96)
-      Image(systemName: iconName)
-        .font(.system(size: 40, weight: .light))
-        .foregroundStyle(Color.accentColor)
+    @ViewBuilder
+    private var icon: some View {
+        ZStack {
+            Circle()
+                .fill(Color.accentColor.opacity(0.1))
+                .frame(width: 96, height: 96)
+            Image(systemName: iconName)
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(Color.accentColor)
+        }
     }
-  }
 
-  @ViewBuilder
-  private var title: some View {
-    Text(titleText)
-      .font(.system(.title, design: .rounded, weight: .semibold))
-      .multilineTextAlignment(.center)
-  }
-
-  @ViewBuilder
-  private var subtitle: some View {
-    Text(subtitleText)
-      .font(.body)
-      .foregroundColor(.secondary)
-      .multilineTextAlignment(.center)
-      .fixedSize(horizontal: false, vertical: true)
-  }
-
-  @ViewBuilder
-  private var action: some View {
-    if let (label, handler) = primaryAction {
-      Button(action: handler) {
-        Text(label)
-          .font(.system(.body, weight: .semibold))
-          .frame(minWidth: 180)
-      }
-      .controlSize(.large)
-      .buttonStyle(.borderedProminent)
-      .keyboardShortcut(.defaultAction)
-    } else if state.step == .checking {
-      ProgressView()
-        .controlSize(.small)
+    @ViewBuilder
+    private var title: some View {
+        Text(titleText)
+            .font(.system(.title, design: .rounded, weight: .semibold))
+            .multilineTextAlignment(.center)
     }
-  }
 
-  @ViewBuilder
-  private var errorMessage: some View {
-    if let err = state.lastError {
-      Text(err)
-        .font(.footnote)
-        .foregroundColor(.secondary)
-        .multilineTextAlignment(.center)
-        .padding(.top, 8)
+    @ViewBuilder
+    private var subtitle: some View {
+        Text(subtitleText)
+            .font(.body)
+            .foregroundColor(.secondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
     }
-  }
 
-  // MARK: - Step-dependent content
-
-  private var iconName: String {
-    switch state.step {
-    case .checking: return "hourglass"
-    case .helperMissing: return "lock.shield"
-    case .helperAwaitingApproval: return "hand.raised"
-    case .agentMissing, .agentAwaitingApproval: return "gearshape.2"
-    case .ready: return "checkmark.circle"
+    @ViewBuilder
+    private var action: some View {
+        if let (label, handler) = primaryAction {
+            Button(action: handler) {
+                Text(label)
+                    .font(.system(.body, weight: .semibold))
+                    .frame(minWidth: 180)
+            }
+            .controlSize(.large)
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+        } else if state.step == .checking {
+            ProgressView()
+                .controlSize(.small)
+        }
     }
-  }
 
-  private var titleText: String {
-    switch state.step {
-    case .checking: return L10n.tr("Checking installation")
-    case .helperMissing: return L10n.tr("Install the system helper")
-    case .helperAwaitingApproval: return L10n.tr("Approve the helper in System Settings")
-    case .agentMissing: return L10n.tr("Enable background fan control")
-    case .agentAwaitingApproval: return L10n.tr("Allow FanCurve at login")
-    case .ready: return L10n.tr("All set")
+    @ViewBuilder
+    private var errorMessage: some View {
+        if let err = state.lastError {
+            Text(err)
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 8)
+        }
     }
-  }
 
-  private var subtitleText: String {
-    switch state.step {
-    case .checking:
-      return L10n.tr("Looking for the helper and background agent.")
-    case .helperMissing:
-      return L10n.tr(
-        "FanCurve needs a privileged helper to read temperatures and control fans. Install it from the macos-smc-fan project, then return here."
-      )
-    case .helperAwaitingApproval:
-      return L10n.tr(
-        "Open Login Items in System Settings and enable the helper. FanCurve will continue as soon as it is running."
-      )
-    case .agentMissing:
-      return L10n.tr(
-        "The background agent applies your curve even when FanCurve is closed. It starts automatically at login. Click to install."
-      )
-    case .agentAwaitingApproval:
-      return L10n.tr(
-        "Open Login Items in System Settings and enable FanCurve so the agent can start at login."
-      )
-    case .ready:
-      return L10n.tr("Everything is running.")
-    }
-  }
+    // MARK: - Step-dependent content
 
-  private var primaryAction: (String, () -> Void)? {
-    switch state.step {
-    case .agentMissing:
-      return (L10n.tr("Install Background Agent"), { state.registerAgent() })
-    case .agentAwaitingApproval, .helperAwaitingApproval:
-      return (L10n.tr("Open Login Items"), { state.openLoginItemsSettings() })
-    case .helperMissing:
-      return nil
-    case .ready, .checking:
-      return nil
+    private var iconName: String {
+        switch state.step {
+        case .checking: return "hourglass"
+        case .helperMissing: return "lock.shield"
+        case .helperAwaitingApproval: return "hand.raised"
+        case .agentMissing, .agentAwaitingApproval: return "gearshape.2"
+        case .ready: return "checkmark.circle"
+        }
     }
-  }
+
+    private var titleText: String {
+        switch state.step {
+        case .checking: return L10n.tr("Checking installation")
+        case .helperMissing: return L10n.tr("Install the system helper")
+        case .helperAwaitingApproval: return L10n.tr("Approve the helper in System Settings")
+        case .agentMissing: return L10n.tr("Enable background fan control")
+        case .agentAwaitingApproval: return L10n.tr("Allow FanCurve at login")
+        case .ready: return L10n.tr("All set")
+        }
+    }
+
+    private var subtitleText: String {
+        switch state.step {
+        case .checking:
+            return L10n.tr("Looking for the helper and background agent.")
+        case .helperMissing:
+            return L10n.tr(
+                "FanCurve needs a privileged helper to read temperatures and control fans. Install it from the macos-smc-fan project, then return here."
+            )
+        case .helperAwaitingApproval:
+            return L10n.tr(
+                "Open Login Items in System Settings and enable the helper. FanCurve will continue as soon as it is running."
+            )
+        case .agentMissing:
+            return L10n.tr(
+                "The background agent applies your curve even when FanCurve is closed. It starts automatically at login. Click to install."
+            )
+        case .agentAwaitingApproval:
+            return L10n.tr(
+                "Open Login Items in System Settings and enable FanCurve so the agent can start at login."
+            )
+        case .ready:
+            return L10n.tr("Everything is running.")
+        }
+    }
+
+    private var primaryAction: (String, () -> Void)? {
+        switch state.step {
+        case .agentMissing:
+            return (L10n.tr("Install Background Agent"), { state.registerAgent() })
+        case .agentAwaitingApproval, .helperAwaitingApproval:
+            return (L10n.tr("Open Login Items"), { state.openLoginItemsSettings() })
+        case .helperMissing:
+            return nil
+        case .ready, .checking:
+            return nil
+        }
+    }
 }

@@ -46,20 +46,20 @@ final class AgentController: @unchecked Sendable {
     private let tickCoordinator = TickCoordinator()
     private var timer: Timer?
     private var cachedFanCount: UInt = 2
-    private var lastActive: Bool? = nil
-    private var filteredTemperatureFast: Double? = nil
-    private var filteredTemperatureSlow: Double? = nil
-    private var previousFastTemperature: Double? = nil
-    private var previousSlowTemperature: Double? = nil
+    private var lastActive: Bool?
+    private var filteredTemperatureFast: Double?
+    private var filteredTemperatureSlow: Double?
+    private var previousFastTemperature: Double?
+    private var previousSlowTemperature: Double?
     private var lastAppliedRPMByFan: [UInt: Float] = [:]
-    private var lastPublishedSnapshot: AgentSnapshot? = nil
-    private var committedBandIndex: Int? = nil
-    private var bandEnteredAt: Date? = nil
-    private var bandHoldUntil: Date? = nil
-    private var lastBandChangeAt: Date? = nil
+    private var lastPublishedSnapshot: AgentSnapshot?
+    private var committedBandIndex: Int?
+    private var bandEnteredAt: Date?
+    private var bandHoldUntil: Date?
+    private var lastBandChangeAt: Date?
     private var upPressureScore: Double = 0
     private var downPressureScore: Double = 0
-    private var rawCurvePercentEMA: Double? = nil
+    private var rawCurvePercentEMA: Double?
     private var controllerMode: AgentControllerMode = .holding
     private var thermalDebt: Double = 0
 
@@ -93,12 +93,12 @@ final class AgentController: @unchecked Sendable {
 
     private let tempKeys: [String] = SensorCatalog.keysForCurrentHardware()
         .filter { $0.type == .temperature }
-        .map { $0.key }
+        .map(\.key)
 
     private let cpuTempKeys: Set<String> = Set(
         SensorCatalog.keysForCurrentHardware()
             .filter { $0.type == .temperature && $0.group == .cpu }
-            .map { $0.key }
+            .map(\.key)
     )
 
     func start() {
@@ -296,11 +296,10 @@ final class AgentController: @unchecked Sendable {
             }
 
             var assistAppliedKinds: [LoadAssistKind] = []
-            var assistFloorPercent: Double? = nil
+            var assistFloorPercent: Double?
             var rawBaselinePercent = curvePercent
             if !boost {
-                for kind in LoadAssistKind.allCases {
-                    guard sharedConfig.loadLoadAssistEnabled(kind) else { continue }
+                for kind in LoadAssistKind.allCases where sharedConfig.loadLoadAssistEnabled(kind) {
                     let loadPercent = kind == .cpu ? cpuLoad : gpuLoad
                     let assistFloor = CurveInterpolation.evaluate(
                         at: loadPercent,
@@ -341,13 +340,17 @@ final class AgentController: @unchecked Sendable {
             }
 
             let assistSummary = assistAppliedKinds.map(\.rawValue).joined(separator: ",")
-            log.debug("agent.tick cpuTemp=\(Int(maxCPUTemp), privacy: .public)C cpuLoad=\(Int(cpuLoad), privacy: .public)% gpuLoad=\(Int(gpuLoad), privacy: .public)% raw=\(Int(runtimeState.rawBaselinePercent * 100), privacy: .public)% committed=\(Int(runtimeState.committedPercent * 100), privacy: .public)% mode=\(runtimeState.mode.rawValue, privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% boost=\(boost, privacy: .public) assist=\(assistSummary, privacy: .public)")
+            log.debug(
+                "agent.tick cpuTemp=\(Int(maxCPUTemp), privacy: .public)C cpuLoad=\(Int(cpuLoad), privacy: .public)% gpuLoad=\(Int(gpuLoad), privacy: .public)% raw=\(Int(runtimeState.rawBaselinePercent * 100), privacy: .public)% committed=\(Int(runtimeState.committedPercent * 100), privacy: .public)% mode=\(runtimeState.mode.rawValue, privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% boost=\(boost, privacy: .public) assist=\(assistSummary, privacy: .public)"
+            )
 
             var setFans: [(index: UInt, rpm: Float)] = []
             var autoFans: [UInt] = []
             for (i, fan) in result.fans.enumerated() {
-                let command = fanCommandFor(percent: runtimeState.committedPercent, minRPM: fan.minRPM, maxRPM: fan.maxRPM)
-                let smoothedCommand = boost
+                let command = fanCommandFor(
+                    percent: runtimeState.committedPercent, minRPM: fan.minRPM, maxRPM: fan.maxRPM)
+                let smoothedCommand =
+                    boost
                     ? command
                     : slewLimitedCommand(
                         command,
@@ -365,7 +368,8 @@ final class AgentController: @unchecked Sendable {
                 }
             }
 
-            let tickPriority = boost
+            let tickPriority =
+                boost
                 ? sharedConfig.loadUserBoostPriority()
                 : sharedConfig.loadCurveNormalPriority()
 
@@ -424,11 +428,11 @@ final class AgentController: @unchecked Sendable {
                 controllerMode: runtimeState.mode.rawValue,
                 assistFloorPercent: assistFloorPercent,
                 activeAssistKinds: assistAppliedKinds.map(\.rawValue),
-                fanActualRPM: result.fans.map { $0.actualRPM },
-                fanTargetRPM: result.fans.map { $0.targetRPM },
-                fanMinRPM: result.fans.map { $0.minRPM },
-                fanMaxRPM: result.fans.map { $0.maxRPM },
-                fanManualMode: result.fans.map { $0.manualMode })
+                fanActualRPM: result.fans.map(\.actualRPM),
+                fanTargetRPM: result.fans.map(\.targetRPM),
+                fanMinRPM: result.fans.map(\.minRPM),
+                fanMaxRPM: result.fans.map(\.maxRPM),
+                fanManualMode: result.fans.map(\.manualMode))
         } catch {
             log.error("agent.tick.failed error=\(error.localizedDescription, privacy: .public)")
             sharedConfig.writeAgentLastError("\(error)")
@@ -479,7 +483,8 @@ final class AgentController: @unchecked Sendable {
     ) -> RuntimeBandState {
         let smoothedBaseline: Double
         if let rawCurvePercentEMA {
-            smoothedBaseline = rawCurvePercentEMAAlpha * rawBaselinePercent
+            smoothedBaseline =
+                rawCurvePercentEMAAlpha * rawBaselinePercent
                 + (1.0 - rawCurvePercentEMAAlpha) * rawCurvePercentEMA
         } else {
             smoothedBaseline = rawBaselinePercent
@@ -529,7 +534,8 @@ final class AgentController: @unchecked Sendable {
 
         var nextBandIndex = max(existingBandIndex, assistFloorBandIndex)
         let rebound = fastTrend > 0.02 || thermalGap >= reboundTemperatureBandC || targetBandIndex >= nextBandIndex
-        let emergency = rawTemperatureC >= emergencyBandEscapeTemperatureC
+        let emergency =
+            rawTemperatureC >= emergencyBandEscapeTemperatureC
             || (rawTemperatureC >= emergencyRampTemperatureC && targetBandIndex > nextBandIndex + 1)
 
         if emergency {
@@ -562,7 +568,7 @@ final class AgentController: @unchecked Sendable {
                 && thermalGap <= 0.45
                 && fastTrend <= -0.02
 
-            if targetBandIndex < nextBandIndex && !rebound {
+            if targetBandIndex < nextBandIndex, !rebound {
                 let gap = Double(nextBandIndex - targetBandIndex)
                 let coolingPressure = stableCooling ? 1.0 : 0.35
                 let curveSlack = max(0, percent(forBand: nextBandIndex) - rawBaselinePercent) * 18.0
@@ -580,8 +586,9 @@ final class AgentController: @unchecked Sendable {
                 downPressureScore = max(0, downPressureScore - 0.6)
             }
 
-            let transitionReady = now.timeIntervalSince(lastBandChangeAt ?? .distantPast) >= minimumBandTransitionInterval
-            if fidelityGuardActive && transitionReady {
+            let transitionReady =
+                now.timeIntervalSince(lastBandChangeAt ?? .distantPast) >= minimumBandTransitionInterval
+            if fidelityGuardActive, transitionReady {
                 let cappedTargetBandIndex = max(assistFloorBandIndex, targetBandIndex + maxCurveOvershootBands)
                 if nextBandIndex - cappedTargetBandIndex >= fastCatchupGapBands {
                     nextBandIndex = cappedTargetBandIndex
@@ -595,7 +602,7 @@ final class AgentController: @unchecked Sendable {
                 bandEnteredAt = now
                 bandHoldUntil = now.addingTimeInterval(fidelityCatchupDwell)
                 lastBandChangeAt = now
-            } else if targetBandIndex > nextBandIndex && transitionReady && upPressureScore >= upPressureStepThreshold {
+            } else if targetBandIndex > nextBandIndex, transitionReady, upPressureScore >= upPressureStepThreshold {
                 nextBandIndex += 1
                 upPressureScore = 0
                 downPressureScore = 0
@@ -716,7 +723,8 @@ final class AgentController: @unchecked Sendable {
             lastAppliedRPMByFan.removeValue(forKey: index)
             return .auto
         case .setRPM(let requestedRPM):
-            let baseline = lastAppliedRPMByFan[index]
+            let baseline =
+                lastAppliedRPMByFan[index]
                 ?? (currentFan.targetRPM > 0 ? currentFan.targetRPM : currentFan.actualRPM)
             let delta = requestedRPM - baseline
             let limitedDelta: Float

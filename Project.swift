@@ -18,8 +18,8 @@ let release = Configuration.release(
 
 let generatedConfigScript = TargetScript.pre(
     script: """
-    "${SRCROOT}/Scripts/generate-config.sh"
-    """,
+        "${SRCROOT}/Scripts/generate-config.sh"
+        """,
     name: "Generate Config from xcconfig",
     outputPaths: [
         "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/Config.generated.swift",
@@ -29,44 +29,44 @@ let generatedConfigScript = TargetScript.pre(
 
 let bundleAgentScript = TargetScript.post(
     script: """
-    set -euo pipefail
+        set -euo pipefail
 
-    sign_nested_code() {
-      if [ "${CODE_SIGNING_ALLOWED:-NO}" != "YES" ]; then
-        return 0
-      fi
-      if [ -z "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
-        return 0
-      fi
-      if [ ! -e "$1" ]; then
-        return 0
-      fi
+        sign_nested_code() {
+          if [ "${CODE_SIGNING_ALLOWED:-NO}" != "YES" ]; then
+            return 0
+          fi
+          if [ -z "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
+            return 0
+          fi
+          if [ ! -e "$1" ]; then
+            return 0
+          fi
 
-      if [ "${ENABLE_HARDENED_RUNTIME:-NO}" = "YES" ]; then
-        codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" \
-          --options runtime ${OTHER_CODE_SIGN_FLAGS:-} "$1"
-      else
-        codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" \
-          ${OTHER_CODE_SIGN_FLAGS:-} "$1"
-      fi
-    }
+          if [ "${ENABLE_HARDENED_RUNTIME:-NO}" = "YES" ]; then
+            codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" \
+              --options runtime ${OTHER_CODE_SIGN_FLAGS:-} "$1"
+          else
+            codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" \
+              ${OTHER_CODE_SIGN_FLAGS:-} "$1"
+          fi
+        }
 
-    AGENT_SRC="${BUILT_PRODUCTS_DIR}/${AGENT_EXECUTABLE_NAME}"
-    APP_DIR="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app"
-    AGENTS_DIR="${APP_DIR}/Contents/Library/LaunchAgents"
-    MACOS_DIR="${APP_DIR}/Contents/MacOS"
-    mkdir -p "${AGENTS_DIR}"
-    cp "${AGENT_SRC}" "${MACOS_DIR}/"
-    cp "${SRCROOT}/Derived/Generated/${TARGET_NAME}/agent-launchd.plist" \
-       "${AGENTS_DIR}/${AGENT_BUNDLE_ID}.plist"
+        AGENT_SRC="${BUILT_PRODUCTS_DIR}/${AGENT_EXECUTABLE_NAME}"
+        APP_DIR="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app"
+        AGENTS_DIR="${APP_DIR}/Contents/Library/LaunchAgents"
+        MACOS_DIR="${APP_DIR}/Contents/MacOS"
+        mkdir -p "${AGENTS_DIR}"
+        cp "${AGENT_SRC}" "${MACOS_DIR}/"
+        cp "${SRCROOT}/Derived/Generated/${TARGET_NAME}/agent-launchd.plist" \
+           "${AGENTS_DIR}/${AGENT_BUNDLE_ID}.plist"
 
-    SPARKLE_DIR="${APP_DIR}/Contents/Frameworks/Sparkle.framework/Versions/Current"
-    sign_nested_code "${SPARKLE_DIR}/Updater.app"
-    sign_nested_code "${SPARKLE_DIR}/XPCServices/Downloader.xpc"
-    sign_nested_code "${SPARKLE_DIR}/XPCServices/Installer.xpc"
-    sign_nested_code "${SPARKLE_DIR}/Autoupdate"
-    sign_nested_code "${SPARKLE_DIR}"
-    """,
+        SPARKLE_DIR="${APP_DIR}/Contents/Frameworks/Sparkle.framework/Versions/Current"
+        sign_nested_code "${SPARKLE_DIR}/Updater.app"
+        sign_nested_code "${SPARKLE_DIR}/XPCServices/Downloader.xpc"
+        sign_nested_code "${SPARKLE_DIR}/XPCServices/Installer.xpc"
+        sign_nested_code "${SPARKLE_DIR}/Autoupdate"
+        sign_nested_code "${SPARKLE_DIR}"
+        """,
     name: "Bundle agent into app",
     outputPaths: [
         "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/MacOS/$(AGENT_EXECUTABLE_NAME)",
@@ -104,7 +104,7 @@ let appInfoPlist: [String: Plist.Value] = [
     "NSPrincipalClass": .string("NSApplication"),
     "SUEnableAutomaticChecks": .boolean(true),
     "SUAllowsAutomaticUpdates": .boolean(true),
-    "SUScheduledCheckInterval": .integer(86400),
+    "SUScheduledCheckInterval": .integer(86_400),
     "SUAutomaticallyUpdate": .boolean(false),
     "SUFeedURL": .string("$(SPARKLE_FEED_URL)"),
     "SUPublicEDKey": .string("$(SPARKLE_PUBLIC_ED_KEY)"),
@@ -118,6 +118,7 @@ let externalDependencies: [TargetDependency] = [
 ]
 
 let modelTestSources: SourceFilesList = [
+    "Sources/App/L10n.swift",
     "Sources/Models/TemperatureUnit.swift",
     "Sources/Models/SystemUsage.swift",
     "Sources/Models/SensorState.swift",
@@ -131,7 +132,7 @@ let modelTestSources: SourceFilesList = [
 ]
 
 let strictConcurrencySettings: SettingsDictionary = [
-    "OTHER_SWIFT_FLAGS": "$(inherited) -enable-upcoming-feature StrictConcurrency",
+    "OTHER_SWIFT_FLAGS": "$(inherited) -enable-upcoming-feature StrictConcurrency"
 ]
 
 let project = Project(
@@ -191,7 +192,7 @@ let project = Project(
                 .generated("Derived/Generated/FanCurveAgent/Config.generated.swift"),
             ],
             scripts: [
-                generatedConfigScript,
+                generatedConfigScript
             ],
             dependencies: externalDependencies,
             settings: .settings(
@@ -210,7 +211,7 @@ let project = Project(
             infoPlist: .default,
             sources: modelTestSources,
             dependencies: [
-                .external(name: "AppLog"),
+                .external(name: "AppLog")
             ],
             settings: .settings(base: strictConcurrencySettings)
         ),
@@ -222,10 +223,10 @@ let project = Project(
             deploymentTargets: macOSDeploymentTarget,
             infoPlist: .default,
             sources: [
-                "Tests/ModelTests/**",
+                "Tests/ModelTests/**"
             ],
             dependencies: [
-                .target(name: "FanCurveModels"),
+                .target(name: "FanCurveModels")
             ]
         ),
     ],
