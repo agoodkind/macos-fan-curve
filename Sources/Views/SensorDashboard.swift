@@ -94,7 +94,8 @@ struct SensorDashboard: View {
             VStack(spacing: 10) {
                 VStack(spacing: 4) {
                     usageRow(
-                        label: "CPU", icon: "cpu",
+                        label: "CPU",
+                        icon: "cpu",
                         value: runtime.cpuLoadPercent,
                         tint: Color.accentColor)
                     if let assist = assistStates.first(where: { $0.kind == .cpu }) {
@@ -107,7 +108,8 @@ struct SensorDashboard: View {
                 }
                 VStack(spacing: 4) {
                     usageRow(
-                        label: "GPU", icon: "memorychip",
+                        label: "GPU",
+                        icon: "memorychip",
                         value: runtime.gpuLoadPercent,
                         tint: Color.accentColor.opacity(0.55))
                     if let assist = assistStates.first(where: { $0.kind == .gpu }) {
@@ -520,10 +522,10 @@ struct SensorDashboard: View {
     }
 
     private var tempColor: Color {
-        let t = runtime.governingTemperature
-        if t < 55 { return Color(nsColor: .systemGreen) }
-        if t < 75 { return Color(nsColor: .systemYellow) }
-        if t < 90 { return Color(nsColor: .systemOrange) }
+        let temperature = runtime.governingTemperature
+        if temperature < 55 { return Color(nsColor: .systemGreen) }
+        if temperature < 75 { return Color(nsColor: .systemYellow) }
+        if temperature < 90 { return Color(nsColor: .systemOrange) }
         return Color(nsColor: .systemRed)
     }
 }

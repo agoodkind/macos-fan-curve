@@ -194,9 +194,7 @@ struct GeneralSettingsView: View {
         return "\(minutes)m ago"
     }
 
-    private func statusRow(title: String, subtitle: String, status: String, state: ServiceRowState)
-        -> some View
-    {
+    private func statusRow(title: String, subtitle: String, status: String, state: ServiceRowState) -> some View {
         HStack {
             Circle()
                 .fill(state.color)

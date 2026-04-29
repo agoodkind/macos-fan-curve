@@ -459,8 +459,10 @@ struct FanCurveEditor: View {
         drawGhostCurve(context: context, size: size, opacity: 1.0 - activePhase)
 
         let pathPoints = CurveInterpolation.pathPoints(
-            points: model.controlPoints, mode: model.interpolationMode,
-            tempRange: plotTempRange, steps: 300)
+            points: model.controlPoints,
+            mode: model.interpolationMode,
+            tempRange: plotTempRange,
+            steps: 300)
         guard !pathPoints.isEmpty else { return }
 
         let pixelPoints = pathPoints.map { dataToPixel(temp: $0.0, percent: $0.1, in: size) }
@@ -488,10 +490,12 @@ struct FanCurveEditor: View {
                     endPoint: CGPoint(x: 0, y: size.height - bottomPad)))
 
             context.stroke(
-                line, with: .color(curveColor.opacity(0.15 * phase)),
+                line,
+                with: .color(curveColor.opacity(0.15 * phase)),
                 style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
             context.stroke(
-                line, with: .color(curveColor.opacity(phase)),
+                line,
+                with: .color(curveColor.opacity(phase)),
                 style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
         }
 
@@ -536,8 +540,10 @@ struct FanCurveEditor: View {
         guard opacity > 0.01 else { return }
         let ghostPoints = CurvePresets.appleSilent.curvePoints()
         let pathPoints = CurveInterpolation.pathPoints(
-            points: ghostPoints, mode: .catmullRom,
-            tempRange: plotTempRange, steps: 300)
+            points: ghostPoints,
+            mode: .catmullRom,
+            tempRange: plotTempRange,
+            steps: 300)
         guard !pathPoints.isEmpty else { return }
 
         let pixelPoints = pathPoints.map { dataToPixel(temp: $0.0, percent: $0.1, in: size) }

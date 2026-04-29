@@ -81,9 +81,7 @@ enum LoadAssistStore {
         return CurveInterpolation.evaluate(at: loadPercent, points: points, mode: .linear)
     }
 
-    static func defaultPoints(threshold: Double = defaultThreshold, floorPercent: Double = defaultFloorPercent)
-        -> [CurvePoint]
-    {
+    static func defaultPoints(threshold: Double = defaultThreshold, floorPercent: Double = defaultFloorPercent) -> [CurvePoint] {
         let rampStart = max(loadRange.lowerBound, threshold - 15)
         let clampedThreshold = min(loadRange.upperBound, max(loadRange.lowerBound, threshold))
         let floor = max(0.0, min(1.0, floorPercent / 100.0))
