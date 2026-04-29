@@ -37,7 +37,9 @@
         final class Coordinator: NSObject, MTKViewDelegate {
             private let commandQueue = MTLCreateSystemDefaultDevice()?.makeCommandQueue()
 
-            func mtkView(_: MTKView, drawableSizeWillChange _: CGSize) {}
+            func mtkView(_: MTKView, drawableSizeWillChange _: CGSize) {
+                // The probe renders a constant clear pass, so size changes need no extra work.
+            }
 
             func draw(in view: MTKView) {
                 guard

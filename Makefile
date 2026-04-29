@@ -25,6 +25,10 @@ APP_SOURCE = $(XCODE_PRODUCTS_DIR)/$(APP_NAME).app
 APP_DEST = $(PRODUCTS_DIR)/$(APP_NAME).app
 INSTALL_USER_APP_DEST ?= $(HOME)/Applications/$(APP_NAME).app
 INSTALL_APP_DEST ?= /Applications/$(APP_NAME).app
+AGENT_LABEL ?= io.goodkind.fancurveagent
+AGENT_PLIST_NAME ?= $(AGENT_LABEL).plist
+AGENT_BUNDLED_PLIST ?= $(APP_DEST)/Contents/Library/LaunchAgents/$(AGENT_PLIST_NAME)
+AGENT_BUNDLE_PROGRAM = Contents/MacOS/FanCurveAgent
 ICON_HASH_STAMP = $(BUILD_DIR)/.app-icon.sha
 DMG_PATH = $(PRODUCTS_DIR)/$(DMG_NAME).dmg
 RELEASE_DMG_NAME = $(APP_NAME)-$(CURRENT_PROJECT_VERSION).dmg
@@ -33,7 +37,7 @@ SPARKLE_UPDATES_DIR = $(BUILD_DIR)/sparkle-updates
 SPARKLE_APPCAST_PATH = $(SPARKLE_UPDATES_DIR)/appcast.xml
 GITHUB_RELEASE_BASE_URL ?= https://github.com/agoodkind/macos-fan-curve/releases/download/$(RELEASE_TAG)/
 
-.PHONY: all install-dependencies install-analysis-tools build app install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project open-project test format format-check lint swiftlint-lint analyze xcode-analyze swiftlint-analyze periphery-scan quality run log-audit icons
+.PHONY: all install-dependencies install-analysis-tools build app install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project open-project test format format-check lint swiftlint-lint analyze xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit verify quality run log-audit icons
 
 install-dependencies:
 	$(TUIST) install
@@ -59,7 +63,7 @@ open-project: generate-project
 all: app
 
 icons:
-	./Scripts/generate-icons.sh
+	./Scripts/GenerateIcons.swift
 
 build: icons generate-project
 	xcodebuild -workspace FanCurveApp.xcworkspace \
@@ -73,10 +77,10 @@ build: icons generate-project
 
 app: build
 	@mkdir -p $(PRODUCTS_DIR)
-	@./Scripts/refresh-icon-cache.sh "$(APP_SOURCE)" "$(ICON_HASH_STAMP)"
+	@./Scripts/RefreshIconCache.swift "$(APP_SOURCE)" "$(ICON_HASH_STAMP)"
 	@rm -rf "$(APP_DEST)"
 	@cp -R "$(APP_SOURCE)" "$(PRODUCTS_DIR)/"
-	@./Scripts/refresh-icon-cache.sh "$(APP_DEST)" "$(ICON_HASH_STAMP)"
+	@./Scripts/RefreshIconCache.swift "$(APP_DEST)" "$(ICON_HASH_STAMP)"
 
 install-user: app
 	@mkdir -p "$(HOME)/Applications"
@@ -112,7 +116,7 @@ prepare-sparkle-updates:
 	@rm -rf "$(SPARKLE_UPDATES_DIR)"
 	@mkdir -p "$(SPARKLE_UPDATES_DIR)"
 	@cp "$(RELEASE_DMG_PATH)" "$(SPARKLE_UPDATES_DIR)/"
-	@SPARKLE_APPCAST_TOOL="$$(Scripts/find-sparkle-tool.sh "$(BUILD_DIR)" generate_appcast)"; \
+	@SPARKLE_APPCAST_TOOL="$$(Scripts/FindSparkleTool.swift "$(BUILD_DIR)" generate_appcast)"; \
 	if [ -n "$${SPARKLE_PRIVATE_KEY_FILE:-}" ]; then \
 		"$${SPARKLE_APPCAST_TOOL}" \
 			--ed-key-file "$${SPARKLE_PRIVATE_KEY_FILE}" \
@@ -175,18 +179,18 @@ periphery-scan: generate-project
 
 analyze: xcode-analyze swiftlint-analyze periphery-scan
 
-quality: lint analyze test
+launch-agent-audit: app
+	@Scripts/AuditLaunchAgent.swift "$(APP_DEST)" "$(AGENT_PLIST_NAME)" "$(AGENT_BUNDLE_PROGRAM)" "$(AGENT_LABEL)"
+
+run-audit:
+	@Scripts/AuditMakeRun.swift Makefile
+
+verify: launch-agent-audit run-audit log-audit test
+
+quality: lint analyze verify
 
 clean:
 	rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) FanCurveApp.xcworkspace FanCurveApp.xcodeproj
 
-# Guard A from the AppLog rules. Fails if any Swift source uses
-# print(), NSLog, swift-log Logger(), or os_log directly. The bridge
-# package itself is exempt; CLI stdout helpers are not used here.
 log-audit:
-	@! grep -rEn '(^|[^a-zA-Z_])(print|NSLog|os_log)\(|Logger\(label:|Logger\(subsystem:' Sources \
-		--include='*.swift' \
-		| grep -v 'CLIOut\.print\|CLIOut\.err' \
-		| grep -v ':[[:space:]]*//' \
-		|| (echo "log-audit failed: see matches above" && exit 1)
-	@echo "log-audit: ok"
+	@Scripts/AuditLogging.swift Sources

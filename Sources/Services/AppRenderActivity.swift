@@ -10,8 +10,8 @@ import AppKit
 import SwiftUI
 
 enum AppRenderMode: Equatable {
-    case interactive
     case backgroundVisible
+    case interactive
     case occluded
 
     var isVisible: Bool {

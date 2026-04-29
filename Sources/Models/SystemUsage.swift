@@ -17,7 +17,14 @@ final class SystemUsage: ObservableObject {
     @Published var cpuPercent: Double = 0
     @Published var gpuPercent: Double = 0
 
-    private var prev: (user: UInt32, system: UInt32, idle: UInt32, nice: UInt32)?
+    private struct CPUTick {
+        let user: UInt32
+        let system: UInt32
+        let idle: UInt32
+        let nice: UInt32
+    }
+
+    private var prev: CPUTick?
     private var timer: Timer?
 
     func start() {
@@ -59,8 +66,8 @@ final class SystemUsage: ObservableObject {
         var idle: UInt32 = 0
         var nice: UInt32 = 0
 
-        for i in 0..<Int(numCpus) {
-            let base = Int(CPU_STATE_MAX) * i
+        for cpuIndex in 0..<Int(numCpus) {
+            let base = Int(CPU_STATE_MAX) * cpuIndex
             user &+= UInt32(cpuInfo[base + Int(CPU_STATE_USER)])
             system &+= UInt32(cpuInfo[base + Int(CPU_STATE_SYSTEM)])
             idle &+= UInt32(cpuInfo[base + Int(CPU_STATE_IDLE)])
@@ -70,7 +77,7 @@ final class SystemUsage: ObservableObject {
         let size = vm_size_t(Int(numCpuInfo) * MemoryLayout<integer_t>.stride)
         vm_deallocate(mach_task_self_, vm_address_t(bitPattern: cpuInfo), size)
 
-        defer { prev = (user, system, idle, nice) }
+        defer { prev = CPUTick(user: user, system: system, idle: idle, nice: nice) }
 
         guard let prev else { return 0 }
         let dUser = Double(user &- prev.user)

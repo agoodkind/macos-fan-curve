@@ -18,7 +18,7 @@ let release = Configuration.release(
 
 let generatedConfigScript = TargetScript.pre(
     script: """
-        "${SRCROOT}/Scripts/generate-config.sh"
+        "${SRCROOT}/Scripts/GenerateConfig.swift"
         """,
     name: "Generate Config from xcconfig",
     outputPaths: [
@@ -122,8 +122,12 @@ let modelTestSources: SourceFilesList = [
     "Sources/Models/TemperatureUnit.swift",
     "Sources/Models/SystemUsage.swift",
     "Sources/Models/SensorState.swift",
-    "Sources/Models/LoadAssist.swift",
-    "Sources/Models/CurveTypes.swift",
+    "Sources/Models/CurveColumns.swift",
+    "Sources/Models/CurvePoint.swift",
+    "Sources/Models/FanCommand.swift",
+    "Sources/Models/InterpolationMode.swift",
+    "Sources/Models/LoadAssistKind.swift",
+    "Sources/Models/LoadAssistStore.swift",
     "Sources/Models/WorkloadGenerator.swift",
     "Sources/Models/CPULoadSampler.swift",
     "Sources/Models/CurvePresets.swift",
@@ -226,7 +230,8 @@ let project = Project(
                 "Tests/ModelTests/**"
             ],
             dependencies: [
-                .target(name: "FanCurveModels")
+                .target(name: "FanCurveModels"),
+                .external(name: "Nimble"),
             ]
         ),
     ],

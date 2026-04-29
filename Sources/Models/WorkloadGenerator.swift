@@ -49,7 +49,7 @@ final class WorkloadGenerator: ObservableObject {
         DispatchQueue.concurrentPerform(iterations: cores) { _ in
             var buffer = [UInt8](repeating: 0, count: 4_096)
             while !Task.isCancelled {
-                for i in 0..<buffer.count { buffer[i] = UInt8.random(in: 0...255) }
+                for byteIndex in 0..<buffer.count { buffer[byteIndex] = UInt8.random(in: 0...255) }
                 _ = SHA256.hash(data: buffer)
             }
         }
@@ -65,8 +65,8 @@ final class WorkloadGenerator: ObservableObject {
             let queue = device.makeCommandQueue()
         else { return }
 
-        let n = 1_024
-        let bytes = n * n * MemoryLayout<Float>.stride
+        let matrixDimension = 1_024
+        let bytes = matrixDimension * matrixDimension * MemoryLayout<Float>.stride
         guard
             let bufferA = device.makeBuffer(length: bytes, options: .storageModeShared),
             let bufferB = device.makeBuffer(length: bytes, options: .storageModeShared),
@@ -74,15 +74,18 @@ final class WorkloadGenerator: ObservableObject {
         else { return }
 
         // Fill A and B with random floats once.
-        let ptrA = bufferA.contents().bindMemory(to: Float.self, capacity: n * n)
-        let ptrB = bufferB.contents().bindMemory(to: Float.self, capacity: n * n)
-        for i in 0..<(n * n) {
-            ptrA[i] = Float.random(in: 0...1)
-            ptrB[i] = Float.random(in: 0...1)
+        let ptrA = bufferA.contents().bindMemory(to: Float.self, capacity: matrixDimension * matrixDimension)
+        let ptrB = bufferB.contents().bindMemory(to: Float.self, capacity: matrixDimension * matrixDimension)
+        for valueIndex in 0..<(matrixDimension * matrixDimension) {
+            ptrA[valueIndex] = Float.random(in: 0...1)
+            ptrB[valueIndex] = Float.random(in: 0...1)
         }
 
         let descA = MPSMatrixDescriptor(
-            rows: n, columns: n, rowBytes: n * MemoryLayout<Float>.stride, dataType: .float32)
+            rows: matrixDimension,
+            columns: matrixDimension,
+            rowBytes: matrixDimension * MemoryLayout<Float>.stride,
+            dataType: .float32)
         let descB = descA
         let descC = descA
         let matA = MPSMatrix(buffer: bufferA, descriptor: descA)
@@ -93,9 +96,9 @@ final class WorkloadGenerator: ObservableObject {
             device: device,
             transposeLeft: false,
             transposeRight: false,
-            resultRows: n,
-            resultColumns: n,
-            interiorColumns: n,
+            resultRows: matrixDimension,
+            resultColumns: matrixDimension,
+            interiorColumns: matrixDimension,
             alpha: 1.0,
             beta: 0.0)
 

@@ -41,9 +41,35 @@ These instructions are strict project rules for all automated coding agents work
 - Use `make install-app` only when an explicit `/Applications` install is required.
 - Use `make run-installed` only when testing the user-installed app path.
 - Do not make `make run` copy into `/Applications` or manually restart the login agent. The app owns `SMAppService` registration and refresh.
+- Use `make launch-agent-audit` for launch agent, login item, bundle, or install path changes.
+- Use `make run-audit` after touching `Makefile` run, install, launch, login item, or agent behavior.
+- Use `make verify` before handing off launch agent, login item, bundle, install path, or run path changes. It runs the required project-specific guard checks plus tests.
 - Use `make test` for tests.
 - Use `make dmg` or `make release-assets` for distributable artifacts.
 - Keep derived data and products on the configured Makefile paths: `build/` and `Products/`.
 - Do not hand-edit generated Xcode project or workspace files as source of truth.
 - Before handing off a code change, run the narrowest Make target that proves the change. Use `make test` when behavior changed, `make build` when compilation is the proof, and `make log-audit` when logging changed.
 - If a required verification cannot be run, state the exact command that was skipped and why.
+
+## Completion Evidence
+
+- Final responses must list the exact verification commands run and whether each passed, failed, or was skipped.
+- Do not say a task is fixed, complete, working, or verified unless the relevant Make target passed in the current worktree.
+- If a command fails, report the first concrete failure and the next required fix. Do not bury failing verification under a general success summary.
+
+## Launch Agent And Install Path Guardrails
+
+- `SMAppService.agent(plistName:)` owns login item registration. Do not manually bootstrap, bootout, kickstart, or copy launch agent plists as part of the normal `make run` path.
+- `make run` must build/stage `Products/FanCurve.app` and open that app. It must not install into `/Applications`, copy into `~/Library/LaunchAgents`, or call `launchctl`.
+- The app-bundled launch agent plist is generated from `Templates/Plists/agent-launchd.plist.template` by `Scripts/generate-config.sh`; do not duplicate plist generation logic in the Makefile.
+- The bundled launch agent plist must use `BundleProgram` with the exact executable casing `Contents/MacOS/FanCurveAgent`.
+- If an installed app or login item is stale, fix the app bundle generation and registration flow. Do not patch a stale user-level plist as the source of truth.
+- Before changing launch agent behavior, inspect `Project.swift`, `Scripts/generate-config.sh`, `Templates/Plists/agent-launchd.plist.template`, and `Sources/Models/InstallationState.swift`.
+
+## Common LLM Failure Paths
+
+- Do not bypass canonical Make targets with direct `tuist`, `xcodebuild`, Swift compiler, app launch, or packaging commands when a Make target exists.
+- Do not "fix" app execution by launching from DerivedData or by opening a manually discovered `.app` path.
+- Do not "fix" login item issues by lowercasing executable names, hardcoding app paths, or copying generated plists into user LaunchAgents.
+- Do not weaken analyzer, formatter, logging, or audit rules to make a handoff pass unless the rule is demonstrably wrong for the project and the change is explicitly called out.
+- Do not mark a speculative root cause as fact. State what was inspected, what failed, and what command proves the fix.

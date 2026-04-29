@@ -14,7 +14,7 @@ struct FanCurveEditor: View {
     let renderMode: AppRenderMode
     @State private var hoveredIndex: Int?
     @State private var draggedIndex: Int?
-    @State private var dragBaselinePercents: [Double]?
+    @State private var dragBaselinePercents: [Double] = []
     @State private var mouseLocation: CGPoint?
     @State private var targetCommittedTemperature: Double = 0
     @State private var targetCommittedPercent: Double = 0
@@ -80,7 +80,7 @@ struct FanCurveEditor: View {
     private let committedMarkerPercentHalfLife: Double = 1.8
     private let rawMarkerTemperatureHalfLife: Double = 3.2
     private let rawMarkerPercentHalfLife: Double = 2.2
-    private let committedMarkerTemperatureLimitCPerSecond: Double = 7.0
+    private let committedTemperatureLimitCPerSec: Double = 7.0
     private let rawMarkerTemperatureLimitCPerSecond: Double = 5.0
     private let committedMarkerPercentLimitPerSecond: Double = 0.22
     private let rawMarkerPercentLimitPerSecond: Double = 0.18
@@ -464,8 +464,7 @@ struct FanCurveEditor: View {
         guard !pathPoints.isEmpty else { return }
 
         let pixelPoints = pathPoints.map { dataToPixel(temp: $0.0, percent: $0.1, in: size) }
-        let firstPt = pixelPoints.first!
-        let lastPt = pixelPoints.last!
+        guard let firstPt = pixelPoints.first, let lastPt = pixelPoints.last else { return }
         let zeroY = dataToPixel(temp: 20, percent: 0, in: size).y
 
         // Line is the smoothed polyline. Fill reuses the line path but
@@ -498,7 +497,8 @@ struct FanCurveEditor: View {
 
         if inversePhase > 0.01 {
             context.stroke(
-                line, with: .color(Color.secondary.opacity(0.3 * inversePhase)),
+                line,
+                with: .color(Color.secondary.opacity(0.3 * inversePhase)),
                 style: StrokeStyle(lineWidth: 1.25, lineCap: .round, lineJoin: .round, dash: [4, 5]))
         }
     }
@@ -514,16 +514,18 @@ struct FanCurveEditor: View {
         guard let first = pts.first else { return path }
         path.move(to: first)
         guard pts.count >= 3 else {
-            for p in pts.dropFirst() { path.addLine(to: p) }
+            for point in pts.dropFirst() { path.addLine(to: point) }
             return path
         }
-        for i in 1..<(pts.count - 1) {
+        for pointIndex in 1..<(pts.count - 1) {
             let mid = CGPoint(
-                x: (pts[i].x + pts[i + 1].x) / 2,
-                y: (pts[i].y + pts[i + 1].y) / 2)
-            path.addQuadCurve(to: mid, control: pts[i])
+                x: (pts[pointIndex].x + pts[pointIndex + 1].x) / 2,
+                y: (pts[pointIndex].y + pts[pointIndex + 1].y) / 2)
+            path.addQuadCurve(to: mid, control: pts[pointIndex])
         }
-        path.addLine(to: pts.last!)
+        if let lastPoint = pts.last {
+            path.addLine(to: lastPoint)
+        }
         return path
     }
 
@@ -684,7 +686,7 @@ struct FanCurveEditor: View {
     private func dragGesture(index: Int, size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                if draggedIndex != index || dragBaselinePercents == nil {
+                if draggedIndex != index || dragBaselinePercents.isEmpty {
                     dragBaselinePercents = model.controlPoints.map(\.fanPercent)
                 }
                 draggedIndex = index
@@ -695,7 +697,7 @@ struct FanCurveEditor: View {
             }
             .onEnded { value in
                 draggedIndex = nil
-                dragBaselinePercents = nil
+                dragBaselinePercents = []
                 hoveredIndex = hoveredControlPointIndex(at: value.location, in: size)
             }
     }
@@ -734,7 +736,7 @@ struct FanCurveEditor: View {
                     target: targetCommittedTemperature,
                     deltaSeconds: deltaSeconds,
                     halfLife: committedMarkerTemperatureHalfLife,
-                    maxDeltaPerSecond: committedMarkerTemperatureLimitCPerSecond
+                    maxDeltaPerSecond: committedTemperatureLimitCPerSec
                 )
                 displayedCommittedPercent = smoothlyApproach(
                     current: displayedCommittedPercent,
@@ -805,21 +807,21 @@ struct FanCurveEditor: View {
     // MARK: - Coordinate Mapping
 
     private func dataToPixel(temp: Double, percent: Double, in size: CGSize) -> CGPoint {
-        let w = size.width - leftPad - rightPad
-        let h = size.height - topPad - bottomPad
+        let plotWidth = size.width - leftPad - rightPad
+        let plotHeight = size.height - topPad - bottomPad
         let clampedTemp = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, temp))
         let clampedPercent = max(0, min(1, percent))
-        let x = leftPad + CGFloat(editorFraction(for: clampedTemp)) * w
-        let y = topPad + CGFloat(1 - clampedPercent) * h
+        let x = leftPad + CGFloat(editorFraction(for: clampedTemp)) * plotWidth
+        let y = topPad + CGFloat(1 - clampedPercent) * plotHeight
         return CGPoint(x: x, y: y)
     }
 
     private func pixelToData(_ pt: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
-        let w = size.width - leftPad - rightPad
-        let h = size.height - topPad - bottomPad
-        let fraction = Double((pt.x - leftPad) / w)
+        let plotWidth = size.width - leftPad - rightPad
+        let plotHeight = size.height - topPad - bottomPad
+        let fraction = Double((pt.x - leftPad) / plotWidth)
         let temp = editorTemperature(for: fraction)
-        let percent = 1.0 - Double((pt.y - topPad) / h)
+        let percent = 1.0 - Double((pt.y - topPad) / plotHeight)
         return (temp, percent)
     }
 
@@ -855,8 +857,8 @@ struct FanCurveEditor: View {
     /// Visual-only x axis scale. Low temperatures are compressed; the hot
     /// range is expanded. It intentionally does not define handle positions.
     private func axisTempToPixel(temp: Double, in size: CGSize) -> CGFloat {
-        let w = size.width - leftPad - rightPad
-        return leftPad + CGFloat(axisFraction(for: temp)) * w
+        let plotWidth = size.width - leftPad - rightPad
+        return leftPad + CGFloat(axisFraction(for: temp)) * plotWidth
     }
 
     private func axisFraction(for temp: Double) -> Double {
@@ -879,28 +881,5 @@ struct FanCurveEditor: View {
         }
 
         return 1
-    }
-}
-
-/// A straight dashed line shape that fills its frame along the given axis.
-/// Using a Shape instead of a `Path` literal lets the surrounding `.position`
-/// modifier animate the line smoothly as the anchor point changes.
-private struct DashedLine: Shape {
-    enum Axis { case horizontal, vertical }
-    let axis: Axis
-
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        switch axis {
-        case .horizontal:
-            let y = rect.midY
-            p.move(to: CGPoint(x: rect.minX, y: y))
-            p.addLine(to: CGPoint(x: rect.maxX, y: y))
-        case .vertical:
-            let x = rect.midX
-            p.move(to: CGPoint(x: x, y: rect.minY))
-            p.addLine(to: CGPoint(x: x, y: rect.maxY))
-        }
-        return p
     }
 }

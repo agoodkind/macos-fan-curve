@@ -72,8 +72,8 @@ class FanCurveModel: ObservableObject {
     static let tempRange: ClosedRange<Double> = CurveColumns.tempRange
 
     init() {
-        let loaded = Self.load() ?? Self.defaultCurve
-        self.controlPoints = Self.normalizedCurve(loaded)
+        let loaded = Self.load()
+        self.controlPoints = Self.normalizedCurve(loaded.isEmpty ? Self.defaultCurve : loaded)
         self.interpolationMode = Self.loadMode()
         self.isActive = sharedDefaults().bool(forKey: SharedConfigKeys.curveActive)
     }
@@ -113,11 +113,11 @@ class FanCurveModel: ObservableObject {
         defaults.set(interpolationMode.rawValue, forKey: SharedConfigKeys.interpolationMode)
     }
 
-    private static func load() -> [CurvePoint]? {
+    private static func load() -> [CurvePoint] {
         guard let data = sharedDefaults().data(forKey: SharedConfigKeys.curvePoints),
             let points = try? JSONDecoder().decode([CurvePoint].self, from: data),
             points.count >= 2
-        else { return nil }
+        else { return [] }
         return points
     }
 

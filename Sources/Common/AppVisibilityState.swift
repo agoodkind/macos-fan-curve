@@ -2,8 +2,8 @@ import AppKit
 
 enum AppVisibilityState: Equatable {
     case interactive
-    case passiveVisible
     case occluded
+    case passiveVisible
 }
 
 @MainActor

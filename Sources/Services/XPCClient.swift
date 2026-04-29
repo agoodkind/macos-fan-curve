@@ -38,8 +38,8 @@ private func toLocal(_ up: UpstreamFanInfo) -> FanInfo {
 }
 
 enum ConnectionState: Sendable {
-    case disconnected
     case connected
+    case disconnected
     case error(String)
 }
 
@@ -57,14 +57,15 @@ class XPCClient: ObservableObject, @unchecked Sendable {
         clientName: String = generatedAppBundleID,
         defaultPriority: Int = SMCFanPriority.curveNormal
     ) {
-        // SMCFanXPCClient's init declares throws for source compatibility but
-        // does not actually perform any failable work. A trap here would mean
-        // upstream changed that contract; crashing loudly at init time is the
-        // correct signal.
-        self.client = try! SMCFanXPCClient(
-            clientName: clientName,
-            defaultPriority: defaultPriority
-        )
+        do {
+            self.client = try SMCFanXPCClient(
+                clientName: clientName,
+                defaultPriority: defaultPriority
+            )
+        } catch {
+            log.error("xpc.client_init_failed error=\(error.localizedDescription, privacy: .public)")
+            preconditionFailure("SMCFanXPCClient init failed: \(error.localizedDescription)")
+        }
         log.debug(
             "xpc.client_init name=\(clientName, privacy: .public) default_priority=\(defaultPriority, privacy: .public)"
         )
@@ -150,9 +151,9 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
     func readKey(_ key: String) async throws -> Float {
         do {
-            let v = try await client.readKey(key)
+            let value = try await client.readKey(key)
             self.markConnected()
-            return v
+            return value
         } catch {
             self.markError(error)
             throw error
@@ -169,14 +170,14 @@ class XPCClient: ObservableObject, @unchecked Sendable {
     func readAndApply(
         fanCount: UInt,
         tempKeys: [String],
-        setFans: [(index: UInt, rpm: Float)]?,
-        autoFans: [UInt]?,
+        setFans: [(index: UInt, rpm: Float)] = [],
+        autoFans: [UInt] = [],
         priority: Int? = nil
     ) async -> BatchReadResult {
         var fans: [FanInfo] = []
         if fanCount > 0 {
-            for i in 0..<fanCount {
-                if let info = try? await self.getFanInfo(i) { fans.append(info) }
+            for fanIndex in 0..<fanCount {
+                if let info = try? await self.getFanInfo(fanIndex) { fans.append(info) }
             }
         }
 
@@ -187,15 +188,11 @@ class XPCClient: ObservableObject, @unchecked Sendable {
             }
         }
 
-        if let setFans {
-            for f in setFans {
-                try? await self.setFanRPM(f.index, rpm: f.rpm, priority: priority)
-            }
+        for fanTarget in setFans {
+            try? await self.setFanRPM(fanTarget.index, rpm: fanTarget.rpm, priority: priority)
         }
-        if let autoFans {
-            for i in autoFans {
-                try? await self.setFanAuto(i, priority: priority)
-            }
+        for fanIndex in autoFans {
+            try? await self.setFanAuto(fanIndex, priority: priority)
         }
 
         return BatchReadResult(fans: fans, temps: temps)

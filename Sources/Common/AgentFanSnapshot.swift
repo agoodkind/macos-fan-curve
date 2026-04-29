@@ -1,0 +1,20 @@
+//
+//  AgentFanSnapshot.swift
+//  FanCurve
+//
+//  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-29.
+//  Copyright © 2026
+//
+
+import Foundation
+
+struct AgentFanSnapshot: Identifiable, Codable, Sendable, Equatable {
+    var id: Int { index }
+
+    let index: Int
+    let actualRPM: Float
+    let targetRPM: Float
+    let minRPM: Float
+    let maxRPM: Float
+    let manualMode: Bool
+}

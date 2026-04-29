@@ -1,8 +1,8 @@
 //
-//  GlassModifiers.swift
+//  View+FanCurveGlass.swift
 //  FanCurve
 //
-//  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-16.
+//  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-29.
 //  Copyright © 2026
 //
 

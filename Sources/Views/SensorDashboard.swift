@@ -95,7 +95,8 @@ struct SensorDashboard: View {
                 VStack(spacing: 4) {
                     usageRow(
                         label: "CPU", icon: "cpu",
-                        value: runtime.cpuLoadPercent, tint: Color.accentColor)
+                        value: runtime.cpuLoadPercent,
+                        tint: Color.accentColor)
                     if let assist = assistStates.first(where: { $0.kind == .cpu }) {
                         loadAssistCaption(assist)
                             .transition(
@@ -107,7 +108,8 @@ struct SensorDashboard: View {
                 VStack(spacing: 4) {
                     usageRow(
                         label: "GPU", icon: "memorychip",
-                        value: runtime.gpuLoadPercent, tint: Color.accentColor.opacity(0.55))
+                        value: runtime.gpuLoadPercent,
+                        tint: Color.accentColor.opacity(0.55))
                     if let assist = assistStates.first(where: { $0.kind == .gpu }) {
                         loadAssistCaption(assist)
                             .transition(

@@ -118,15 +118,18 @@ struct OnboardingView: View {
             return L10n.tr("Looking for the helper and background agent.")
         case .helperMissing:
             return L10n.tr(
-                "FanCurve needs a privileged helper to read temperatures and control fans. Install it from the macos-smc-fan project, then return here."
+                "FanCurve needs a privileged helper to read temperatures and control fans. "
+                    + "Install it from the macos-smc-fan project, then return here."
             )
         case .helperAwaitingApproval:
             return L10n.tr(
-                "Open Login Items in System Settings and enable the helper. FanCurve will continue as soon as it is running."
+                "Open Login Items in System Settings and enable the helper. "
+                    + "FanCurve will continue as soon as it is running."
             )
         case .agentMissing:
             return L10n.tr(
-                "The background agent applies your curve even when FanCurve is closed. It starts automatically at login. Click to install."
+                "The background agent applies your curve even when FanCurve is closed. "
+                    + "It starts automatically at login. Click to install."
             )
         case .agentAwaitingApproval:
             return L10n.tr(

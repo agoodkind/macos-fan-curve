@@ -12,24 +12,6 @@ import Foundation
 
 private let snapshotLog = AppLog.make(category: "AgentSnapshot")
 
-enum AgentControllerMode: String, Codable, Sendable, Equatable {
-    case holding
-    case rampingUp
-    case rampingDown
-    case emergency
-}
-
-struct AgentFanSnapshot: Identifiable, Codable, Sendable, Equatable {
-    var id: Int { index }
-
-    let index: Int
-    let actualRPM: Float
-    let targetRPM: Float
-    let minRPM: Float
-    let maxRPM: Float
-    let manualMode: Bool
-}
-
 struct AgentSnapshot: Codable, Sendable, Equatable {
     static let currentSchemaVersion = 2
 

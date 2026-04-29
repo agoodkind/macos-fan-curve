@@ -37,14 +37,22 @@ final class FanOwnershipStatus: ObservableObject {
     @Published var hasLoaded: Bool = false
     @Published var isMonitoring: Bool = false
 
-    private let client: SMCFanXPCClient = {
-        // See XPCClient: init throws for source compat only.
-        try! SMCFanXPCClient(
-            clientName: "\(generatedAppBundleID).settings",
-            defaultPriority: 0
-        )
-    }()
+    private let client: SMCFanXPCClient
     private var timer: Timer?
+
+    init() {
+        do {
+            self.client = try SMCFanXPCClient(
+                clientName: "\(generatedAppBundleID).settings",
+                defaultPriority: 0
+            )
+        } catch {
+            log.error(
+                "ownership_status.client_init_failed error=\(error.localizedDescription, privacy: .public)"
+            )
+            preconditionFailure("SMCFanXPCClient init failed: \(error.localizedDescription)")
+        }
+    }
 
     // Owners must call `stopMonitoring` before dropping the last reference.
     // SwiftUI's `.onAppear` / `.onDisappear` pair already provides this for
@@ -75,13 +83,13 @@ final class FanOwnershipStatus: ObservableObject {
     private func tick() async {
         do {
             let entries = try await client.getOwnership()
-            let rows = entries.map {
+            let rows = entries.map { entry in
                 ArbiterRow(
-                    id: $0.fanIndex,
-                    fanIndex: $0.fanIndex,
-                    clientName: $0.clientName,
-                    priority: $0.priority,
-                    ageSeconds: $0.secondsSinceLastWrite
+                    id: entry.fanIndex,
+                    fanIndex: entry.fanIndex,
+                    clientName: entry.clientName,
+                    priority: entry.priority,
+                    ageSeconds: entry.secondsSinceLastWrite
                 )
             }
             self.rows = rows

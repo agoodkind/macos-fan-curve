@@ -45,6 +45,31 @@ final class EventArtifactWriter: @unchecked Sendable {
         let fanManualMode: [Bool]
     }
 
+    struct AppendRequest: Sendable {
+        let timestamp: Date
+        let kind: String
+        let governingTempC: Double
+        let rawTemperatureC: Double
+        let fastTemperatureC: Double
+        let slowTemperatureC: Double
+        let cpuLoadPercent: Double
+        let gpuLoadPercent: Double
+        let effectiveCurvePercent: Double
+        let rawBaselinePercent: Double
+        let committedPercent: Double
+        let bandIndex: Int
+        let holdRemainingSeconds: Double
+        let thermalDebt: Double
+        let controllerMode: String
+        let assistFloorPercent: Double?
+        let activeAssistKinds: [String]
+        let fanActualRPM: [Float]
+        let fanTargetRPM: [Float]
+        let fanMinRPM: [Float]
+        let fanMaxRPM: [Float]
+        let fanManualMode: [Bool]
+    }
+
     private let lock = NSLock()
     private let directory: URL
     private let activeJSON: URL
@@ -54,7 +79,32 @@ final class EventArtifactWriter: @unchecked Sendable {
     private let rotateThreshold: Int = 50 * 1_024 * 1_024
     private let encoder: JSONEncoder
     private let csvHeader =
-        "ts,kind,governing_temp_c,raw_temp_c,fast_temp_c,slow_temp_c,cpu_load_percent,gpu_load_percent,effective_curve_percent,raw_baseline_percent,committed_percent,band_index,hold_remaining_seconds,thermal_debt,controller_mode,assist_floor_percent,active_assist_kinds,fan_actual_rpm,fan_target_rpm,fan_min_rpm,fan_max_rpm,fan_manual_mode,fan_avg_actual_rpm,fan_avg_target_rpm\n"
+        [
+            "ts",
+            "kind",
+            "governing_temp_c",
+            "raw_temp_c",
+            "fast_temp_c",
+            "slow_temp_c",
+            "cpu_load_percent",
+            "gpu_load_percent",
+            "effective_curve_percent",
+            "raw_baseline_percent",
+            "committed_percent",
+            "band_index",
+            "hold_remaining_seconds",
+            "thermal_debt",
+            "controller_mode",
+            "assist_floor_percent",
+            "active_assist_kinds",
+            "fan_actual_rpm",
+            "fan_target_rpm",
+            "fan_min_rpm",
+            "fan_max_rpm",
+            "fan_manual_mode",
+            "fan_avg_actual_rpm",
+            "fan_avg_target_rpm",
+        ].joined(separator: ",") + "\n"
 
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -71,54 +121,31 @@ final class EventArtifactWriter: @unchecked Sendable {
         ensureDirectory()
     }
 
-    func append(
-        timestamp: Date = Date(),
-        kind: String,
-        governingTempC: Double,
-        rawTemperatureC: Double,
-        fastTemperatureC: Double,
-        slowTemperatureC: Double,
-        cpuLoadPercent: Double,
-        gpuLoadPercent: Double,
-        effectiveCurvePercent: Double,
-        rawBaselinePercent: Double,
-        committedPercent: Double,
-        bandIndex: Int,
-        holdRemainingSeconds: Double,
-        thermalDebt: Double,
-        controllerMode: String,
-        assistFloorPercent: Double?,
-        activeAssistKinds: [String],
-        fanActualRPM: [Float],
-        fanTargetRPM: [Float],
-        fanMinRPM: [Float],
-        fanMaxRPM: [Float],
-        fanManualMode: [Bool]
-    ) {
+    func append(_ request: AppendRequest) {
         let event = Event(
             schemaVersion: 2,
-            ts: timestamp,
-            kind: kind,
-            governingTempC: governingTempC,
-            rawTemperatureC: rawTemperatureC,
-            fastTemperatureC: fastTemperatureC,
-            slowTemperatureC: slowTemperatureC,
-            cpuLoadPercent: cpuLoadPercent,
-            gpuLoadPercent: gpuLoadPercent,
-            effectiveCurvePercent: effectiveCurvePercent,
-            rawBaselinePercent: rawBaselinePercent,
-            committedPercent: committedPercent,
-            bandIndex: bandIndex,
-            holdRemainingSeconds: holdRemainingSeconds,
-            thermalDebt: thermalDebt,
-            controllerMode: controllerMode,
-            assistFloorPercent: assistFloorPercent,
-            activeAssistKinds: activeAssistKinds,
-            fanActualRPM: fanActualRPM,
-            fanTargetRPM: fanTargetRPM,
-            fanMinRPM: fanMinRPM,
-            fanMaxRPM: fanMaxRPM,
-            fanManualMode: fanManualMode
+            ts: request.timestamp,
+            kind: request.kind,
+            governingTempC: request.governingTempC,
+            rawTemperatureC: request.rawTemperatureC,
+            fastTemperatureC: request.fastTemperatureC,
+            slowTemperatureC: request.slowTemperatureC,
+            cpuLoadPercent: request.cpuLoadPercent,
+            gpuLoadPercent: request.gpuLoadPercent,
+            effectiveCurvePercent: request.effectiveCurvePercent,
+            rawBaselinePercent: request.rawBaselinePercent,
+            committedPercent: request.committedPercent,
+            bandIndex: request.bandIndex,
+            holdRemainingSeconds: request.holdRemainingSeconds,
+            thermalDebt: request.thermalDebt,
+            controllerMode: request.controllerMode,
+            assistFloorPercent: request.assistFloorPercent,
+            activeAssistKinds: request.activeAssistKinds,
+            fanActualRPM: request.fanActualRPM,
+            fanTargetRPM: request.fanTargetRPM,
+            fanMinRPM: request.fanMinRPM,
+            fanMaxRPM: request.fanMaxRPM,
+            fanManualMode: request.fanManualMode
         )
         do {
             var jsonData = try encoder.encode(event)

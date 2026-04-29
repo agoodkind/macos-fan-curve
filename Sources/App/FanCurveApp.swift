@@ -17,6 +17,9 @@ struct FanCurveApp: App {
     @StateObject private var curveModel = FanCurveModel()
     @StateObject private var appUpdater = AppUpdater()
 
+    private let defaultsChangeObserver: NSObjectProtocol
+    private let terminationObserver: NSObjectProtocol
+
     init() {
         AppLog.bootstrap(subsystem: "io.goodkind.fan")
         #if DEBUG
@@ -34,7 +37,7 @@ struct FanCurveApp: App {
         // Every write to the shared suite in this process pings the Agent
         // via Darwin notification so it can apply the change within a few
         // milliseconds instead of waiting for its next 1 Hz tick.
-        NotificationCenter.default.addObserver(
+        self.defaultsChangeObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: suite,
             queue: .main
@@ -44,7 +47,7 @@ struct FanCurveApp: App {
 
         // When the user quits the app and background control is off, clear
         // the active flag so the agent resets fans to auto on its next tick.
-        NotificationCenter.default.addObserver(
+        self.terminationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
             queue: .main

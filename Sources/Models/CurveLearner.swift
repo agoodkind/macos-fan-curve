@@ -35,7 +35,7 @@ final class CurveLearner: ObservableObject {
     @Published var totalSeconds = 180
     @Published var minTempSampled: Double = .infinity
     @Published var maxTempSampled: Double = 0
-    @Published var learnedCurve: [CurvePoint]?
+    @Published var learnedCurve: [CurvePoint] = []
 
     @Published var isProbing = false
     @Published var probeSecondsElapsed = 0
@@ -50,7 +50,7 @@ final class CurveLearner: ObservableObject {
     private var sweepSignpostState: OSSignpostIntervalState?
     private var probeSignpostState: OSSignpostIntervalState?
 
-    func start(totalSeconds: Int = 180, sensorState: SensorState) {
+    func start(sensorState: SensorState, totalSeconds: Int = 180) {
         if isSampling { return }
         reset()
         self.sensorState = sensorState
@@ -156,7 +156,7 @@ final class CurveLearner: ObservableObject {
         secondsElapsed = 0
         minTempSampled = .infinity
         maxTempSampled = 0
-        learnedCurve = nil
+        learnedCurve = []
     }
 
     private func tick() {
@@ -233,15 +233,18 @@ final class CurveLearner: ObservableObject {
             let prev = known.last { $0 < temp }
             let next = known.first { $0 > temp }
             switch (prev, next) {
-            case (.some(let p), .some(let n)):
-                let pv = bucketMedian[p]!
-                let nv = bucketMedian[n]!
-                let t = (temp - p) / (n - p)
-                filled.append((temp, pv + t * (nv - pv)))
-            case (.some(let p), .none):
+            case let (.some(previousTemp), .some(nextTemp)):
+                guard
+                    let previousValue = bucketMedian[previousTemp],
+                    let nextValue = bucketMedian[nextTemp]
+                else { continue }
+                let fraction = (temp - previousTemp) / (nextTemp - previousTemp)
+                filled.append((temp, previousValue + fraction * (nextValue - previousValue)))
+            case let (.some(previousTemp), .none):
                 // Above the highest sampled bucket: extrapolate forward by
                 // extending the last slope, clamped to one.
-                filled.append((temp, bucketMedian[p]!))
+                guard let previousValue = bucketMedian[previousTemp] else { continue }
+                filled.append((temp, previousValue))
             case (.none, .some):
                 // Below the lowest sampled bucket: we did not observe idle
                 // behavior, so fall back to Apple's silent-first model and
@@ -266,16 +269,15 @@ final class CurveLearner: ObservableObject {
 
     // MARK: - Max RPM Probe
 
-    /// Command the fan to a very high target and record the actual RPM it
-    /// reaches. The highest RPM the fan sustains is its true physical cap.
-    /// The caller is responsible for restoring the fan (for example by
-    /// calling XPCClient.setFanAuto) after the probe completes or fails.
+    // Command the fan to a very high target and record the actual RPM it
+    // reaches. The highest RPM the fan sustains is its true physical cap.
+    // The caller is responsible for restoring the fan after the probe completes or fails.
     func startProbe(
         fanIndex: UInt,
-        commandedRPM: Float = 15_000,
-        seconds: Int = 15,
         sensorState: SensorState,
-        writeTarget: @escaping (UInt, Float) async throws -> Void
+        writeTarget: @escaping (UInt, Float) async throws -> Void,
+        commandedRPM: Float = 15_000,
+        seconds: Int = 15
     ) {
         if isProbing { return }
         isProbing = true

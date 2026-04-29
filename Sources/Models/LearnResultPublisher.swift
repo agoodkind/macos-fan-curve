@@ -32,8 +32,9 @@ enum LearnResultPublisher {
             probe: probe)
         let title = "Learn results from \(hardwareModel())"
 
-        var components = URLComponents(
-            string: "https://github.com/\(repository)/issues/new")!
+        guard var components = URLComponents(string: "https://github.com/\(repository)/issues/new") else {
+            throw PublishError.invalidURL
+        }
         components.queryItems = [
             URLQueryItem(name: "title", value: title),
             URLQueryItem(name: "labels", value: "learn-curve"),
@@ -90,8 +91,11 @@ enum LearnResultPublisher {
         lines.append("```json")
         lines.append(
             jsonPayload(
-                curve: curve, minTemp: minTemp, maxTemp: maxTemp,
-                sampleCount: sampleCount, probe: probe))
+                curve: curve,
+                minTemp: minTemp,
+                maxTemp: maxTemp,
+                sampleCount: sampleCount,
+                probe: probe))
         lines.append("```")
         return lines.joined(separator: "\n")
     }
@@ -121,7 +125,7 @@ enum LearnResultPublisher {
         }
         let data = try? JSONSerialization.data(
             withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
-        return data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        return data.flatMap { String(bytes: $0, encoding: .utf8) } ?? "{}"
     }
 
     /// Reads hw.model via sysctl. Returns something like "Mac15,6" so the
@@ -136,7 +140,7 @@ enum LearnResultPublisher {
             return "Unknown Mac"
         }
         let bytes = model.prefix { $0 != 0 }.map(UInt8.init(bitPattern:))
-        return String(decoding: bytes, as: UTF8.self)
+        return String(bytes: bytes, encoding: .utf8) ?? "Unknown Mac"
     }
 
     enum PublishError: LocalizedError {

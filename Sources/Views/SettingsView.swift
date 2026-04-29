@@ -13,27 +13,6 @@ import SwiftUI
 
 private let log = AppLog.make(category: "SettingsView")
 
-private enum SettingsTab: Hashable {
-    case general
-    case profiles
-    case advanced
-    case about
-}
-
-private enum ServiceRowState {
-    case healthy
-    case degraded
-    case inactive
-
-    var color: Color {
-        switch self {
-        case .healthy: return Color(nsColor: .systemGreen)
-        case .degraded: return Color(nsColor: .systemOrange)
-        case .inactive: return Color(nsColor: .systemGray)
-        }
-    }
-}
-
 /// Root Settings window. Uses the macOS Settings scene (Cmd-comma).
 /// Three tabs ordered by how often a user reaches for them. Profiles is
 /// the hero since it holds the curve itself. General covers everything
@@ -102,7 +81,8 @@ struct GeneralSettingsView: View {
                 Text("Background Control")
             } footer: {
                 Text(
-                    "When on, the curve keeps controlling fans after you quit the app and resumes on next login. When off, quitting returns fans to system auto."
+                    "When on, the curve keeps controlling fans after you quit the app and resumes on next login. "
+                        + "When off, quitting returns fans to system auto."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -130,7 +110,8 @@ struct GeneralSettingsView: View {
                 Text("Privileged Helper")
             } footer: {
                 Text(
-                    "Reads and writes SMC keys as root. Required for fan control. The helper arbitrates between fan writers by priority; current owners show above."
+                    "Reads and writes SMC keys as root. Required for fan control. "
+                        + "The helper arbitrates between fan writers by priority; current owners show above."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -523,7 +504,9 @@ struct AboutContentView: View {
                     }
                     Spacer()
                     Button {
-                        NSWorkspace.shared.open(URL(string: "mailto:alex@goodkind.io")!)
+                        if let emailURL = URL(string: "mailto:alex@goodkind.io") {
+                            NSWorkspace.shared.open(emailURL)
+                        }
                     } label: {
                         Label("Email", systemImage: "envelope.fill")
                     }
@@ -534,7 +517,9 @@ struct AboutContentView: View {
                     .accessibilityLabel("Email")
 
                     Button {
-                        NSWorkspace.shared.open(URL(string: "https://goodkind.io")!)
+                        if let websiteURL = URL(string: "https://goodkind.io") {
+                            NSWorkspace.shared.open(websiteURL)
+                        }
                     } label: {
                         Label("Website", systemImage: "globe")
                     }
@@ -545,7 +530,9 @@ struct AboutContentView: View {
                     .accessibilityLabel("Website")
 
                     Button {
-                        NSWorkspace.shared.open(URL(string: "https://github.com/agoodkind")!)
+                        if let sourceURL = URL(string: "https://github.com/agoodkind") {
+                            NSWorkspace.shared.open(sourceURL)
+                        }
                     } label: {
                         Label("Source", systemImage: "chevron.left.forwardslash.chevron.right")
                     }
@@ -665,7 +652,9 @@ struct AdvancedSettingsView: View {
                     Text("Load Assist")
                 } footer: {
                     Text(
-                        "Each assist curve maps load percent to a minimum fan floor. The agent evaluates the temperature curve, CPU assist, and GPU assist, then applies whichever result is highest."
+                        "Each assist curve maps load percent to a minimum fan floor. "
+                            + "The agent evaluates the temperature curve, CPU assist, and GPU assist, "
+                            + "then applies whichever result is highest."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -688,7 +677,9 @@ struct AdvancedSettingsView: View {
                     Text("Client Priority")
                 } footer: {
                     Text(
-                        "Priority the agent uses when writing fans. Higher values preempt lower. Defaults match other fan aware apps: normal curve at 10, boost at 50. Raise boost above 50 if you want boost to preempt an active lmd LLM run."
+                        "Priority the agent uses when writing fans. Higher values preempt lower. "
+                            + "Defaults match other fan aware apps: normal curve at 10, boost at 50. "
+                            + "Raise boost above 50 if boost should preempt an active lmd LLM run."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -725,7 +716,8 @@ struct AdvancedSettingsView: View {
                     }
                 } footer: {
                     Text(
-                        "These modes bypass the firmware reported safe range. Enable them only if you understand the risks."
+                        "These modes bypass the firmware reported safe range. "
+                            + "Enable them only if you understand the risks."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -736,18 +728,26 @@ struct AdvancedSettingsView: View {
         }
         .alert("Enable Overdrive?", isPresented: $confirmOverdrive) {
             Button("Enable", role: .destructive) { overdrive = true }
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) {
+                showOverdriveConfirm = false
+            }
         } message: {
             Text(
-                "Overdrive pushes fan targets beyond the firmware reported max. Sustained high RPM shortens bearing life and increases noise. Only enable if you accept the tradeoff."
+                "Overdrive pushes fan targets beyond the firmware reported max. "
+                    + "Sustained high RPM shortens bearing life and increases noise. "
+                    + "Only enable if you accept the tradeoff."
             )
         }
         .alert("Enable Underdrive?", isPresented: $confirmUnderdrive) {
             Button("Enable", role: .destructive) { underdrive = true }
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) {
+                showUnderdriveConfirm = false
+            }
         } message: {
             Text(
-                "Underdrive lets the curve force fans to 0 RPM in manual mode. Without airflow your machine can overheat under load and throttle or shut down. Only enable if you know your thermal limits."
+                "Underdrive lets the curve force fans to 0 RPM in manual mode. "
+                    + "Without airflow your machine can overheat under load and throttle or shut down. "
+                    + "Only enable if you know your thermal limits."
             )
         }
     }

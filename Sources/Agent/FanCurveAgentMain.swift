@@ -15,7 +15,7 @@ private let log = AppLog.make(category: "AgentMain")
 /// LaunchAgent entry point. Runs the curve application loop in the background.
 /// Resets all fans to auto on SIGTERM/SIGINT/crash.
 @main
-struct FanCurveAgentMain {
+enum FanCurveAgentMain {
     static func main() {
         AppLog.bootstrap(subsystem: "io.goodkind.fan")
 

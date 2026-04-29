@@ -29,7 +29,7 @@ struct LearnSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             header
             Divider()
-            body_
+            sheetBody
             Divider()
             footer
         }
@@ -46,16 +46,20 @@ struct LearnSheet: View {
         }
         .alert("Probe maximum fan RPM?", isPresented: $confirmProbe) {
             Button("Start Probe", role: .destructive) { startProbe() }
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) {
+                confirmProbe = false
+            }
         } message: {
             Text(
-                "Fan 0 will spin at its mechanical limit for 15 seconds. Expect loud noise. The reading becomes the new Overdrive target."
+                "Fan 0 will spin at its mechanical limit for 15 seconds. Expect loud noise. "
+                    + "The reading becomes the new Overdrive target."
             )
         }
     }
 
     private func publishResults() {
-        guard let curve = learner.learnedCurve else { return }
+        let curve = learner.learnedCurve
+        guard !curve.isEmpty else { return }
         do {
             try LearnResultPublisher.publish(
                 curve: curve,
@@ -91,7 +95,8 @@ struct LearnSheet: View {
             Text("Learn from System")
                 .font(.title3.weight(.semibold))
             Text(
-                "Samples temperature and fan speed for three minutes while macOS runs your machine in Auto. The result becomes your new curve."
+                "Samples temperature and fan speed for three minutes while macOS runs your machine in Auto. "
+                    + "The result becomes your new curve."
             )
             .font(.callout)
             .foregroundStyle(.secondary)
@@ -100,8 +105,8 @@ struct LearnSheet: View {
     }
 
     @ViewBuilder
-    private var body_: some View {
-        if learner.learnedCurve != nil {
+    private var sheetBody: some View {
+        if !learner.learnedCurve.isEmpty {
             learnedSummary
         } else if learner.isSampling {
             samplingView
@@ -118,7 +123,9 @@ struct LearnSheet: View {
                         Text("Your machine is already warm (\(Int(sensorState.governingTemperature))°C).")
                             .font(.callout.weight(.medium))
                         Text(
-                            "Idle behavior below this temperature cannot be sampled. Wait for the machine to cool, or proceed and the curve will assume zero fan speed at lower temps."
+                            "Idle behavior below this temperature cannot be sampled. "
+                                + "Wait for the machine to cool, or proceed and the curve will assume zero fan speed "
+                                + "at lower temps."
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -138,7 +145,8 @@ struct LearnSheet: View {
             Toggle("Stress the GPU during sampling", isOn: $runGPU)
 
             Text(
-                "Stressing both covers the whole thermal band quickly. Turning them off lets you load the machine with your own workload instead."
+                "Stressing both covers the whole thermal band quickly. "
+                    + "Turning them off lets you load the machine with your own workload instead."
             )
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -189,15 +197,13 @@ struct LearnSheet: View {
             )
             .foregroundColor(Color(nsColor: .systemGreen))
 
-            if let curve = learner.learnedCurve {
-                Text("Sampled \(Int(learner.minTempSampled))°C to \(Int(learner.maxTempSampled))°C")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            Text("Sampled \(Int(learner.minTempSampled))°C to \(Int(learner.maxTempSampled))°C")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
-                Text("\(curve.count) control points will replace your current curve.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text("\(learner.learnedCurve.count) control points will replace your current curve.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             Divider().padding(.vertical, 4)
 
@@ -249,7 +255,8 @@ struct LearnSheet: View {
                     Text("Probe max RPM (optional)")
                         .font(.callout.weight(.medium))
                     Text(
-                        "Briefly drives fan 0 at a high target to measure its true mechanical limit. Loud for 15 seconds."
+                        "Briefly drives fan 0 at a high target to measure its true mechanical limit. "
+                            + "Loud for 15 seconds."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -274,7 +281,7 @@ struct LearnSheet: View {
 
             Spacer()
 
-            if learner.learnedCurve != nil {
+            if !learner.learnedCurve.isEmpty {
                 Button {
                     publishResults()
                 } label: {
@@ -285,9 +292,7 @@ struct LearnSheet: View {
                 .help("Opens a pre-filled pull request on GitHub with your sample data.")
 
                 Button("Apply Curve") {
-                    if let curve = learner.learnedCurve {
-                        curveModel.replaceCurve(curve)
-                    }
+                    curveModel.replaceCurve(learner.learnedCurve)
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
@@ -302,7 +307,7 @@ struct LearnSheet: View {
                     priorFanControl = curveModel.isActive
                     curveModel.isActive = false
                     workload.start(cpu: runCPU, gpu: runGPU)
-                    learner.start(totalSeconds: durationSeconds, sensorState: sensorState)
+                    learner.start(sensorState: sensorState, totalSeconds: durationSeconds)
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)

@@ -1,8 +1,8 @@
 //
-//  Config.swift
+//  SMCFanConfiguration.swift
 //  SMCFanApp
 //
-//  Created by Alex Goodkind <alex@goodkind.io> on 2026-01-18.
+//  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-29.
 //  Copyright © 2026
 //
 

@@ -32,7 +32,9 @@
         private var previousTickNs: UInt64 = 0
         private var frameCount = 0
 
-        private init() {}
+        private init() {
+            // Singleton only.
+        }
 
         static var isEnabledByLaunchConfiguration: Bool {
             let environment = ProcessInfo.processInfo.environment
@@ -104,7 +106,7 @@
             }
         }
 
-        fileprivate func tick() {
+        func tick() {
             let nowNs = DispatchTime.now().uptimeNanoseconds
 
             lock.lock()
@@ -139,8 +141,7 @@
         }
     }
 
-    private let frameProfilerCallback: CVDisplayLinkOutputCallback = {
-        _, _, _, _, _, userInfo in
+    private let frameProfilerCallback: CVDisplayLinkOutputCallback = { _, _, _, _, _, userInfo in
         guard let userInfo else { return kCVReturnSuccess }
         let profiler = Unmanaged<FrameProfiler>.fromOpaque(userInfo).takeUnretainedValue()
         profiler.tick()

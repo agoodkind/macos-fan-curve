@@ -23,6 +23,8 @@ final class FanCurveController: ObservableObject, @unchecked Sendable {
     private var timer: Timer?
     private var cachedFanCount: UInt = 2
     private var isAppActive = true
+    private var didBecomeActiveObserver: NSObjectProtocol?
+    private var didResignActiveObserver: NSObjectProtocol?
 
     private let tempKeys: [String] = SensorCatalog.keysForCurrentHardware()
         .filter { $0.type == .temperature }
@@ -36,8 +38,8 @@ final class FanCurveController: ObservableObject, @unchecked Sendable {
 
     private let sensorLookup: [String: SensorKey] = {
         var lookup: [String: SensorKey] = [:]
-        for s in SensorCatalog.keysForCurrentHardware() where s.type == .temperature {
-            lookup[s.key] = s
+        for sensor in SensorCatalog.keysForCurrentHardware() where sensor.type == .temperature {
+            lookup[sensor.key] = sensor
         }
         return lookup
     }()
@@ -48,14 +50,18 @@ final class FanCurveController: ObservableObject, @unchecked Sendable {
         self.xpcClient = xpcClient
         self.sensorState = sensorState
 
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        self.didBecomeActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
         ) { [weak self] _ in
             self?.isAppActive = true
             self?.reschedule()
         }
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
+        self.didResignActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: nil,
+            queue: .main
         ) { [weak self] _ in
             self?.isAppActive = false
             self?.reschedule()
@@ -89,17 +95,22 @@ final class FanCurveController: ObservableObject, @unchecked Sendable {
             let result = try await xpcClient.readAndApply(
                 fanCount: cachedFanCount,
                 tempKeys: tempKeys,
-                setFans: nil,
                 autoFans: nil
             )
             cachedFanCount = UInt(result.fans.count)
 
             var fans: [FanReading] = []
-            for (i, info) in result.fans.enumerated() {
+            for (fanIndex, info) in result.fans.enumerated() {
                 fans.append(
                     FanReading(
-                        id: i, actualRPM: info.actualRPM, targetRPM: info.targetRPM,
-                        minRPM: info.minRPM, maxRPM: info.maxRPM, manualMode: info.manualMode))
+                        id: fanIndex,
+                        actualRPM: info.actualRPM,
+                        targetRPM: info.targetRPM,
+                        minRPM: info.minRPM,
+                        maxRPM: info.maxRPM,
+                        manualMode: info.manualMode
+                    )
+                )
             }
 
             var temps: [SensorReading] = []
@@ -108,8 +119,12 @@ final class FanCurveController: ObservableObject, @unchecked Sendable {
                 let sensor = sensorLookup[key]
                 temps.append(
                     SensorReading(
-                        id: key, name: sensor?.name ?? key,
-                        group: sensor?.group.rawValue ?? "Unknown", value: Double(value)))
+                        id: key,
+                        name: sensor?.name ?? key,
+                        group: sensor?.group.rawValue ?? "Unknown",
+                        value: Double(value)
+                    )
+                )
                 if cpuTempKeys.contains(key) {
                     maxCPUTemp = max(maxCPUTemp, Double(value))
                 }

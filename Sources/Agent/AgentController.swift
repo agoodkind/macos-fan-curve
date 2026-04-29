@@ -39,6 +39,12 @@ private actor TickCoordinator {
 /// Reads curve config from the shared UserDefaults suite every tick and
 /// applies it via the privileged helper over XPC.
 final class AgentController: @unchecked Sendable {
+    private enum ActivityState {
+        case inactive
+        case active
+        case unknown
+    }
+
     private let xpcClient = XPCClient(clientName: generatedAgentBundleID)
     private let sharedConfig = SharedConfig()
     private let loadSampler = CPULoadSampler()
@@ -46,7 +52,7 @@ final class AgentController: @unchecked Sendable {
     private let tickCoordinator = TickCoordinator()
     private var timer: Timer?
     private var cachedFanCount: UInt = 2
-    private var lastActive: Bool?
+    private var lastActivityState: ActivityState = .unknown
     private var filteredTemperatureFast: Double?
     private var filteredTemperatureSlow: Double?
     private var previousFastTemperature: Double?
@@ -149,7 +155,6 @@ final class AgentController: @unchecked Sendable {
             _ = try await xpcClient.readAndApply(
                 fanCount: cachedFanCount,
                 tempKeys: [],
-                setFans: nil,
                 autoFans: Array(0..<cachedFanCount)
             )
             log.notice("agent.fans.reset.auto")
@@ -184,7 +189,6 @@ final class AgentController: @unchecked Sendable {
             let result = try await xpcClient.readAndApply(
                 fanCount: cachedFanCount,
                 tempKeys: tempKeys,
-                setFans: nil,
                 autoFans: nil
             )
             cachedFanCount = UInt(result.fans.count)
@@ -192,8 +196,9 @@ final class AgentController: @unchecked Sendable {
             sharedConfig.writeAgentStatus(pid: ProcessInfo.processInfo.processIdentifier, lastTick: Date())
             sharedConfig.writeAgentLastError(nil)
 
-            let transitioned = (lastActive != active)
-            lastActive = active
+            let activityState: ActivityState = active ? .active : .inactive
+            let transitioned = lastActivityState != activityState
+            lastActivityState = activityState
             var maxCPUTemp: Double = 0
             for (key, value) in result.temps where cpuTempKeys.contains(key) {
                 maxCPUTemp = max(maxCPUTemp, Double(value))
@@ -248,7 +253,6 @@ final class AgentController: @unchecked Sendable {
                     _ = try? await xpcClient.readAndApply(
                         fanCount: 0,
                         tempKeys: [],
-                        setFans: nil,
                         autoFans: Array(0..<UInt(result.fans.count))
                     )
                     log.notice("agent.curve.deactivated fans=auto")
@@ -346,7 +350,7 @@ final class AgentController: @unchecked Sendable {
 
             var setFans: [(index: UInt, rpm: Float)] = []
             var autoFans: [UInt] = []
-            for (i, fan) in result.fans.enumerated() {
+            for (fanIndex, fan) in result.fans.enumerated() {
                 let command = fanCommandFor(
                     percent: runtimeState.committedPercent, minRPM: fan.minRPM, maxRPM: fan.maxRPM)
                 let smoothedCommand =
@@ -354,17 +358,17 @@ final class AgentController: @unchecked Sendable {
                     ? command
                     : slewLimitedCommand(
                         command,
-                        for: UInt(i),
+                        for: UInt(fanIndex),
                         currentFan: fan,
                         currentTemperatureC: maxCPUTemp)
                 switch command {
                 case .setRPM:
                     if case .setRPM(let rpm) = smoothedCommand {
-                        setFans.append((index: UInt(i), rpm: rpm))
+                        setFans.append((index: UInt(fanIndex), rpm: rpm))
                     }
                 case .auto:
-                    lastAppliedRPMByFan.removeValue(forKey: UInt(i))
-                    autoFans.append(UInt(i))
+                    lastAppliedRPMByFan.removeValue(forKey: UInt(fanIndex))
+                    autoFans.append(UInt(fanIndex))
                 }
             }
 
@@ -376,8 +380,8 @@ final class AgentController: @unchecked Sendable {
             _ = try await xpcClient.readAndApply(
                 fanCount: 0,
                 tempKeys: [],
-                setFans: setFans.isEmpty ? nil : setFans,
-                autoFans: autoFans.isEmpty ? nil : autoFans,
+                setFans: setFans,
+                autoFans: autoFans,
                 priority: tickPriority
             )
 
@@ -411,28 +415,29 @@ final class AgentController: @unchecked Sendable {
                     }))
 
             eventWriter.append(
-                timestamp: now,
-                kind: boost ? "boost" : (assistAppliedKinds.isEmpty ? "curve" : "assist:\(assistSummary)"),
-                governingTempC: maxCPUTemp,
-                rawTemperatureC: maxCPUTemp,
-                fastTemperatureC: fastTemp,
-                slowTemperatureC: slowTemp,
-                cpuLoadPercent: cpuLoad,
-                gpuLoadPercent: gpuLoad,
-                effectiveCurvePercent: runtimeState.committedPercent,
-                rawBaselinePercent: runtimeState.rawBaselinePercent,
-                committedPercent: runtimeState.committedPercent,
-                bandIndex: runtimeState.bandIndex,
-                holdRemainingSeconds: runtimeState.holdRemainingSeconds,
-                thermalDebt: thermalDebt,
-                controllerMode: runtimeState.mode.rawValue,
-                assistFloorPercent: assistFloorPercent,
-                activeAssistKinds: assistAppliedKinds.map(\.rawValue),
-                fanActualRPM: result.fans.map(\.actualRPM),
-                fanTargetRPM: result.fans.map(\.targetRPM),
-                fanMinRPM: result.fans.map(\.minRPM),
-                fanMaxRPM: result.fans.map(\.maxRPM),
-                fanManualMode: result.fans.map(\.manualMode))
+                EventArtifactWriter.AppendRequest(
+                    timestamp: now,
+                    kind: boost ? "boost" : (assistAppliedKinds.isEmpty ? "curve" : "assist:\(assistSummary)"),
+                    governingTempC: maxCPUTemp,
+                    rawTemperatureC: maxCPUTemp,
+                    fastTemperatureC: fastTemp,
+                    slowTemperatureC: slowTemp,
+                    cpuLoadPercent: cpuLoad,
+                    gpuLoadPercent: gpuLoad,
+                    effectiveCurvePercent: runtimeState.committedPercent,
+                    rawBaselinePercent: runtimeState.rawBaselinePercent,
+                    committedPercent: runtimeState.committedPercent,
+                    bandIndex: runtimeState.bandIndex,
+                    holdRemainingSeconds: runtimeState.holdRemainingSeconds,
+                    thermalDebt: thermalDebt,
+                    controllerMode: runtimeState.mode.rawValue,
+                    assistFloorPercent: assistFloorPercent,
+                    activeAssistKinds: assistAppliedKinds.map(\.rawValue),
+                    fanActualRPM: result.fans.map(\.actualRPM),
+                    fanTargetRPM: result.fans.map(\.targetRPM),
+                    fanMinRPM: result.fans.map(\.minRPM),
+                    fanMaxRPM: result.fans.map(\.maxRPM),
+                    fanManualMode: result.fans.map(\.manualMode)))
         } catch {
             log.error("agent.tick.failed error=\(error.localizedDescription, privacy: .public)")
             sharedConfig.writeAgentLastError("\(error)")
