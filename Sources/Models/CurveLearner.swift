@@ -232,26 +232,23 @@ final class CurveLearner: ObservableObject {
             // Find neighbors in the known list.
             let prev = known.last { $0 < temp }
             let next = known.first { $0 > temp }
-            switch (prev, next) {
-            case (.some(let previousTemp), .some(let nextTemp)):
+            if let previousTemp = prev, let nextTemp = next {
                 guard
                     let previousValue = bucketMedian[previousTemp],
                     let nextValue = bucketMedian[nextTemp]
                 else { continue }
                 let fraction = (temp - previousTemp) / (nextTemp - previousTemp)
                 filled.append((temp, previousValue + fraction * (nextValue - previousValue)))
-            case (.some(let previousTemp), .none):
+            } else if let previousTemp = prev {
                 // Above the highest sampled bucket: extrapolate forward by
                 // extending the last slope, clamped to one.
                 guard let previousValue = bucketMedian[previousTemp] else { continue }
                 filled.append((temp, previousValue))
-            case (.none, .some):
+            } else if next != nil {
                 // Below the lowest sampled bucket: we did not observe idle
                 // behavior, so fall back to Apple's silent-first model and
                 // assume fans stay at zero percent.
                 filled.append((temp, 0))
-            case (.none, .none):
-                break
             }
         }
 
