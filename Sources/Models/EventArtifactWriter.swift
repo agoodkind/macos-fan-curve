@@ -20,25 +20,49 @@ private let log = AppLog.make(category: "EventArtifactWriter")
 /// is created with 0o700 so other users on the box cannot read tick data.
 final class EventArtifactWriter: @unchecked Sendable {
   struct Event: Codable, Sendable {
+    let schemaVersion: Int
     let ts: Date
     let kind: String
-    let fanRPM: [Float]
-    let tempC: Double
-    let curvePoint: Double
+    let governingTempC: Double
+    let rawTemperatureC: Double
+    let fastTemperatureC: Double
+    let slowTemperatureC: Double
+    let cpuLoadPercent: Double
+    let gpuLoadPercent: Double
+    let effectiveCurvePercent: Double
+    let rawBaselinePercent: Double
+    let committedPercent: Double
+    let bandIndex: Int
+    let holdRemainingSeconds: Double
+    let thermalDebt: Double
+    let controllerMode: String
+    let assistFloorPercent: Double?
+    let activeAssistKinds: [String]
+    let fanActualRPM: [Float]
+    let fanTargetRPM: [Float]
+    let fanMinRPM: [Float]
+    let fanMaxRPM: [Float]
+    let fanManualMode: [Bool]
   }
 
   private let lock = NSLock()
   private let directory: URL
-  private let active: URL
-  private let rotated: URL
+  private let activeJSON: URL
+  private let rotatedJSON: URL
+  private let activeCSV: URL
+  private let rotatedCSV: URL
   private let rotateThreshold: Int = 50 * 1024 * 1024
   private let encoder: JSONEncoder
+  private let csvHeader =
+    "ts,kind,governing_temp_c,raw_temp_c,fast_temp_c,slow_temp_c,cpu_load_percent,gpu_load_percent,effective_curve_percent,raw_baseline_percent,committed_percent,band_index,hold_remaining_seconds,thermal_debt,controller_mode,assist_floor_percent,active_assist_kinds,fan_actual_rpm,fan_target_rpm,fan_min_rpm,fan_max_rpm,fan_manual_mode,fan_avg_actual_rpm,fan_avg_target_rpm\n"
 
   init() {
     let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
     self.directory = support.appendingPathComponent("io.goodkind.fan", isDirectory: true)
-    self.active = directory.appendingPathComponent("events.jsonl")
-    self.rotated = directory.appendingPathComponent("events.1.jsonl")
+    self.activeJSON = directory.appendingPathComponent("events.jsonl")
+    self.rotatedJSON = directory.appendingPathComponent("events.1.jsonl")
+    self.activeCSV = directory.appendingPathComponent("events.csv")
+    self.rotatedCSV = directory.appendingPathComponent("events.1.csv")
 
     let enc = JSONEncoder()
     enc.dateEncodingStrategy = .iso8601
@@ -47,17 +71,66 @@ final class EventArtifactWriter: @unchecked Sendable {
     ensureDirectory()
   }
 
-  func append(kind: String, fanRPM: [Float], tempC: Double, curvePoint: Double) {
-    let event = Event(ts: Date(), kind: kind, fanRPM: fanRPM, tempC: tempC, curvePoint: curvePoint)
+  func append(
+    timestamp: Date = Date(),
+    kind: String,
+    governingTempC: Double,
+    rawTemperatureC: Double,
+    fastTemperatureC: Double,
+    slowTemperatureC: Double,
+    cpuLoadPercent: Double,
+    gpuLoadPercent: Double,
+    effectiveCurvePercent: Double,
+    rawBaselinePercent: Double,
+    committedPercent: Double,
+    bandIndex: Int,
+    holdRemainingSeconds: Double,
+    thermalDebt: Double,
+    controllerMode: String,
+    assistFloorPercent: Double?,
+    activeAssistKinds: [String],
+    fanActualRPM: [Float],
+    fanTargetRPM: [Float],
+    fanMinRPM: [Float],
+    fanMaxRPM: [Float],
+    fanManualMode: [Bool]
+  ) {
+    let event = Event(
+      schemaVersion: 2,
+      ts: timestamp,
+      kind: kind,
+      governingTempC: governingTempC,
+      rawTemperatureC: rawTemperatureC,
+      fastTemperatureC: fastTemperatureC,
+      slowTemperatureC: slowTemperatureC,
+      cpuLoadPercent: cpuLoadPercent,
+      gpuLoadPercent: gpuLoadPercent,
+      effectiveCurvePercent: effectiveCurvePercent,
+      rawBaselinePercent: rawBaselinePercent,
+      committedPercent: committedPercent,
+      bandIndex: bandIndex,
+      holdRemainingSeconds: holdRemainingSeconds,
+      thermalDebt: thermalDebt,
+      controllerMode: controllerMode,
+      assistFloorPercent: assistFloorPercent,
+      activeAssistKinds: activeAssistKinds,
+      fanActualRPM: fanActualRPM,
+      fanTargetRPM: fanTargetRPM,
+      fanMinRPM: fanMinRPM,
+      fanMaxRPM: fanMaxRPM,
+      fanManualMode: fanManualMode
+    )
     do {
-      var data = try encoder.encode(event)
-      data.append(0x0A)
+      var jsonData = try encoder.encode(event)
+      jsonData.append(0x0A)
+      let csvData = Data(csvLine(for: event).utf8)
 
       lock.lock()
       defer { lock.unlock() }
 
       rotateIfNeededLocked()
-      try writeLocked(data)
+      try writeLocked(jsonData, to: activeJSON, header: nil)
+      try writeLocked(csvData, to: activeCSV, header: csvHeader)
       log.info("event.recorded kind=\(kind, privacy: .public)")
     } catch {
       log.error("event.write.failed kind=\(kind, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
@@ -77,28 +150,87 @@ final class EventArtifactWriter: @unchecked Sendable {
   }
 
   private func rotateIfNeededLocked() {
-    let attrs = try? FileManager.default.attributesOfItem(atPath: active.path)
+    let attrs = try? FileManager.default.attributesOfItem(atPath: activeJSON.path)
     guard let size = attrs?[.size] as? Int, size >= rotateThreshold else { return }
     let fm = FileManager.default
-    try? fm.removeItem(at: rotated)
+    try? fm.removeItem(at: rotatedJSON)
+    try? fm.removeItem(at: rotatedCSV)
     do {
-      try fm.moveItem(at: active, to: rotated)
-      log.notice("artifact.rotated from=\(active.lastPathComponent, privacy: .public) to=\(rotated.lastPathComponent, privacy: .public)")
+      if fm.fileExists(atPath: activeJSON.path) {
+        try fm.moveItem(at: activeJSON, to: rotatedJSON)
+      }
+      if fm.fileExists(atPath: activeCSV.path) {
+        try fm.moveItem(at: activeCSV, to: rotatedCSV)
+      }
+      log.notice(
+        "artifact.rotated from=\(activeJSON.lastPathComponent, privacy: .public) to=\(rotatedJSON.lastPathComponent, privacy: .public)")
     } catch {
       log.error("artifact.rotate.failed error=\(error.localizedDescription, privacy: .public)")
     }
   }
 
-  private func writeLocked(_ data: Data) throws {
+  private func writeLocked(_ data: Data, to url: URL, header: String?) throws {
     let fm = FileManager.default
-    if !fm.fileExists(atPath: active.path) {
-      fm.createFile(atPath: active.path, contents: data, attributes: [.posixPermissions: 0o600])
-      log.info("artifact.written path=\(active.path, privacy: .public) kind=create")
+    if !fm.fileExists(atPath: url.path) {
+      var initial = Data()
+      if let header {
+        initial.append(Data(header.utf8))
+      }
+      initial.append(data)
+      fm.createFile(atPath: url.path, contents: initial, attributes: [.posixPermissions: 0o600])
+      log.info("artifact.written path=\(url.path, privacy: .public) kind=create")
       return
     }
-    let handle = try FileHandle(forWritingTo: active)
+    let handle = try FileHandle(forWritingTo: url)
     defer { try? handle.close() }
     try handle.seekToEnd()
     try handle.write(contentsOf: data)
+  }
+
+  private func csvLine(for event: Event) -> String {
+    let avgActual = event.fanActualRPM.isEmpty ? 0 : event.fanActualRPM.reduce(0, +) / Float(event.fanActualRPM.count)
+    let avgTarget = event.fanTargetRPM.isEmpty ? 0 : event.fanTargetRPM.reduce(0, +) / Float(event.fanTargetRPM.count)
+    let columns: [String] = [
+      iso8601(event.ts),
+      event.kind,
+      decimal(event.governingTempC),
+      decimal(event.rawTemperatureC),
+      decimal(event.fastTemperatureC),
+      decimal(event.slowTemperatureC),
+      decimal(event.cpuLoadPercent),
+      decimal(event.gpuLoadPercent),
+      decimal(event.effectiveCurvePercent),
+      decimal(event.rawBaselinePercent),
+      decimal(event.committedPercent),
+      String(event.bandIndex),
+      decimal(event.holdRemainingSeconds),
+      decimal(event.thermalDebt),
+      event.controllerMode,
+      event.assistFloorPercent.map(decimal) ?? "",
+      event.activeAssistKinds.joined(separator: "|"),
+      event.fanActualRPM.map(decimal).joined(separator: "|"),
+      event.fanTargetRPM.map(decimal).joined(separator: "|"),
+      event.fanMinRPM.map(decimal).joined(separator: "|"),
+      event.fanMaxRPM.map(decimal).joined(separator: "|"),
+      event.fanManualMode.map { $0 ? "1" : "0" }.joined(separator: "|"),
+      decimal(avgActual),
+      decimal(avgTarget)
+    ]
+    return columns.map(csvEscape).joined(separator: ",") + "\n"
+  }
+
+  private func csvEscape(_ value: String) -> String {
+    if value.contains(",") || value.contains("\"") || value.contains("\n") {
+      return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+    }
+    return value
+  }
+
+  private func decimal<T: BinaryFloatingPoint>(_ value: T) -> String {
+    String(Double(value))
+  }
+
+  private func iso8601(_ date: Date) -> String {
+    ISO8601DateFormatter().string(from: date)
   }
 }
