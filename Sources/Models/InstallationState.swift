@@ -6,9 +6,12 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import Combine
 import Foundation
 import ServiceManagement
+
+private let log = AppLog.make(category: "InstallationState")
 
 /// Tracks whether the privileged helper and background agent are installed
 /// and running. Drives the inline onboarding flow in the GUI.
@@ -33,8 +36,10 @@ final class InstallationState: ObservableObject {
   /// Last error string reported by the Agent, empty when the last tick
   /// succeeded or the Agent has never written one.
   @Published var agentLastError: String = ""
+  @Published var agentExecutableHash: String = ""
 
   private var timer: Timer?
+  private var lastAutoRefreshAttemptedHash: String?
 
   /// Convenience computed helpers for the Settings UI.
   var agentEnabled: Bool {
@@ -120,7 +125,12 @@ final class InstallationState: ObservableObject {
 
     let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
     agentLastTickEpoch = suite.double(forKey: SharedConfigKeys.agentLastTick)
+    agentExecutableHash = suite.string(forKey: SharedConfigKeys.agentExecutableHash) ?? ""
     agentLastError = suite.string(forKey: SharedConfigKeys.agentLastError) ?? ""
+
+    if agentStatus == .enabled {
+      refreshAgentIfNeeded(runningHash: agentExecutableHash)
+    }
 
     if !helperOK {
       step = .helperMissing
@@ -149,5 +159,38 @@ final class InstallationState: ObservableObject {
   private func currentAgentStatus() -> SMAppService.Status {
     guard #available(macOS 13.0, *) else { return .notFound }
     return SMAppService.agent(plistName: "\(generatedAgentBundleID).plist").status
+  }
+
+  private func refreshAgentIfNeeded(runningHash: String) {
+    guard #available(macOS 13.0, *) else { return }
+
+    let bundledHash = BuildFingerprint.bundledAgentHash
+    guard bundledHash != "n/a" else {
+      log.error("agent.refresh.skipped reason=bundled-hash-unavailable")
+      return
+    }
+
+    if runningHash == bundledHash {
+      lastAutoRefreshAttemptedHash = nil
+      return
+    }
+
+    guard lastAutoRefreshAttemptedHash != bundledHash else { return }
+    lastAutoRefreshAttemptedHash = bundledHash
+
+    log.notice(
+      "agent.refresh.needed runningHash=\(runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public)"
+    )
+
+    let service = SMAppService.agent(plistName: "\(generatedAgentBundleID).plist")
+    do {
+      try service.unregister()
+      try service.register()
+      lastError = nil
+      log.notice("agent.refresh.done bundledHash=\(bundledHash, privacy: .public)")
+    } catch {
+      lastError = error.localizedDescription
+      log.error("agent.refresh.failed error=\(error.localizedDescription, privacy: .public)")
+    }
   }
 }

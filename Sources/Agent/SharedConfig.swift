@@ -95,6 +95,8 @@ struct SharedConfig {
   func writeAgentStatus(pid: Int32, lastTick: Date) {
     defaults.set(Int(pid), forKey: SharedConfigKeys.agentPID)
     defaults.set(lastTick.timeIntervalSince1970, forKey: SharedConfigKeys.agentLastTick)
+    defaults.set(
+      BuildFingerprint.runningExecutableHash, forKey: SharedConfigKeys.agentExecutableHash)
   }
 
   func writeAgentSnapshot(_ snapshot: AgentSnapshot) {
@@ -112,6 +114,7 @@ struct SharedConfig {
   func clearAgentStatus() {
     defaults.removeObject(forKey: SharedConfigKeys.agentPID)
     defaults.removeObject(forKey: SharedConfigKeys.agentLastTick)
+    defaults.removeObject(forKey: SharedConfigKeys.agentExecutableHash)
     defaults.removeObject(forKey: SharedConfigKeys.agentLastError)
     AgentSnapshotStore.clear(defaults: defaults)
   }

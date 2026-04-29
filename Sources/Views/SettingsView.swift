@@ -6,13 +6,12 @@
 //  Copyright © 2026
 //
 
-import AppLog
 import AppKit
-import CryptoKit
+import AppLog
 import ServiceManagement
+import SwiftUI
 
 private let log = AppLog.make(category: "SettingsView")
-import SwiftUI
 
 private enum SettingsTab: Hashable {
   case general
@@ -174,8 +173,7 @@ struct GeneralSettingsView: View {
       Text("Checking helper...")
         .font(.caption)
         .foregroundStyle(.secondary)
-    } else
-    if ownershipStatus.rows.isEmpty {
+    } else if ownershipStatus.rows.isEmpty {
       Text(ownershipStatus.reachable ? "No fans currently claimed." : "Waiting for helper.")
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -215,7 +213,9 @@ struct GeneralSettingsView: View {
     return "\(minutes)m ago"
   }
 
-  private func statusRow(title: String, subtitle: String, status: String, state: ServiceRowState) -> some View {
+  private func statusRow(title: String, subtitle: String, status: String, state: ServiceRowState)
+    -> some View
+  {
     HStack {
       Circle()
         .fill(state.color)
@@ -382,16 +382,20 @@ struct ProfilesSettingsView: View {
       } header: {
         Text("Presets")
       } footer: {
-        Text("Applying a preset replaces your current curve. You can edit the points again afterward.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        Text(
+          "Applying a preset replaces your current curve. You can edit the points again afterward."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
       }
 
       Section {
         Button {
-          log.info("curve.reset.tapped pointsBefore=\(curveModel.controlPoints.count, privacy: .public)")
+          log.info(
+            "curve.reset.tapped pointsBefore=\(curveModel.controlPoints.count, privacy: .public)")
           curveModel.resetToDefault()
-          log.info("curve.reset.done pointsAfter=\(curveModel.controlPoints.count, privacy: .public)")
+          log.info(
+            "curve.reset.done pointsAfter=\(curveModel.controlPoints.count, privacy: .public)")
         } label: {
           Label("Reset to Default Curve", systemImage: "arrow.counterclockwise")
         }
@@ -479,7 +483,8 @@ struct AboutContentView: View {
           "Automatically check for updates",
           isOn: Binding(
             get: { appUpdater.automaticallyChecksForUpdates },
-            set: { appUpdater.setAutomaticallyChecksForUpdates($0) }))
+            set: { appUpdater.setAutomaticallyChecksForUpdates($0) })
+        )
         .disabled(!appUpdater.isConfigured)
 
         if appUpdater.isConfigured {
@@ -671,12 +676,14 @@ struct AdvancedSettingsView: View {
             title: "Normal curve",
             value: $curveNormalPriority,
             help:
-              "Priority used for normal curve writes. Higher values preempt lower-priority fan clients.")
+              "Priority used for normal curve writes. Higher values preempt lower-priority fan clients."
+          )
           prioritySliderRow(
             title: "When boost is on",
             value: $userBoostPriority,
             help:
-              "Priority used while Boost is active. Raise it above competing fan apps if Boost should win.")
+              "Priority used while Boost is active. Raise it above competing fan apps if Boost should win."
+          )
         } header: {
           Text("Client Priority")
         } footer: {
@@ -777,15 +784,6 @@ struct AdvancedSettingsView: View {
 /// binaries. Cached in static properties so the About tab does not
 /// re-hash on every render.
 enum BuildHashes {
-  static let appHash: String = shortHash(of: Bundle.main.executableURL)
-  static let agentHash: String = shortHash(
-    of: Bundle.main.bundleURL
-      .appendingPathComponent("Contents/MacOS/\(generatedAgentExecutableName)"))
-
-  private static func shortHash(of url: URL?) -> String {
-    guard let url, let data = try? Data(contentsOf: url) else { return "n/a" }
-    let digest = SHA256.hash(data: data)
-    let hex = digest.map { String(format: "%02x", $0) }.joined()
-    return String(hex.prefix(12))
-  }
+  static let appHash: String = BuildFingerprint.runningExecutableHash
+  static let agentHash: String = BuildFingerprint.bundledAgentHash
 }

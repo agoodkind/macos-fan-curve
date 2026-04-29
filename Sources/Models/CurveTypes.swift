@@ -73,6 +73,7 @@ enum SharedConfigKeys {
   static let applyInBackground = "applyInBackground"
   static let agentPID = "agentPID"
   static let agentLastTick = "agentLastTick"
+  static let agentExecutableHash = "agentExecutableHash"
   static let agentLastError = "agentLastError"
   static let agentSnapshot = "agentSnapshot"
   static let overdriveTargetRPMMeasured = "overdriveTargetRPMMeasured"
