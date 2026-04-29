@@ -438,7 +438,7 @@ struct AboutContentView: View {
         Form {
             Section {
                 HStack(alignment: .center, spacing: 16) {
-                    Image("AboutHeroIcon")
+                    Image(.aboutHeroIcon)
                         .resizable()
                         .interpolation(.high)
                         .aspectRatio(contentMode: .fit)
@@ -669,7 +669,8 @@ struct AdvancedSettingsView: View {
                         title: "When boost is on",
                         value: $userBoostPriority,
                         help:
-                            "Priority used while Boost is active. Raise it above competing fan apps if Boost should win."
+                            "Priority used while Boost is active. "
+                            + "Raise it above competing fan apps if Boost should win."
                     )
                 } header: {
                     Text("Client Priority")

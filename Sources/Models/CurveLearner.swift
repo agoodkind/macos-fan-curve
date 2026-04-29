@@ -233,14 +233,14 @@ final class CurveLearner: ObservableObject {
             let prev = known.last { $0 < temp }
             let next = known.first { $0 > temp }
             switch (prev, next) {
-            case let (.some(previousTemp), .some(nextTemp)):
+            case (.some(let previousTemp), .some(let nextTemp)):
                 guard
                     let previousValue = bucketMedian[previousTemp],
                     let nextValue = bucketMedian[nextTemp]
                 else { continue }
                 let fraction = (temp - previousTemp) / (nextTemp - previousTemp)
                 filled.append((temp, previousValue + fraction * (nextValue - previousValue)))
-            case let (.some(previousTemp), .none):
+            case (.some(let previousTemp), .none):
                 // Above the highest sampled bucket: extrapolate forward by
                 // extending the last slope, clamped to one.
                 guard let previousValue = bucketMedian[previousTemp] else { continue }
