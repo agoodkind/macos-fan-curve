@@ -27,6 +27,16 @@ cat > "$ABOUTHERO/Contents.json" <<'JSON'
       "filename" : "AboutHeroIcon.png",
       "idiom" : "universal",
       "scale" : "1x"
+    },
+    {
+      "filename" : "AboutHeroIcon@2x.png",
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "filename" : "AboutHeroIcon@3x.png",
+      "idiom" : "universal",
+      "scale" : "3x"
     }
   ],
   "info" : {
@@ -35,9 +45,6 @@ cat > "$ABOUTHERO/Contents.json" <<'JSON'
   }
 }
 JSON
-
-# About hero: always the full detailed icon.
-sips -s format png "$full" --out "$ABOUTHERO/AboutHeroIcon.png" >/dev/null
 
 # App icon reps: trim the transparent outer margin from the canonical SVGs
 # before sizing them. This avoids both the white system plate and the fake
@@ -62,6 +69,14 @@ render_trimmed_master "$small" small
 render_trimmed_master "$menubar" menubar
 render_trimmed_master "$dock" dock
 render_trimmed_master "$full" full
+
+# About hero: always use the full-detail canonical SVG, not the dock rep.
+# Current canonical full art already includes the desired wrapped/squircle
+# treatment, so preserve that composition directly.
+sips -s format png "$full" --out "$tmpdir/about-raw.png" >/dev/null
+magick "$tmpdir/about-raw.png" -filter Lanczos -resize 256x256! "$ABOUTHERO/AboutHeroIcon.png"
+magick "$tmpdir/about-raw.png" -filter Lanczos -resize 512x512! "$ABOUTHERO/AboutHeroIcon@2x.png"
+magick "$tmpdir/about-raw.png" -filter Lanczos -resize 768x768! "$ABOUTHERO/AboutHeroIcon@3x.png"
 
 # Canonical app icon rep ladder:
 # tier1 favicon = smallest
