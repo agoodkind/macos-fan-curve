@@ -14,6 +14,7 @@ struct ContentView: View {
   @EnvironmentObject var curveModel: FanCurveModel
   @StateObject private var installState = InstallationState()
   @StateObject private var runtimeState = AgentSnapshotState()
+  @StateObject private var renderActivity = AppRenderActivity()
 
   @AppStorage("sidebarWidth") private var sidebarWidth: Double = 240
   @State private var dragStartWidth: Double? = nil
@@ -31,16 +32,45 @@ struct ContentView: View {
     }
     .frame(minWidth: 820, idealWidth: 980, minHeight: 620, idealHeight: 680)
     .background(Color(nsColor: .windowBackgroundColor))
+    .overlay(alignment: .topTrailing) {
+      #if DEBUG
+      if FrameProfiler.isEnabledByLaunchConfiguration {
+        if renderActivity.mode.isVisible {
+          ZStack(alignment: .topTrailing) {
+            FrameProfilerMetalProbe(renderMode: renderActivity.mode)
+              .frame(width: 1, height: 1)
+              .allowsHitTesting(false)
+
+            FrameProfilerOverlay(renderMode: renderActivity.mode)
+              .padding(10)
+          }
+        }
+      }
+      #endif
+    }
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
         settingsToolbarButton
       }
     }
     .onAppear {
+      renderActivity.start()
+      #if DEBUG
+      FrameProfiler.shared.setSamplingActive(renderActivity.mode == .interactive)
+      #endif
       installState.startMonitoring(xpcClient: xpcClient)
       runtimeState.start()
     }
+    .onChange(of: renderActivity.mode) { mode in
+      #if DEBUG
+      FrameProfiler.shared.setSamplingActive(mode == .interactive)
+      #endif
+    }
     .onDisappear {
+      #if DEBUG
+      FrameProfiler.shared.setSamplingActive(false)
+      #endif
+      renderActivity.stop()
       installState.stopMonitoring()
       runtimeState.stop()
     }
@@ -57,7 +87,7 @@ struct ContentView: View {
 
   private var mainLayout: some View {
     HStack(spacing: 0) {
-      FanCurveEditor(model: curveModel, runtime: runtimeState)
+      FanCurveEditor(model: curveModel, runtime: runtimeState, renderMode: renderActivity.mode)
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .layoutPriority(1)

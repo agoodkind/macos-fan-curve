@@ -19,6 +19,10 @@ struct FanCurveApp: App {
 
   init() {
     AppLog.bootstrap(subsystem: "io.goodkind.fan")
+    #if DEBUG
+    FrameProfiler.shared.startIfEnabled()
+    #endif
+
     // First-run default for the background control preference. Keeping
     // this true preserves existing behavior where the agent continues
     // after the app closes.

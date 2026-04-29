@@ -11,6 +11,7 @@ import SwiftUI
 struct FanCurveEditor: View {
   @ObservedObject var model: FanCurveModel
   @ObservedObject var runtime: AgentSnapshotState
+  let renderMode: AppRenderMode
   @State private var hoveredIndex: Int?
   @State private var draggedIndex: Int?
   @State private var dragBaselinePercents: [Double]?
@@ -48,9 +49,7 @@ struct FanCurveEditor: View {
   private let bottomPad: CGFloat = 44
   private let leftPad: CGFloat = 72
   private let rightPad: CGFloat = 24
-  private let minimumPointSpacing: Double = 2
 
-  private let controlTempRange: ClosedRange<Double> = CurveColumns.tempRange
   private let plotTempRange: ClosedRange<Double> = CurveColumns.tempRange
   private let curveColor = Color.accentColor
 
@@ -160,6 +159,9 @@ struct FanCurveEditor: View {
     .onChange(of: boostEnabled) { _ in
       refreshRuntimeMarkerTargets()
     }
+    .onChange(of: renderMode) { _ in
+      startMarkerSmoothing()
+    }
     .onDisappear {
       markerSmoothingTask?.cancel()
       markerSmoothingTask = nil
@@ -200,13 +202,14 @@ struct FanCurveEditor: View {
     Group {
       let committedTemp = displayedCommittedTemperature
       let committedPercent = displayedCommittedPercent
+      let rawTemp = displayedRawTemperature
       let rawPercent = displayedRawPercent
-      if committedTemp > 0 {
+      if committedTemp > 0, rawTemp > 0 {
         let committedPos = dataToPixel(temp: committedTemp, percent: committedPercent, in: size)
         let demandPercent = max(0, min(1, rawPercent))
-        let demandPos = dataToPixel(temp: committedTemp, percent: demandPercent, in: size)
+        let demandPos = dataToPixel(temp: rawTemp, percent: demandPercent, in: size)
         let rawPos = CGPoint(
-          x: committedPos.x,
+          x: demandPos.x,
           y: max(topPad + 10, min(size.height - bottomPad - 10, demandPos.y))
         )
         let plotLeft = leftPad
@@ -258,11 +261,14 @@ struct FanCurveEditor: View {
 
   private func refreshRuntimeMarkerTargets() {
     if runtime.curveActive {
-      targetCommittedPercent = runtime.committedPercent
-      targetCommittedTemperature = committedMarkerTemperatureTarget()
-      targetRawTemperature = runtime.committedTemperature > 0
+      let committedTemperature = runtime.committedTemperature > 0
         ? runtime.committedTemperature
-        : runtime.rawPressureTemperature ?? runtime.governingTemperature
+        : runtime.governingTemperature
+      let demandTemperature = runtime.rawPressureTemperature ?? runtime.governingTemperature
+
+      targetCommittedPercent = runtime.committedPercent
+      targetCommittedTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, committedTemperature))
+      targetRawTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, demandTemperature))
       targetRawPercent = runtime.rawBaselinePercent
     } else {
       let liveTemperature = runtime.committedTemperature > 0
@@ -320,61 +326,6 @@ struct FanCurveEditor: View {
     return proposedTemperature
   }
 
-  private func committedMarkerTemperatureTarget() -> Double {
-    guard runtime.committedPercent > 0 else {
-      return plotTempRange.lowerBound
-    }
-
-    // Keep the primary marker on the authored curve so the chart remains
-    // visually truthful. The faint secondary marker carries the live thermal
-    // pressure/current-state context.
-    if let projectedTemperature = projectedCurveTemperature(
-      for: runtime.committedPercent,
-      points: model.controlPoints,
-      mode: model.interpolationMode
-    ) {
-      return projectedTemperature
-    }
-
-    return runtime.committedTemperature
-  }
-
-  private func projectedCurveTemperature(
-    for percent: Double,
-    points: [CurvePoint],
-    mode: InterpolationMode
-  ) -> Double? {
-    let clampedPercent = max(0, min(1, percent))
-    let minCurvePercent = CurveInterpolation.evaluate(
-      at: controlTempRange.lowerBound,
-      points: points,
-      mode: mode)
-    let maxCurvePercent = CurveInterpolation.evaluate(
-      at: controlTempRange.upperBound,
-      points: points,
-      mode: mode)
-
-    guard clampedPercent >= minCurvePercent - 0.0005,
-          clampedPercent <= maxCurvePercent + 0.0005 else {
-      return nil
-    }
-
-    var lower = controlTempRange.lowerBound
-    var upper = controlTempRange.upperBound
-
-    for _ in 0..<28 {
-      let mid = (lower + upper) / 2
-      let value = CurveInterpolation.evaluate(at: mid, points: points, mode: mode)
-      if value < clampedPercent {
-        lower = mid
-      } else {
-        upper = mid
-      }
-    }
-
-    return (lower + upper) / 2
-  }
-
   @ViewBuilder
   private var chartLegendOverlay: some View {
     VStack {
@@ -384,7 +335,7 @@ struct FanCurveEditor: View {
           legendItem(
             fill: Color(nsColor: .systemOrange),
             stroke: nil,
-            label: "Target Fan Speed"
+            label: "Fan Now"
           )
           legendItem(
             fill: Color(nsColor: .windowBackgroundColor).opacity(0.96),
@@ -801,7 +752,7 @@ struct FanCurveEditor: View {
           halfLife: rawMarkerPercentHalfLife,
           maxDeltaPerSecond: rawMarkerPercentLimitPerSecond
         )
-        try? await Task.sleep(nanoseconds: markerSmoothingInterval)
+        try? await Task.sleep(nanoseconds: renderMode.markerSmoothingIntervalNanoseconds)
       }
     }
   }
