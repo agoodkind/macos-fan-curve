@@ -6,7 +6,10 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import Foundation
+
+private let agentControllerModeLog = AppLog.make(category: "AgentControllerMode")
 
 enum AgentControllerMode: Codable, Sendable, Equatable {
     case emergency

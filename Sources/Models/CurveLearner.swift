@@ -288,6 +288,9 @@ final class CurveLearner: ObservableObject {
             do {
                 try await writeTarget(fanIndex, commandedRPM)
             } catch {
+                log.error(
+                    "probe.start.failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=finish-probe"
+                )
                 await MainActor.run { self.finishProbe(commandedRPM: commandedRPM, fanIndex: fanIndex) }
             }
         }

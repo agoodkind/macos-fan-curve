@@ -6,7 +6,10 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import SwiftUI
+
+private let learnSheetLog = AppLog.make(category: "LearnSheet")
 
 struct LearnSheet: View {
     @ObservedObject var curveModel: FanCurveModel
@@ -41,7 +44,15 @@ struct LearnSheet: View {
             learner.cancel()
             learner.cancelProbe()
             // Restore fan 0 to auto in case the probe left it in manual mode.
-            Task { try? await xpcClient.setFanAuto(0) }
+            Task {
+                do {
+                    try await xpcClient.setFanAuto(0)
+                } catch {
+                    learnSheetLog.notice(
+                        "learn.dismiss.auto_restore_failed fan=0 error=\(error.localizedDescription, privacy: .public) recovery=next-agent-tick"
+                    )
+                }
+            }
             curveModel.isActive = priorFanControl
         }
         .alert("Probe maximum fan RPM?", isPresented: $confirmProbe) {
@@ -71,6 +82,9 @@ struct LearnSheet: View {
             publishError = nil
         } catch {
             publishError = "Could not open pull request: \(error.localizedDescription)"
+            learnSheetLog.error(
+                "learn.publish.failed error=\(error.localizedDescription, privacy: .public) recovery=show-alert"
+            )
         }
     }
 
@@ -85,8 +99,19 @@ struct LearnSheet: View {
         // moment inside the learner, so schedule based on its total seconds.
         let delay = learner.probeTotalSeconds + 1
         Task {
-            try? await Task.sleep(nanoseconds: UInt64(delay) * 1_000_000_000)
-            try? await xpcClient.setFanAuto(0)
+            do {
+                try await Task.sleep(nanoseconds: UInt64(delay) * 1_000_000_000)
+            } catch {
+                learnSheetLog.debug("probe.auto_restore.cancelled recovery=probe-cleanup-on-dismiss")
+                return
+            }
+            do {
+                try await xpcClient.setFanAuto(0)
+            } catch {
+                learnSheetLog.notice(
+                    "probe.auto_restore_failed fan=0 error=\(error.localizedDescription, privacy: .public) recovery=next-agent-tick"
+                )
+            }
         }
     }
 

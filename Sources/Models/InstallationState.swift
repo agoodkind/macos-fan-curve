@@ -92,8 +92,12 @@ final class InstallationState: ObservableObject {
         do {
             try service.register()
             lastError = nil
+            log.notice("agent.register.done")
         } catch {
             lastError = error.localizedDescription
+            log.error(
+                "agent.register.failed error=\(error.localizedDescription, privacy: .public) recovery=show-login-item-error"
+            )
         }
     }
 
@@ -110,8 +114,12 @@ final class InstallationState: ObservableObject {
         do {
             try service.unregister()
             lastError = nil
+            log.notice("agent.unregister.done")
         } catch {
             lastError = error.localizedDescription
+            log.error(
+                "agent.unregister.failed error=\(error.localizedDescription, privacy: .public) recovery=show-login-item-error"
+            )
         }
     }
 
@@ -152,6 +160,9 @@ final class InstallationState: ObservableObject {
             _ = try await xpcClient.getFanCount()
             return true
         } catch {
+            log.notice(
+                "helper.probe.failed error=\(error.localizedDescription, privacy: .public) recovery=mark-helper-unreachable"
+            )
             return false
         }
     }

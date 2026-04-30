@@ -31,7 +31,8 @@ let boundaryPattern =
     #"(^|[^A-Za-z0-9_])(catch|try[?!]?|FileManager|UserDefaults|SMAppService|NotificationCenter|CFNotificationCenter|NSWorkspace|Task\s*\{|ProcessInfo|Data\(contentsOf:|JSONEncoder|JSONDecoder|write\(to:|write\(contentsOf:|readAndApply|createDirectory|removeItem|copyItem|moveItem|open\()"#
 let categoryPattern = #"AppLog\.(make|signposter)\(category:\s*"[^"]+""#
 let catchPattern = #"(^|[^A-Za-z0-9_])catch(\s|\{|$)"#
-let logPattern = #"(^|[^A-Za-z0-9_])(log|[A-Za-z_][A-Za-z0-9_]*Log|frameLog|exitLog)\.(error|warning|notice|info|debug)\("#
+let logPattern = #"(^|[^A-Za-z0-9_])(log|[A-Za-z_][A-Za-z0-9_]*Log|frameLog|exitLog)\.(error|notice|info|debug)\("#
+let unsupportedAppLogLevelPattern = #"(^|[^A-Za-z0-9_])(log|[A-Za-z_][A-Za-z0-9_]*Log|frameLog|exitLog)\.warning\("#
 let sideEffectTryPattern =
     #"(set[A-Za-z0-9_]*\(|write[A-Za-z0-9_]*\(|remove[A-Za-z0-9_]*\(|move[A-Za-z0-9_]*\(|create[A-Za-z0-9_]*\(|open\(|Data\(contentsOf:|JSONEncoder|JSONDecoder|readAndApply|getFanInfo|readKey|setFanRPM|setFanAuto)"#
 
@@ -61,6 +62,15 @@ for file in swiftFiles(at: root) {
 
     for (index, line) in lines.enumerated() {
         guard !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") else { continue }
+        if matches(line, unsupportedAppLogLevelPattern) {
+            violations.append(
+                Violation(
+                    file: file,
+                    line: index + 1,
+                    message: "AppLog.Channel does not support warning(); use notice() for recoverable fallbacks or error() for failures"
+                )
+            )
+        }
         guard matches(line, rawLoggingPattern) else { continue }
         guard !line.contains("CLIOut.print"), !line.contains("CLIOut.err") else { continue }
         violations.append(

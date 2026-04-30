@@ -6,10 +6,13 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import Combine
 import Darwin
 import Foundation
 import IOKit
+
+private let systemUsageLog = AppLog.make(category: "SystemUsage")
 
 /// Polls live CPU and GPU utilization as a percent in zero to one hundred.
 @MainActor

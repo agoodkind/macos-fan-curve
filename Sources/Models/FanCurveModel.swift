@@ -6,8 +6,11 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import Combine
 import Foundation
+
+private let fanCurveModelLog = AppLog.make(category: "FanCurveModel")
 
 /// Conservative default for Overdrive's 100% target when no probe result
 /// has been written yet. Firmware accepts it on M4 Max and M5 Max.
@@ -107,18 +110,32 @@ class FanCurveModel: ObservableObject {
 
     func save() {
         let defaults = sharedDefaults()
-        if let data = try? JSONEncoder().encode(controlPoints) {
+        do {
+            let data = try JSONEncoder().encode(controlPoints)
             defaults.set(data, forKey: SharedConfigKeys.curvePoints)
+        } catch {
+            fanCurveModelLog.error(
+                "curve.save.encode_failed error=\(error.localizedDescription, privacy: .public) recovery=skip-points-write"
+            )
         }
         defaults.set(interpolationMode.rawValue, forKey: SharedConfigKeys.interpolationMode)
     }
 
     private static func load() -> [CurvePoint] {
-        guard let data = sharedDefaults().data(forKey: SharedConfigKeys.curvePoints),
-            let points = try? JSONDecoder().decode([CurvePoint].self, from: data),
-            points.count >= 2
-        else { return [] }
-        return points
+        guard let data = sharedDefaults().data(forKey: SharedConfigKeys.curvePoints) else { return [] }
+        do {
+            let points = try JSONDecoder().decode([CurvePoint].self, from: data)
+            guard points.count >= 2 else {
+                fanCurveModelLog.notice("curve.load.invalid reason=too-few-points recovery=default")
+                return []
+            }
+            return points
+        } catch {
+            fanCurveModelLog.notice(
+                "curve.load.decode_failed error=\(error.localizedDescription, privacy: .public) recovery=default"
+            )
+            return []
+        }
     }
 
     private static func loadMode() -> InterpolationMode {

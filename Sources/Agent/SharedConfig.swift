@@ -6,7 +6,10 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import Foundation
+
+private let sharedConfigLog = AppLog.make(category: "SharedConfig")
 
 /// Reads config from the shared UserDefaults suite written by the GUI.
 /// Writes agent status (PID, last tick) back for GUI health display.
@@ -21,13 +24,22 @@ struct SharedConfig {
     // MARK: - Reads (populated by GUI)
 
     func loadCurve() -> [CurvePoint] {
-        guard let data = defaults.data(forKey: SharedConfigKeys.curvePoints),
-            let points = try? JSONDecoder().decode([CurvePoint].self, from: data),
-            points.count >= 2
-        else {
+        guard let data = defaults.data(forKey: SharedConfigKeys.curvePoints) else {
             return FanCurveModel.defaultCurve
         }
-        return points
+        do {
+            let points = try JSONDecoder().decode([CurvePoint].self, from: data)
+            guard points.count >= 2 else {
+                sharedConfigLog.notice("config.curve.invalid reason=too-few-points recovery=default")
+                return FanCurveModel.defaultCurve
+            }
+            return points
+        } catch {
+            sharedConfigLog.notice(
+                "config.curve.decode_failed error=\(error.localizedDescription, privacy: .public) recovery=default"
+            )
+            return FanCurveModel.defaultCurve
+        }
     }
 
     func loadInterpolationMode() -> InterpolationMode {

@@ -6,7 +6,10 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import Foundation
+
+private let temperatureUnitLog = AppLog.make(category: "TemperatureUnit")
 
 /// User-facing temperature unit preference.
 /// Values persist in UserDefaults.standard under the key 'temperatureUnit'.

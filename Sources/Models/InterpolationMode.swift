@@ -6,6 +6,10 @@
 //  Copyright © 2026
 //
 
+import AppLog
+
+private let interpolationModeLog = AppLog.make(category: "InterpolationMode")
+
 enum InterpolationMode: Codable, Sendable {
     case catmullRom
     case linear

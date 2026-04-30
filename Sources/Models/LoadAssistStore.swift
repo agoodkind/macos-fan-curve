@@ -6,7 +6,10 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import Foundation
+
+private let loadAssistStoreLog = AppLog.make(category: "LoadAssistStore")
 
 enum LoadAssistStore {
     private static let migrationVersion = 1
@@ -60,10 +63,16 @@ enum LoadAssistStore {
 
     static func loadPoints(_ kind: LoadAssistKind, defaults: UserDefaults) -> [CurvePoint] {
         migrateLegacyIfNeeded(defaults: defaults)
-        guard
-            let data = defaults.data(forKey: kind.curvePointsKey),
-            let decoded = try? JSONDecoder().decode([CurvePoint].self, from: data)
-        else {
+        guard let data = defaults.data(forKey: kind.curvePointsKey) else {
+            return defaultPoints()
+        }
+        let decoded: [CurvePoint]
+        do {
+            decoded = try JSONDecoder().decode([CurvePoint].self, from: data)
+        } catch {
+            loadAssistStoreLog.notice(
+                "load_assist.decode_failed kind=\(kind.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=default"
+            )
             return defaultPoints()
         }
         return normalizedPoints(decoded)
@@ -71,8 +80,13 @@ enum LoadAssistStore {
 
     static func savePoints(_ points: [CurvePoint], kind: LoadAssistKind, defaults: UserDefaults) {
         let normalized = normalizedPoints(points)
-        if let data = try? JSONEncoder().encode(normalized) {
+        do {
+            let data = try JSONEncoder().encode(normalized)
             defaults.set(data, forKey: kind.curvePointsKey)
+        } catch {
+            loadAssistStoreLog.error(
+                "load_assist.encode_failed kind=\(kind.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=skip-write"
+            )
         }
     }
 

@@ -158,10 +158,10 @@ final class EventArtifactWriter: @unchecked Sendable {
             rotateIfNeededLocked()
             try writeLocked(jsonData, to: activeJSON, header: nil)
             try writeLocked(csvData, to: activeCSV, header: csvHeader)
-            log.info("event.recorded kind=\(kind, privacy: .public)")
+            log.info("event.recorded kind=\(event.kind, privacy: .public)")
         } catch {
             log.error(
-                "event.write.failed kind=\(kind, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "event.write.failed kind=\(event.kind, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
         }
     }
@@ -184,8 +184,8 @@ final class EventArtifactWriter: @unchecked Sendable {
         let attrs = try? FileManager.default.attributesOfItem(atPath: activeJSON.path)
         guard let size = attrs?[.size] as? Int, size >= rotateThreshold else { return }
         let fm = FileManager.default
-        try? fm.removeItem(at: rotatedJSON)
-        try? fm.removeItem(at: rotatedCSV)
+        removeRotatedArtifactIfPresent(rotatedJSON)
+        removeRotatedArtifactIfPresent(rotatedCSV)
         do {
             if fm.fileExists(atPath: activeJSON.path) {
                 try fm.moveItem(at: activeJSON, to: rotatedJSON)
@@ -198,6 +198,18 @@ final class EventArtifactWriter: @unchecked Sendable {
             )
         } catch {
             log.error("artifact.rotate.failed error=\(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func removeRotatedArtifactIfPresent(_ url: URL) {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: url.path) else { return }
+        do {
+            try fm.removeItem(at: url)
+        } catch {
+            log.notice(
+                "artifact.rotate.cleanup_failed path=\(url.lastPathComponent, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=overwrite-attempt"
+            )
         }
     }
 

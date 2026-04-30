@@ -7,7 +7,10 @@
 //
 
 import AppKit
+import AppLog
 import Foundation
+
+private let learnResultPublisherLog = AppLog.make(category: "LearnResultPublisher")
 
 /// Opens a pre-filled pull request (actually a "new issue" URL in the
 /// repository's compare flow) carrying the learned curve and probe
@@ -44,6 +47,7 @@ enum LearnResultPublisher {
         guard let url = components.url else {
             throw PublishError.invalidURL
         }
+        learnResultPublisherLog.notice("learn.publish.open_url destination=github-issue")
         NSWorkspace.shared.open(url)
     }
 
