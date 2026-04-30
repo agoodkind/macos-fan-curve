@@ -68,6 +68,10 @@ let bundleAgentScript = TargetScript.post(
         sign_nested_code "${SPARKLE_DIR}"
         """,
     name: "Bundle agent into app",
+    inputPaths: [
+        "$(BUILT_PRODUCTS_DIR)/$(AGENT_EXECUTABLE_NAME)",
+        "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/agent-launchd.plist",
+    ],
     outputPaths: [
         "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/MacOS/$(AGENT_EXECUTABLE_NAME)",
         "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Library/LaunchAgents/$(AGENT_BUNDLE_ID).plist",
@@ -119,6 +123,7 @@ let externalDependencies: [TargetDependency] = [
 
 let modelTestSources: SourceFilesList = [
     "Sources/App/L10n.swift",
+    "Sources/Common/SharedConfigKeys.swift",
     "Sources/Models/TemperatureUnit.swift",
     "Sources/Models/SystemUsage.swift",
     "Sources/Models/SensorState.swift",

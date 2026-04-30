@@ -47,6 +47,14 @@ do {
         try fail("run-audit failed: make run must not reference '\(token)'")
     }
 
+    guard body.contains(#"pkill -x "$(APP_NAME)""#) else {
+        try fail("run-audit failed: make run must stop existing app UI processes before opening the staged app")
+    }
+
+    guard body.contains(#"open "$(APP_DEST)""#) else {
+        try fail("run-audit failed: make run must open the staged app path with open \"$(APP_DEST)\"")
+    }
+
     print("run-audit: ok")
 } catch let failure as Failure {
     FileHandle.standardError.write(Data((failure.description + "\n").utf8))

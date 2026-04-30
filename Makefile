@@ -131,7 +131,8 @@ prepare-sparkle-updates:
 sparkle-appcast: release-assets prepare-sparkle-updates
 
 run: app
-	@open -na "$(APP_DEST)"
+	@pkill -x "$(APP_NAME)" 2>/dev/null || true
+	@open "$(APP_DEST)"
 
 test: generate-project
 	xcodebuild -workspace FanCurveApp.xcworkspace \
