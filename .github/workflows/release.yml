@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
 
 concurrency:
   group: release
@@ -41,10 +41,15 @@ jobs:
           TS=$(date -u +%Y%m%d%H%M)
           HEX=$(printf '%x' "$GITHUB_RUN_NUMBER")
           SHA=$(git rev-parse --short HEAD)
+          BUILD_VERSION="${TS}${GITHUB_RUN_NUMBER}"
           TAG="${TS}-${HEX}-${SHA}"
-          SHORT_VERSION=$(date -u +%Y.%-m.%-d)
+          SHORT_VERSION=$(date -u +%y.%-m.%-d)
+          if [ "${#BUILD_VERSION}" -gt 18 ]; then
+            echo "CURRENT_PROJECT_VERSION exceeds Apple's 18-character CFBundleVersion limit: $BUILD_VERSION" >&2
+            exit 1
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "build_version=$TS" >> "$GITHUB_OUTPUT"
+          echo "build_version=$BUILD_VERSION" >> "$GITHUB_OUTPUT"
           echo "marketing_version=$SHORT_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Push tag

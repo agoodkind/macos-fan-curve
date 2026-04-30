@@ -16,7 +16,7 @@ Tuist-generated macOS app with Sparkle-based updates.
 - `make open-project`: regenerate and open the workspace in Xcode
 - `make app`: regenerate, build, and stage `/Users/agoodkind/Sites/macos-fan-curve/Products/FanCurve.app`
 - `make dmg`: build and package `/Users/agoodkind/Sites/macos-fan-curve/Products/FanCurve-Release.dmg`
-- `make release-assets CURRENT_PROJECT_VERSION=... MARKETING_VERSION=...`: build a versioned DMG for a release
+- `make release-assets MARKETING_VERSION=26.4.30 CURRENT_PROJECT_VERSION=202604301626123`: build a versioned DMG for a release
 - `make prepare-sparkle-updates CURRENT_PROJECT_VERSION=... RELEASE_TAG=... GITHUB_RELEASE_BASE_URL=.../`: generate `build/sparkle-updates/appcast.xml`
 
 ## Icon Pipeline
@@ -44,6 +44,8 @@ Notes:
 
 - Every push to `main` creates a GitHub Release tag in the same cadence as `go-makefile`:
   - `YYYYMMDDHHmm-<hex-run>-<short-sha>`
+- CI uses `YY.M.D` for the public `MARKETING_VERSION`, for example `26.4.30`.
+- CI uses `YYYYMMDDHHmm` plus the GitHub Actions run number for `CURRENT_PROJECT_VERSION`, so repeat releases on the same day keep the same public version while Sparkle and macOS receive a unique build number.
 - GitHub Releases host the signed DMG asset.
 - Sparkle reads a stable feed URL:
   - `https://goodkind.io/fancurve/appcast.xml`
