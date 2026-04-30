@@ -87,6 +87,9 @@ class XPCClient: ObservableObject, @unchecked Sendable {
             return count
         } catch {
             self.markError(error)
+            log.notice(
+                "xpc.get_fan_count.failed error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+            )
             throw error
         }
     }
@@ -98,6 +101,9 @@ class XPCClient: ObservableObject, @unchecked Sendable {
             return toLocal(info)
         } catch {
             self.markError(error)
+            log.notice(
+                "xpc.get_fan_info.failed fan=\(index, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+            )
             throw error
         }
     }
@@ -123,6 +129,9 @@ class XPCClient: ObservableObject, @unchecked Sendable {
             )
         } catch {
             self.markError(error)
+            log.notice(
+                "xpc.set_fan_rpm.failed fan=\(index, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+            )
             throw error
         }
     }
@@ -145,6 +154,9 @@ class XPCClient: ObservableObject, @unchecked Sendable {
             )
         } catch {
             self.markError(error)
+            log.notice(
+                "xpc.set_fan_auto.failed fan=\(index, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+            )
             throw error
         }
     }
@@ -156,6 +168,9 @@ class XPCClient: ObservableObject, @unchecked Sendable {
             return value
         } catch {
             self.markError(error)
+            log.notice(
+                "xpc.read_key.failed key=\(key, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+            )
             throw error
         }
     }
@@ -177,22 +192,48 @@ class XPCClient: ObservableObject, @unchecked Sendable {
         var fans: [FanInfo] = []
         if fanCount > 0 {
             for fanIndex in 0..<fanCount {
-                if let info = try? await self.getFanInfo(fanIndex) { fans.append(info) }
+                do {
+                    let info = try await self.getFanInfo(fanIndex)
+                    fans.append(info)
+                } catch {
+                    log.notice(
+                        "xpc.batch.fan_read_failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=skip-fan"
+                    )
+                }
             }
         }
 
         var temps: [String: Float] = [:]
         for key in tempKeys {
-            if let value = try? await self.readKey(key), value > 0, value < 150 {
-                temps[key] = value
+            do {
+                let value = try await self.readKey(key)
+                if value > 0, value < 150 {
+                    temps[key] = value
+                }
+            } catch {
+                log.notice(
+                    "xpc.batch.temp_read_failed key=\(key, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=skip-temperature"
+                )
             }
         }
 
         for fanTarget in setFans {
-            try? await self.setFanRPM(fanTarget.index, rpm: fanTarget.rpm, priority: priority)
+            do {
+                try await self.setFanRPM(fanTarget.index, rpm: fanTarget.rpm, priority: priority)
+            } catch {
+                log.notice(
+                    "xpc.batch.fan_write_failed fan=\(fanTarget.index, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=continue-batch"
+                )
+            }
         }
         for fanIndex in autoFans {
-            try? await self.setFanAuto(fanIndex, priority: priority)
+            do {
+                try await self.setFanAuto(fanIndex, priority: priority)
+            } catch {
+                log.notice(
+                    "xpc.batch.auto_write_failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=continue-batch"
+                )
+            }
         }
 
         return BatchReadResult(fans: fans, temps: temps)

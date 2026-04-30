@@ -26,5 +26,3 @@ enum AgentSnapshotPush {
             true)
     }
 }
-
-@MainActor

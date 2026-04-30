@@ -8,7 +8,6 @@
 
 import Foundation
 
-
 struct AgentSnapshot: Codable, Sendable, Equatable {
     static let currentSchemaVersion = 2
 

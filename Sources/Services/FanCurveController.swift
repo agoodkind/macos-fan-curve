@@ -91,53 +91,49 @@ final class FanCurveController: ObservableObject, @unchecked Sendable {
     }
 
     private func tick() async {
-        do {
-            let result = try await xpcClient.readAndApply(
-                fanCount: cachedFanCount,
-                tempKeys: tempKeys,
-                autoFans: nil
+        let result = await xpcClient.readAndApply(
+            fanCount: cachedFanCount,
+            tempKeys: tempKeys,
+            autoFans: []
+        )
+        cachedFanCount = UInt(result.fans.count)
+
+        var fans: [FanReading] = []
+        for (fanIndex, info) in result.fans.enumerated() {
+            fans.append(
+                FanReading(
+                    id: fanIndex,
+                    actualRPM: info.actualRPM,
+                    targetRPM: info.targetRPM,
+                    minRPM: info.minRPM,
+                    maxRPM: info.maxRPM,
+                    manualMode: info.manualMode
+                )
             )
-            cachedFanCount = UInt(result.fans.count)
+        }
 
-            var fans: [FanReading] = []
-            for (fanIndex, info) in result.fans.enumerated() {
-                fans.append(
-                    FanReading(
-                        id: fanIndex,
-                        actualRPM: info.actualRPM,
-                        targetRPM: info.targetRPM,
-                        minRPM: info.minRPM,
-                        maxRPM: info.maxRPM,
-                        manualMode: info.manualMode
-                    )
+        var temps: [SensorReading] = []
+        var maxCPUTemp: Double = 0
+        for (key, value) in result.temps {
+            let sensor = sensorLookup[key]
+            temps.append(
+                SensorReading(
+                    id: key,
+                    name: sensor?.name ?? key,
+                    group: sensor?.group.rawValue ?? "Unknown",
+                    value: Double(value)
                 )
+            )
+            if cpuTempKeys.contains(key) {
+                maxCPUTemp = max(maxCPUTemp, Double(value))
             }
+        }
 
-            var temps: [SensorReading] = []
-            var maxCPUTemp: Double = 0
-            for (key, value) in result.temps {
-                let sensor = sensorLookup[key]
-                temps.append(
-                    SensorReading(
-                        id: key,
-                        name: sensor?.name ?? key,
-                        group: sensor?.group.rawValue ?? "Unknown",
-                        value: Double(value)
-                    )
-                )
-                if cpuTempKeys.contains(key) {
-                    maxCPUTemp = max(maxCPUTemp, Double(value))
-                }
-            }
-
-            await MainActor.run {
-                sensorState.fans = fans
-                sensorState.temperatures = temps
-                sensorState.governingTemperature = maxCPUTemp
-                sensorState.lastUpdate = Date()
-            }
-        } catch {
-            log.debug("gui.tick.failed error=\(error.localizedDescription, privacy: .public)")
+        await MainActor.run {
+            sensorState.fans = fans
+            sensorState.temperatures = temps
+            sensorState.governingTemperature = maxCPUTemp
+            sensorState.lastUpdate = Date()
         }
     }
 }
