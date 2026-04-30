@@ -6,7 +6,10 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import SwiftUI
+
+private let loadAssistModuleLog = AppLog.make(category: "LoadAssistModule")
 
 struct LoadAssistModuleView: View {
     let kind: LoadAssistKind

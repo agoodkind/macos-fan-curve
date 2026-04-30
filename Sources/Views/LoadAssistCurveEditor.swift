@@ -8,7 +8,7 @@
 
 import SwiftUI
 
-private struct LoadAssistCurveEditor: View {
+struct LoadAssistCurveEditor: View {
     @Binding var points: [CurvePoint]
     let minimumPointSpacing: Double
 
