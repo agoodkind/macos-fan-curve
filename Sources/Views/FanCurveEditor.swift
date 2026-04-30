@@ -155,6 +155,9 @@ struct FanCurveEditor: View {
         .onChange(of: boostEnabled) { _ in
             updateRuntimeMarkerTargets()
         }
+        .onChange(of: renderMode) { _ in
+            resetRuntimeMarkerTargets()
+        }
     }
 
     // MARK: - Header
@@ -187,7 +190,7 @@ struct FanCurveEditor: View {
 
     @ViewBuilder
     private func currentPositionOverlay(size: CGSize, values: MarkerValues) -> some View {
-        Group {
+        ZStack(alignment: .topLeading) {
             let committedTemp = values.committedTemperature
             let committedPercent = values.committedPercent
             let rawTemp = values.rawTemperature
@@ -242,6 +245,7 @@ struct FanCurveEditor: View {
 
             }
         }
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
         .allowsHitTesting(false)
     }
 
