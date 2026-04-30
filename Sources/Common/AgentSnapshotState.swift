@@ -7,8 +7,12 @@
 //
 
 import AppKit
+import AppLog
 import Foundation
 
+private let agentSnapshotStateLog = AppLog.make(category: "AgentSnapshotState")
+
+@MainActor
 final class AgentSnapshotState: ObservableObject {
     private enum RefreshMode {
         case interactive
@@ -17,7 +21,7 @@ final class AgentSnapshotState: ObservableObject {
 
         var intervalNanoseconds: UInt64 {
             switch self {
-            case .interactive: return 180_000_000
+            case .interactive: return 80_000_000
             case .passiveVisible: return 1_200_000_000
             case .occluded: return 3_000_000_000
             }
@@ -190,7 +194,12 @@ final class AgentSnapshotState: ObservableObject {
         let interval = currentRefreshMode.intervalNanoseconds
         scheduledRefreshTask?.cancel()
         scheduledRefreshTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: interval)
+            do {
+                try await Task.sleep(nanoseconds: interval)
+            } catch {
+                agentSnapshotStateLog.debug("snapshot.reload.cancelled recovery=drop-scheduled-refresh")
+                return
+            }
             guard !Task.isCancelled else { return }
             self?.scheduledRefreshTask = nil
             self?.reloadSnapshot()

@@ -17,7 +17,7 @@ func currentAppVisibilityState(app: NSApplication = .shared) -> AppVisibilitySta
 
     guard !visibleWindows.isEmpty else { return .occluded }
 
-    if visibleWindows.contains(where: { $0.isKeyWindow || $0.isMainWindow }) {
+    if app.isActive || visibleWindows.contains(where: { $0.isKeyWindow || $0.isMainWindow }) {
         return .interactive
     }
 

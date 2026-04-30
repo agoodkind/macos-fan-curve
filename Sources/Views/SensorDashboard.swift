@@ -6,7 +6,10 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import SwiftUI
+
+private let sensorDashboardLog = AppLog.make(category: "SensorDashboard")
 
 struct SensorDashboard: View {
     @ObservedObject var runtime: AgentSnapshotState
@@ -46,6 +49,7 @@ struct SensorDashboard: View {
         .onAppear {
             LoadAssistStore.migrateLegacyIfNeeded(defaults: Self.suite)
             isAppActive = NSApp.isActive
+            sensorDashboardLog.info("sensor_dashboard.appeared active=\(isAppActive, privacy: .public)")
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             isAppActive = true
@@ -79,8 +83,6 @@ struct SensorDashboard: View {
                         .font(.system(.largeTitle, design: .rounded).weight(.regular))
                         .foregroundStyle(.primary)
                         .monospacedDigit()
-                        .contentTransition(.numericText())
-                        .animation(.easeOut(duration: 0.38), value: displayed)
                     Text(unit.symbol)
                         .font(.title3)
                         .foregroundStyle(.secondary)
@@ -437,8 +439,6 @@ struct SensorDashboard: View {
                 Text("\(Int(value.rounded()))%")
                     .font(.system(.callout, design: .rounded).weight(.medium))
                     .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .animation(.easeOut(duration: 0.32), value: value)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -447,7 +447,6 @@ struct SensorDashboard: View {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(tint)
                         .frame(width: geo.size.width * CGFloat(value / 100))
-                        .animation(.easeOut(duration: 0.34), value: value)
                 }
             }
             .frame(height: 4)
@@ -458,7 +457,7 @@ struct SensorDashboard: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    fanIcon(spinning: fan.actualRPM > 0)
+                    fanIcon(fan: fan)
                     Text("Fan \(fan.id)")
                         .font(.callout)
                         .foregroundColor(.secondary)
@@ -472,8 +471,6 @@ struct SensorDashboard: View {
                     Text("\(Int(fan.actualRPM))")
                         .font(.system(.title3, design: .rounded))
                         .monospacedDigit()
-                        .contentTransition(.numericText())
-                        .animation(.easeOut(duration: 0.4), value: fan.actualRPM)
                     Text("RPM")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -492,16 +489,47 @@ struct SensorDashboard: View {
     }
 
     @ViewBuilder
-    private func fanIcon(spinning: Bool) -> some View {
-        if #available(macOS 15.0, *) {
-            Image(systemName: "fan.fill")
-                .font(.caption)
-                .foregroundColor(spinning ? Color.accentColor : .secondary)
-                .symbolEffect(.rotate, options: .repeating, isActive: spinning && isAppActive)
-        } else {
-            Image(systemName: "fan.fill")
-                .font(.caption)
-                .foregroundColor(spinning ? Color.accentColor : .secondary)
+    private func fanIcon(fan: AgentFanSnapshot) -> some View {
+        RPMFanIcon(
+            rpm: fan.actualRPM,
+            minRPM: fan.minRPM,
+            maxRPM: fan.maxRPM,
+            isActive: isAppActive
+        )
+    }
+
+    private struct RPMFanIcon: View {
+        let rpm: Float
+        let minRPM: Float
+        let maxRPM: Float
+        let isActive: Bool
+
+        private var isSpinning: Bool { rpm > 0 }
+
+        private var rotationsPerSecond: Double {
+            guard maxRPM > minRPM else { return 0.8 }
+            let normalized = max(0, min(1, Double((rpm - minRPM) / (maxRPM - minRPM))))
+            return 0.35 + normalized * 1.8
+        }
+
+        var body: some View {
+            if isActive, isSpinning {
+                TimelineView(.periodic(from: .now, by: 1.0 / 60.0)) { context in
+                    Image(systemName: "fan.fill")
+                        .font(.caption)
+                        .foregroundColor(Color.accentColor)
+                        .rotationEffect(
+                            .degrees(
+                                context.date.timeIntervalSinceReferenceDate
+                                    * rotationsPerSecond * 360.0
+                            )
+                        )
+                }
+            } else {
+                Image(systemName: "fan.fill")
+                    .font(.caption)
+                    .foregroundColor(isSpinning ? Color.accentColor : .secondary)
+            }
         }
     }
 

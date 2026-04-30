@@ -7,7 +7,10 @@
 //
 
 import AppKit
+import AppLog
 import SwiftUI
+
+private let appRenderActivityLog = AppLog.make(category: "AppRenderActivity")
 
 enum AppRenderMode: Equatable {
     case backgroundVisible
@@ -21,7 +24,7 @@ enum AppRenderMode: Equatable {
     var preferredFramesPerSecond: Int {
         switch self {
         case .interactive: return 60
-        case .backgroundVisible: return 15
+        case .backgroundVisible: return 12
         case .occluded: return 1
         }
     }
@@ -35,8 +38,8 @@ enum AppRenderMode: Equatable {
 
     var markerSmoothingIntervalNanoseconds: UInt64 {
         switch self {
-        case .interactive: return 16_000_000
-        case .backgroundVisible: return 120_000_000
+        case .interactive: return 16_700_000
+        case .backgroundVisible: return 140_000_000
         case .occluded: return 1_000_000_000
         }
     }
@@ -94,6 +97,9 @@ final class AppRenderActivity: ObservableObject {
     func refresh() {
         let nextMode = Self.currentMode()
         if mode != nextMode {
+            appRenderActivityLog.info(
+                "render.mode.changed from=\(String(describing: mode), privacy: .public) to=\(String(describing: nextMode), privacy: .public) fps=\(nextMode.preferredFramesPerSecond, privacy: .public)"
+            )
             mode = nextMode
         }
     }

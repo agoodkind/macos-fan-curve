@@ -6,7 +6,10 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import SwiftUI
+
+private let fanCurveEditorLog = AppLog.make(category: "FanCurveEditor")
 
 struct FanCurveEditor: View {
     @ObservedObject var model: FanCurveModel
@@ -16,17 +19,23 @@ struct FanCurveEditor: View {
     @State private var draggedIndex: Int?
     @State private var dragBaselinePercents: [Double] = []
     @State private var mouseLocation: CGPoint?
-    @State private var targetCommittedTemperature: Double = 0
-    @State private var targetCommittedPercent: Double = 0
-    @State private var targetRawTemperature: Double = 0
-    @State private var targetRawPercent: Double = 0
-    @State private var displayedCommittedTemperature: Double = 0
-    @State private var displayedCommittedPercent: Double = 0
-    @State private var displayedRawTemperature: Double = 0
-    @State private var displayedRawPercent: Double = 0
-    @State private var markerSmoothingTask: Task<Void, Never>?
-    @State private var lastMarkerUpdateTime: ContinuousClock.Instant?
+    @State private var markerStart = MarkerValues.zero
+    @State private var markerTarget = MarkerValues.zero
+    @State private var markerAnimationStartedAt = Date()
     private let controlPointHitRadius: CGFloat = 14
+
+    private struct MarkerValues: Equatable {
+        var committedTemperature: Double
+        var committedPercent: Double
+        var rawTemperature: Double
+        var rawPercent: Double
+
+        static let zero = MarkerValues(
+            committedTemperature: 0,
+            committedPercent: 0,
+            rawTemperature: 0,
+            rawPercent: 0)
+    }
 
     @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
 
@@ -75,13 +84,12 @@ struct FanCurveEditor: View {
         return (minR, maxR)
     }
 
-    private let markerSmoothingInterval: UInt64 = 16_000_000
-    private let committedMarkerTemperatureHalfLife: Double = 2.6
-    private let committedMarkerPercentHalfLife: Double = 1.8
-    private let rawMarkerTemperatureHalfLife: Double = 3.2
-    private let rawMarkerPercentHalfLife: Double = 2.2
-    private let committedTemperatureLimitCPerSec: Double = 7.0
-    private let rawMarkerTemperatureLimitCPerSecond: Double = 5.0
+    private let committedMarkerTemperatureHalfLife: Double = 1.1
+    private let committedMarkerPercentHalfLife: Double = 1.6
+    private let rawMarkerTemperatureHalfLife: Double = 1.4
+    private let rawMarkerPercentHalfLife: Double = 1.8
+    private let committedTemperatureLimitCPerSec: Double = 10.0
+    private let rawMarkerTemperatureLimitCPerSecond: Double = 8.0
     private let committedMarkerPercentLimitPerSecond: Double = 0.22
     private let rawMarkerPercentLimitPerSecond: Double = 0.18
 
@@ -104,7 +112,14 @@ struct FanCurveEditor: View {
                 controlPointsOverlay(size: size)
                 // Current position and Now label render last so they sit on top
                 // of the curve line and all control points.
-                currentPositionOverlay(size: size)
+                TimelineView(renderMode.frameProfilerSchedule) { context in
+                    currentPositionOverlay(
+                        size: size,
+                        values: markerValues(at: context.date)
+                    )
+                }
+                .frame(width: size.width, height: size.height)
+                .allowsHitTesting(false)
                 hoverTooltipOverlay(size: size)
                 chartLegendOverlay
                 appleAutoLabelOverlay(size: size)
@@ -134,38 +149,11 @@ struct FanCurveEditor: View {
             }
         }
         .onAppear {
-            refreshRuntimeMarkerTargets()
-            displayedCommittedTemperature = targetCommittedTemperature
-            displayedCommittedPercent = targetCommittedPercent
-            displayedRawTemperature = targetRawTemperature
-            displayedRawPercent = targetRawPercent
-            startMarkerSmoothing()
+            resetRuntimeMarkerTargets()
         }
-        .onChange(of: runtime.committedTemperature) { _ in
-            refreshRuntimeMarkerTargets()
-        }
-        .onChange(of: runtime.committedPercent) { _ in
-            refreshRuntimeMarkerTargets()
-        }
-        .onChange(of: runtime.rawPressureTemperature) { _ in
-            refreshRuntimeMarkerTargets()
-        }
-        .onChange(of: runtime.rawBaselinePercent) { _ in
-            refreshRuntimeMarkerTargets()
-        }
-        .onChange(of: runtime.activeAssistKinds) { _ in
-            refreshRuntimeMarkerTargets()
-        }
+        .onChange(of: runtime.snapshot) { _ in updateRuntimeMarkerTargets() }
         .onChange(of: boostEnabled) { _ in
-            refreshRuntimeMarkerTargets()
-        }
-        .onChange(of: renderMode) { _ in
-            startMarkerSmoothing()
-        }
-        .onDisappear {
-            markerSmoothingTask?.cancel()
-            markerSmoothingTask = nil
-            lastMarkerUpdateTime = nil
+            updateRuntimeMarkerTargets()
         }
     }
 
@@ -198,12 +186,12 @@ struct FanCurveEditor: View {
     // MARK: - Current Position Overlay
 
     @ViewBuilder
-    private func currentPositionOverlay(size: CGSize) -> some View {
+    private func currentPositionOverlay(size: CGSize, values: MarkerValues) -> some View {
         Group {
-            let committedTemp = displayedCommittedTemperature
-            let committedPercent = displayedCommittedPercent
-            let rawTemp = displayedRawTemperature
-            let rawPercent = displayedRawPercent
+            let committedTemp = values.committedTemperature
+            let committedPercent = values.committedPercent
+            let rawTemp = values.rawTemperature
+            let rawPercent = values.rawPercent
             if committedTemp > 0, rawTemp > 0 {
                 let committedPos = dataToPixel(temp: committedTemp, percent: committedPercent, in: size)
                 let demandPercent = max(0, min(1, rawPercent))
@@ -245,44 +233,67 @@ struct FanCurveEditor: View {
                     .frame(width: 9, height: 9)
                     .shadow(color: Color(nsColor: .systemOrange).opacity(0.18), radius: 2)
                     .position(rawPos)
-                    .animation(.easeInOut(duration: 0.42), value: rawPos)
 
                 Circle()
                     .fill(Color(nsColor: .systemOrange))
                     .frame(width: 10, height: 10)
                     .shadow(color: Color(nsColor: .systemOrange).opacity(0.5), radius: 6)
                     .position(committedPos)
-                    .animation(.timingCurve(0.18, 0.82, 0.22, 1.0, duration: 0.55), value: committedPos)
 
             }
         }
         .allowsHitTesting(false)
     }
 
-    private func refreshRuntimeMarkerTargets() {
+    private func resetRuntimeMarkerTargets() {
+        let now = Date()
+        let nextTarget = runtimeMarkerTarget()
+        markerStart = nextTarget
+        markerTarget = nextTarget
+        markerAnimationStartedAt = now
+        fanCurveEditorLog.info(
+            "curve_editor.marker_timeline.reset mode=\(String(describing: renderMode), privacy: .public) fps=\(renderMode.preferredFramesPerSecond, privacy: .public)"
+        )
+    }
+
+    private func updateRuntimeMarkerTargets() {
+        let now = Date()
+        let currentValues = markerValues(at: now)
+        let nextTarget = runtimeMarkerTarget()
+        guard nextTarget != markerTarget else { return }
+        markerStart = currentValues
+        markerTarget = nextTarget
+        markerAnimationStartedAt = now
+    }
+
+    private func runtimeMarkerTarget() -> MarkerValues {
         if runtime.curveActive {
-            let committedTemperature =
+            let controllerTemperature =
                 runtime.committedTemperature > 0
                 ? runtime.committedTemperature
                 : runtime.governingTemperature
             let demandTemperature = runtime.rawPressureTemperature ?? runtime.governingTemperature
+            let actualFanPercent = currentFanPercent() ?? runtime.committedPercent
 
-            targetCommittedPercent = runtime.committedPercent
-            targetCommittedTemperature = max(
-                plotTempRange.lowerBound, min(plotTempRange.upperBound, committedTemperature))
-            targetRawTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, demandTemperature))
-            targetRawPercent = runtime.rawBaselinePercent
+            let clampedControllerTemperature = max(
+                plotTempRange.lowerBound, min(plotTempRange.upperBound, controllerTemperature))
+            let committedTemperature = stableMarkerTemperatureTarget(
+                currentTarget: markerTarget.committedTemperature,
+                proposedTemperature: clampedControllerTemperature,
+                proposedPercent: actualFanPercent
+            )
+            return MarkerValues(
+                committedTemperature: committedTemperature,
+                committedPercent: actualFanPercent,
+                rawTemperature: max(plotTempRange.lowerBound, min(plotTempRange.upperBound, demandTemperature)),
+                rawPercent: runtime.rawBaselinePercent)
         } else {
             let liveTemperature =
                 runtime.committedTemperature > 0
                 ? runtime.committedTemperature
                 : runtime.rawPressureTemperature ?? runtime.governingTemperature
             guard liveTemperature > 0 else {
-                targetCommittedTemperature = 0
-                targetCommittedPercent = 0
-                targetRawTemperature = 0
-                targetRawPercent = 0
-                return
+                return .zero
             }
 
             let clampedTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, liveTemperature))
@@ -297,15 +308,71 @@ struct FanCurveEditor: View {
             // the current CPU temperature. Actual fan RPM can legitimately read as
             // zero in system-auto mode, so using RPM here incorrectly parks the
             // markers at the origin.
-            targetCommittedTemperature = stableMarkerTemperatureTarget(
-                currentTarget: targetCommittedTemperature,
+            let committedTemperature = stableMarkerTemperatureTarget(
+                currentTarget: markerTarget.committedTemperature,
                 proposedTemperature: clampedTemperature,
                 proposedPercent: previewPercent
             )
-            targetCommittedPercent = previewPercent
-            targetRawTemperature = targetCommittedTemperature
-            targetRawPercent = previewPercent
+            return MarkerValues(
+                committedTemperature: committedTemperature,
+                committedPercent: currentFanPercent() ?? previewPercent,
+                rawTemperature: committedTemperature,
+                rawPercent: previewPercent)
         }
+    }
+
+    private func markerValues(at date: Date) -> MarkerValues {
+        let elapsedSeconds = max(0, date.timeIntervalSince(markerAnimationStartedAt))
+        return MarkerValues(
+            committedTemperature: sampledMarkerValue(
+                start: markerStart.committedTemperature,
+                target: markerTarget.committedTemperature,
+                elapsedSeconds: elapsedSeconds,
+                halfLife: committedMarkerTemperatureHalfLife,
+                maxDeltaPerSecond: committedTemperatureLimitCPerSec),
+            committedPercent: sampledMarkerValue(
+                start: markerStart.committedPercent,
+                target: markerTarget.committedPercent,
+                elapsedSeconds: elapsedSeconds,
+                halfLife: committedMarkerPercentHalfLife,
+                maxDeltaPerSecond: committedMarkerPercentLimitPerSecond),
+            rawTemperature: sampledMarkerValue(
+                start: markerStart.rawTemperature,
+                target: markerTarget.rawTemperature,
+                elapsedSeconds: elapsedSeconds,
+                halfLife: rawMarkerTemperatureHalfLife,
+                maxDeltaPerSecond: rawMarkerTemperatureLimitCPerSecond),
+            rawPercent: sampledMarkerValue(
+                start: markerStart.rawPercent,
+                target: markerTarget.rawPercent,
+                elapsedSeconds: elapsedSeconds,
+                halfLife: rawMarkerPercentHalfLife,
+                maxDeltaPerSecond: rawMarkerPercentLimitPerSecond))
+    }
+
+    private func sampledMarkerValue(
+        start: Double,
+        target: Double,
+        elapsedSeconds: Double,
+        halfLife: Double,
+        maxDeltaPerSecond: Double
+    ) -> Double {
+        guard halfLife > 0, elapsedSeconds > 0 else { return start }
+        let decay = pow(0.5, elapsedSeconds / halfLife)
+        let unconstrained = target + (start - target) * decay
+        let maxDelta = maxDeltaPerSecond * elapsedSeconds
+        let clamped = start + max(-maxDelta, min(maxDelta, unconstrained - start))
+        return abs(clamped - target) < 0.0001 ? target : clamped
+    }
+
+    private func currentFanPercent() -> Double? {
+        let percents = runtime.fans.compactMap { fan -> Double? in
+            guard fan.maxRPM > fan.minRPM, fan.actualRPM > 0 else { return nil }
+            let percent = Double((fan.actualRPM - rpmRange.min) / (rpmRange.max - rpmRange.min))
+            return max(0, min(1, percent))
+        }
+        guard !percents.isEmpty else { return nil }
+        return percents.reduce(0, +) / Double(percents.count)
     }
 
     private func stableMarkerTemperatureTarget(
@@ -652,7 +719,6 @@ struct FanCurveEditor: View {
                 if showTooltip {
                     tooltipPill(temp: data.x, percent: percent, rpm: rpm)
                         .position(x: pos.x, y: tooltipY)
-                        .animation(.easeOut(duration: 0.12), value: pos)
                         .transition(.opacity)
                         .allowsHitTesting(false)
                 }
@@ -718,72 +784,6 @@ struct FanCurveEditor: View {
             }
             .min { lhs, rhs in lhs.distance < rhs.distance }?
             .index
-    }
-
-    private func startMarkerSmoothing() {
-        markerSmoothingTask?.cancel()
-        lastMarkerUpdateTime = nil
-        markerSmoothingTask = Task { @MainActor in
-            let clock = ContinuousClock()
-            while !Task.isCancelled {
-                let now = clock.now
-                let deltaSeconds: Double
-                if let lastMarkerUpdateTime {
-                    deltaSeconds =
-                        Double(lastMarkerUpdateTime.duration(to: now).components.seconds)
-                        + Double(lastMarkerUpdateTime.duration(to: now).components.attoseconds) / 1e18
-                } else {
-                    deltaSeconds = Double(markerSmoothingInterval) / 1e9
-                }
-                lastMarkerUpdateTime = now
-
-                displayedCommittedTemperature = smoothlyApproach(
-                    current: displayedCommittedTemperature,
-                    target: targetCommittedTemperature,
-                    deltaSeconds: deltaSeconds,
-                    halfLife: committedMarkerTemperatureHalfLife,
-                    maxDeltaPerSecond: committedTemperatureLimitCPerSec
-                )
-                displayedCommittedPercent = smoothlyApproach(
-                    current: displayedCommittedPercent,
-                    target: targetCommittedPercent,
-                    deltaSeconds: deltaSeconds,
-                    halfLife: committedMarkerPercentHalfLife,
-                    maxDeltaPerSecond: committedMarkerPercentLimitPerSecond
-                )
-                displayedRawTemperature = smoothlyApproach(
-                    current: displayedRawTemperature,
-                    target: targetRawTemperature,
-                    deltaSeconds: deltaSeconds,
-                    halfLife: rawMarkerTemperatureHalfLife,
-                    maxDeltaPerSecond: rawMarkerTemperatureLimitCPerSecond
-                )
-                displayedRawPercent = smoothlyApproach(
-                    current: displayedRawPercent,
-                    target: targetRawPercent,
-                    deltaSeconds: deltaSeconds,
-                    halfLife: rawMarkerPercentHalfLife,
-                    maxDeltaPerSecond: rawMarkerPercentLimitPerSecond
-                )
-                try? await Task.sleep(nanoseconds: renderMode.markerSmoothingIntervalNanoseconds)
-            }
-        }
-    }
-
-    private func smoothlyApproach(
-        current: Double,
-        target: Double,
-        deltaSeconds: Double,
-        halfLife: Double,
-        maxDeltaPerSecond: Double
-    ) -> Double {
-        guard halfLife > 0, deltaSeconds > 0 else { return target }
-        let decay = pow(0.5, deltaSeconds / halfLife)
-        let unconstrained = target + (current - target) * decay
-        let maxStep = maxDeltaPerSecond * deltaSeconds
-        let delta = max(-maxStep, min(maxStep, unconstrained - current))
-        let next = current + delta
-        return abs(next - target) < 0.0001 ? target : next
     }
 
     /// Fixed-column monotonic editor:
