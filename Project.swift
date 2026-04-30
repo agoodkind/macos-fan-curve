@@ -17,9 +17,7 @@ let release = Configuration.release(
 )
 
 let generatedConfigScript = TargetScript.pre(
-    script: """
-        "${SRCROOT}/Scripts/GenerateConfig.swift"
-        """,
+    path: "Scripts/GenerateConfig.swift",
     name: "Generate Config from xcconfig",
     outputPaths: [
         "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/Config.generated.swift",
@@ -27,54 +25,17 @@ let generatedConfigScript = TargetScript.pre(
     ]
 )
 
-let bundleAgentScript = TargetScript.post(
-    script: """
-        set -euo pipefail
-
-        sign_nested_code() {
-          if [ "${CODE_SIGNING_ALLOWED:-NO}" != "YES" ]; then
-            return 0
-          fi
-          if [ -z "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
-            return 0
-          fi
-          if [ ! -e "$1" ]; then
-            return 0
-          fi
-
-          if [ "${ENABLE_HARDENED_RUNTIME:-NO}" = "YES" ]; then
-            codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" \
-              --options runtime ${OTHER_CODE_SIGN_FLAGS:-} "$1"
-          else
-            codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" \
-              ${OTHER_CODE_SIGN_FLAGS:-} "$1"
-          fi
-        }
-
-        AGENT_SRC="${BUILT_PRODUCTS_DIR}/${AGENT_EXECUTABLE_NAME}"
-        APP_DIR="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app"
-        AGENTS_DIR="${APP_DIR}/Contents/Library/LaunchAgents"
-        MACOS_DIR="${APP_DIR}/Contents/MacOS"
-        mkdir -p "${AGENTS_DIR}"
-        cp "${AGENT_SRC}" "${MACOS_DIR}/"
-        cp "${SRCROOT}/Derived/Generated/${TARGET_NAME}/agent-launchd.plist" \
-           "${AGENTS_DIR}/${AGENT_BUNDLE_ID}.plist"
-
-        SPARKLE_DIR="${APP_DIR}/Contents/Frameworks/Sparkle.framework/Versions/Current"
-        sign_nested_code "${SPARKLE_DIR}/Updater.app"
-        sign_nested_code "${SPARKLE_DIR}/XPCServices/Downloader.xpc"
-        sign_nested_code "${SPARKLE_DIR}/XPCServices/Installer.xpc"
-        sign_nested_code "${SPARKLE_DIR}/Autoupdate"
-        sign_nested_code "${SPARKLE_DIR}"
-        """,
-    name: "Bundle agent into app",
+// Keep bundle assembly declarative in Tuist and reserve scripting for Sparkle's
+// documented inside-out signing requirements.
+let signSparkleScript = TargetScript.post(
+    path: "Scripts/SignSparkle.swift",
+    name: "Sign Sparkle nested code",
     inputPaths: [
-        "$(BUILT_PRODUCTS_DIR)/$(AGENT_EXECUTABLE_NAME)",
-        "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/agent-launchd.plist",
-    ],
-    outputPaths: [
-        "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/MacOS/$(AGENT_EXECUTABLE_NAME)",
-        "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Library/LaunchAgents/$(AGENT_BUNDLE_ID).plist",
+        "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Frameworks/Sparkle.framework/Versions/Current/Updater.app",
+        "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Frameworks/Sparkle.framework/Versions/Current/XPCServices/Downloader.xpc",
+        "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Frameworks/Sparkle.framework/Versions/Current/XPCServices/Installer.xpc",
+        "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Frameworks/Sparkle.framework/Versions/Current/Autoupdate",
+        "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Frameworks/Sparkle.framework",
     ]
 )
 
@@ -168,9 +129,24 @@ let project = Project(
                 "Sources/App/Base.lproj/**",
                 "Sources/App/Assets.xcassets",
             ],
+            copyFiles: [
+                .executables(
+                    name: "Embed Agent",
+                    files: [
+                        .buildProduct(name: agentExecutableName, codeSignOnCopy: true),
+                    ]
+                ),
+                .wrapper(
+                    name: "Embed Launch Agent Plist",
+                    subpath: "Contents/Library/LaunchAgents",
+                    files: [
+                        .glob(pattern: "Derived/Generated/FanCurve/agent-launchd.plist"),
+                    ]
+                ),
+            ],
             scripts: [
                 generatedConfigScript,
-                bundleAgentScript,
+                signSparkleScript,
             ],
             dependencies: externalDependencies + [
                 .external(name: "Sparkle"),

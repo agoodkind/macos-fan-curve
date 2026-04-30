@@ -1,6 +1,6 @@
 -include Config/local.xcconfig
 
-TUIST := $(shell command -v tuist 2>/dev/null || printf '%s' "mise x tuist@4.186.2 -- tuist")
+TUIST := $(shell command -v tuist 2>/dev/null || printf '%s' "mise x tuist@4.188.3 -- tuist")
 
 CONFIGURATION = Release
 BUILD_DIR = build
@@ -12,6 +12,7 @@ ANALYZE_BUILD_DIR = $(BUILD_DIR)/Analyze
 SWIFTLINT_ANALYZE_DERIVED_DATA = $(ANALYZE_BUILD_DIR)/SwiftLintDerivedData
 SWIFTLINT_ANALYZE_LOG = $(ANALYZE_BUILD_DIR)/swiftlint-xcodebuild.log
 APP_NAME = FanCurve
+AGENT_EXECUTABLE_NAME = FanCurveAgent
 DMG_NAME = $(APP_NAME)-$(CONFIGURATION)
 MARKETING_VERSION ?= 0.1.0
 CURRENT_PROJECT_VERSION ?= 1
@@ -26,7 +27,7 @@ APP_DEST = $(PRODUCTS_DIR)/$(APP_NAME).app
 INSTALL_USER_APP_DEST ?= $(HOME)/Applications/$(APP_NAME).app
 INSTALL_APP_DEST ?= /Applications/$(APP_NAME).app
 AGENT_LABEL ?= io.goodkind.fancurveagent
-AGENT_PLIST_NAME ?= $(AGENT_LABEL).plist
+AGENT_PLIST_NAME ?= agent-launchd.plist
 AGENT_BUNDLED_PLIST ?= $(APP_DEST)/Contents/Library/LaunchAgents/$(AGENT_PLIST_NAME)
 AGENT_BUNDLE_PROGRAM = Contents/MacOS/FanCurveAgent
 ICON_HASH_STAMP = $(BUILD_DIR)/.app-icon.sha
@@ -36,8 +37,9 @@ RELEASE_DMG_PATH = $(PRODUCTS_DIR)/$(RELEASE_DMG_NAME)
 SPARKLE_UPDATES_DIR = $(BUILD_DIR)/sparkle-updates
 SPARKLE_APPCAST_PATH = $(SPARKLE_UPDATES_DIR)/appcast.xml
 GITHUB_RELEASE_BASE_URL ?= https://github.com/agoodkind/macos-fan-curve/releases/download/$(RELEASE_TAG)/
+GENERATE_CONFIG_ENV = SRCROOT="$(CURDIR)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
 
-.PHONY: all install-dependencies install-analysis-tools build app install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project open-project test format format-check lint swiftlint-lint analyze xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit verify quality run log-audit icons
+.PHONY: all install-dependencies install-analysis-tools build app install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project generate-config-artifacts open-project test format format-check lint swiftlint-lint analyze xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit verify quality run log-audit icons
 
 install-dependencies:
 	$(TUIST) install
@@ -54,7 +56,11 @@ install-analysis-tools:
 		brew install periphery; \
 	fi
 
-generate-project:
+generate-config-artifacts:
+	@TARGET_NAME="$(APP_NAME)" $(GENERATE_CONFIG_ENV) ./Scripts/GenerateConfig.swift
+	@TARGET_NAME="$(AGENT_EXECUTABLE_NAME)" $(GENERATE_CONFIG_ENV) ./Scripts/GenerateConfig.swift
+
+generate-project: generate-config-artifacts
 	$(TUIST) generate --no-open
 
 open-project: generate-project

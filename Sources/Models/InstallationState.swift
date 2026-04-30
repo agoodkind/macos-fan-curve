@@ -13,6 +13,13 @@ import ServiceManagement
 
 private let log = AppLog.make(category: "InstallationState")
 
+private struct AgentServiceMutationResult: Sendable {
+    let statusBefore: String
+    let statusAfterUnregister: String?
+    let statusAfterRegister: String?
+    let errorDescription: String?
+}
+
 /// Tracks whether the privileged helper and background agent are installed
 /// and running. Drives the inline onboarding flow in the GUI.
 @MainActor
@@ -40,6 +47,8 @@ final class InstallationState: ObservableObject {
 
     private var timer: Timer?
     private var lastAutoRefreshAttemptedHash: String?
+    private var lastAutoRefreshAttemptDate: Date?
+    private let agentRefreshRetryInterval: TimeInterval = 30
 
     /// Convenience computed helpers for the Settings UI.
     var agentEnabled: Bool {
@@ -88,16 +97,22 @@ final class InstallationState: ObservableObject {
     /// Opens System Settings if approval is required.
     func registerAgent() {
         guard #available(macOS 13.0, *) else { return }
-        let service = SMAppService.agent(plistName: "\(generatedAgentBundleID).plist")
-        do {
-            try service.register()
-            lastError = nil
-            log.notice("agent.register.done")
-        } catch {
-            lastError = error.localizedDescription
-            log.error(
-                "agent.register.failed error=\(error.localizedDescription, privacy: .public) recovery=show-login-item-error"
+        Task {
+            let result = await Self.registerAgentService()
+            log.notice(
+                "agent.register.requested plist=\(generatedAgentPlistName, privacy: .public) status=\(result.statusBefore, privacy: .public)"
             )
+
+            if let errorDescription = result.errorDescription {
+                lastError = errorDescription
+                log.error(
+                    "agent.register.failed error=\(errorDescription, privacy: .public) recovery=show-login-item-error"
+                )
+                return
+            }
+
+            lastError = nil
+            log.notice("agent.register.done status=\(result.statusAfterRegister ?? "unknown", privacy: .public)")
         }
     }
 
@@ -110,23 +125,29 @@ final class InstallationState: ObservableObject {
     /// Unregister the agent. Stops it and removes its entry from Login Items.
     func unregisterAgent() {
         guard #available(macOS 13.0, *) else { return }
-        let service = SMAppService.agent(plistName: "\(generatedAgentBundleID).plist")
-        do {
-            try service.unregister()
-            lastError = nil
-            log.notice("agent.unregister.done")
-        } catch {
-            lastError = error.localizedDescription
-            log.error(
-                "agent.unregister.failed error=\(error.localizedDescription, privacy: .public) recovery=show-login-item-error"
+        Task {
+            let result = await Self.unregisterAgentService()
+            log.notice(
+                "agent.unregister.requested plist=\(generatedAgentPlistName, privacy: .public) status=\(result.statusBefore, privacy: .public)"
             )
+
+            if let errorDescription = result.errorDescription {
+                lastError = errorDescription
+                log.error(
+                    "agent.unregister.failed error=\(errorDescription, privacy: .public) recovery=show-login-item-error"
+                )
+                return
+            }
+
+            lastError = nil
+            log.notice("agent.unregister.done status=\(result.statusAfterUnregister ?? "unknown", privacy: .public)")
         }
     }
 
     /// Probes current installation status.
     private func refresh(xpcClient: XPCClient) async {
         let helperOK = await helperResponding(xpcClient: xpcClient)
-        let agentStatus = currentAgentStatus()
+        let agentStatus = await currentAgentStatus()
 
         helperReachable = helperOK
         agentRawStatus = agentStatus.rawValue
@@ -137,7 +158,7 @@ final class InstallationState: ObservableObject {
         agentLastError = suite.string(forKey: SharedConfigKeys.agentLastError) ?? ""
 
         if agentStatus == .enabled {
-            refreshAgentIfNeeded(runningHash: agentExecutableHash)
+            await refreshAgentIfNeeded(runningHash: agentExecutableHash)
         }
 
         if !helperOK {
@@ -167,41 +188,195 @@ final class InstallationState: ObservableObject {
         }
     }
 
-    private func currentAgentStatus() -> SMAppService.Status {
+    private func currentAgentStatus() async -> SMAppService.Status {
         guard #available(macOS 13.0, *) else { return .notFound }
-        return SMAppService.agent(plistName: "\(generatedAgentBundleID).plist").status
+        let rawValue = await Self.currentAgentStatusRawValue()
+        return SMAppService.Status(rawValue: rawValue) ?? .notFound
     }
 
-    private func refreshAgentIfNeeded(runningHash: String) {
+    private func refreshAgentIfNeeded(runningHash: String) async {
         guard #available(macOS 13.0, *) else { return }
 
+        let appBundlePath = Bundle.main.bundleURL.path
+        let stagedBundle = isLocalStagedBundle(path: appBundlePath)
         let bundledHash = BuildFingerprint.bundledAgentHash
         guard bundledHash != "n/a" else {
             log.error("agent.refresh.skipped reason=bundled-hash-unavailable")
             return
         }
 
+        if !stagedBundle {
+            log.notice("agent.refresh.context appPath=\(appBundlePath, privacy: .public) mode=non-staged-bundle")
+        }
+
         if runningHash == bundledHash {
-            lastAutoRefreshAttemptedHash = nil
+            clearRefreshAttempt()
             return
         }
 
-        guard lastAutoRefreshAttemptedHash != bundledHash else { return }
-        lastAutoRefreshAttemptedHash = bundledHash
+        let now = Date()
+        guard shouldRetryRefresh(for: bundledHash, now: now) else {
+            log.notice(
+                "agent.refresh.deferred appPath=\(appBundlePath, privacy: .public) bundledHash=\(bundledHash, privacy: .public) recovery=wait-before-retrying"
+            )
+            return
+        }
 
+        recordRefreshAttempt(for: bundledHash, at: now)
+        let result = await Self.refreshRegisteredAgentService()
         log.notice(
-            "agent.refresh.needed runningHash=\(runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public)"
+            "agent.refresh.needed appPath=\(appBundlePath, privacy: .public) stagedBundle=\(stagedBundle, privacy: .public) status=\(result.statusBefore, privacy: .public) runningHash=\(runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public)"
         )
 
-        let service = SMAppService.agent(plistName: "\(generatedAgentBundleID).plist")
-        do {
-            try service.unregister()
-            try service.register()
-            lastError = nil
-            log.notice("agent.refresh.done bundledHash=\(bundledHash, privacy: .public)")
-        } catch {
-            lastError = error.localizedDescription
-            log.error("agent.refresh.failed error=\(error.localizedDescription, privacy: .public)")
+        if let statusAfterUnregister = result.statusAfterUnregister {
+            log.notice("agent.refresh.unregister.done status=\(statusAfterUnregister, privacy: .public)")
         }
+
+        if let errorDescription = result.errorDescription {
+            lastError = errorDescription
+            log.error(
+                "agent.refresh.failed appPath=\(appBundlePath, privacy: .public) status=\(result.statusBefore, privacy: .public) error=\(errorDescription, privacy: .public) recovery=retry-auto-refresh"
+            )
+            return
+        }
+
+        if let statusAfterRegister = result.statusAfterRegister {
+            lastError = nil
+            clearRefreshAttempt()
+            log.notice(
+                "agent.refresh.done appPath=\(appBundlePath, privacy: .public) bundledHash=\(bundledHash, privacy: .public) status=\(statusAfterRegister, privacy: .public)"
+            )
+        }
+    }
+
+    @available(macOS 13.0, *)
+    nonisolated private static func agentService() -> SMAppService {
+        SMAppService.agent(plistName: generatedAgentPlistName)
+    }
+
+    @available(macOS 13.0, *)
+    nonisolated private static func describeAgentStatus(_ status: SMAppService.Status) -> String {
+        switch status {
+        case .enabled:
+            "enabled"
+        case .requiresApproval:
+            "requiresApproval"
+        case .notFound:
+            "notFound"
+        case .notRegistered:
+            "notRegistered"
+        default:
+            "unknown(\(status.rawValue))"
+        }
+    }
+
+    @available(macOS 13.0, *)
+    nonisolated private static func currentAgentStatusRawValue() async -> Int {
+        await Task.detached {
+            agentService().status.rawValue
+        }.value
+    }
+
+    @available(macOS 13.0, *)
+    nonisolated private static func registerAgentService() async -> AgentServiceMutationResult {
+        await Task.detached {
+            let service = agentService()
+            let statusBefore = describeAgentStatus(service.status)
+            do {
+                try service.register()
+                return AgentServiceMutationResult(
+                    statusBefore: statusBefore,
+                    statusAfterUnregister: nil,
+                    statusAfterRegister: describeAgentStatus(service.status),
+                    errorDescription: nil
+                )
+            } catch {
+                log.error(
+                    "agent.register.service.failed status=\(statusBefore, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-ui"
+                )
+                return AgentServiceMutationResult(
+                    statusBefore: statusBefore,
+                    statusAfterUnregister: nil,
+                    statusAfterRegister: nil,
+                    errorDescription: error.localizedDescription
+                )
+            }
+        }.value
+    }
+
+    @available(macOS 13.0, *)
+    nonisolated private static func unregisterAgentService() async -> AgentServiceMutationResult {
+        await Task.detached {
+            let service = agentService()
+            let statusBefore = describeAgentStatus(service.status)
+            do {
+                try service.unregister()
+                return AgentServiceMutationResult(
+                    statusBefore: statusBefore,
+                    statusAfterUnregister: describeAgentStatus(service.status),
+                    statusAfterRegister: nil,
+                    errorDescription: nil
+                )
+            } catch {
+                log.error(
+                    "agent.unregister.service.failed status=\(statusBefore, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-ui"
+                )
+                return AgentServiceMutationResult(
+                    statusBefore: statusBefore,
+                    statusAfterUnregister: nil,
+                    statusAfterRegister: nil,
+                    errorDescription: error.localizedDescription
+                )
+            }
+        }.value
+    }
+
+    @available(macOS 13.0, *)
+    nonisolated private static func refreshRegisteredAgentService() async -> AgentServiceMutationResult {
+        await Task.detached {
+            let service = agentService()
+            let statusBefore = describeAgentStatus(service.status)
+            do {
+                try service.unregister()
+                let statusAfterUnregister = describeAgentStatus(service.status)
+                try service.register()
+                return AgentServiceMutationResult(
+                    statusBefore: statusBefore,
+                    statusAfterUnregister: statusAfterUnregister,
+                    statusAfterRegister: describeAgentStatus(service.status),
+                    errorDescription: nil
+                )
+            } catch {
+                log.error(
+                    "agent.refresh.service.failed status=\(statusBefore, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-refresh-loop"
+                )
+                return AgentServiceMutationResult(
+                    statusBefore: statusBefore,
+                    statusAfterUnregister: nil,
+                    statusAfterRegister: nil,
+                    errorDescription: error.localizedDescription
+                )
+            }
+        }.value
+    }
+
+    private func isLocalStagedBundle(path: String) -> Bool {
+        path.hasSuffix("/Products/FanCurve.app")
+    }
+
+    private func shouldRetryRefresh(for bundledHash: String, now: Date) -> Bool {
+        guard lastAutoRefreshAttemptedHash == bundledHash else { return true }
+        guard let lastAutoRefreshAttemptDate else { return true }
+        return now.timeIntervalSince(lastAutoRefreshAttemptDate) >= agentRefreshRetryInterval
+    }
+
+    private func recordRefreshAttempt(for bundledHash: String, at date: Date) {
+        lastAutoRefreshAttemptedHash = bundledHash
+        lastAutoRefreshAttemptDate = date
+    }
+
+    private func clearRefreshAttempt() {
+        lastAutoRefreshAttemptedHash = nil
+        lastAutoRefreshAttemptDate = nil
     }
 }
