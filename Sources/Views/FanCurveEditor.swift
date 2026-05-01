@@ -760,7 +760,7 @@ struct FanCurveEditor: View {
         let plotHeight = size.height - topPad - bottomPad
         let clampedTemp = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, temp))
         let clampedPercent = max(0, min(1, percent))
-        let x = leftPad + CGFloat(editorFraction(for: clampedTemp)) * plotWidth
+        let x = leftPad + CGFloat(temperatureFraction(for: clampedTemp)) * plotWidth
         let y = topPad + CGFloat(1 - clampedPercent) * plotHeight
         return CGPoint(x: x, y: y)
     }
@@ -768,39 +768,20 @@ struct FanCurveEditor: View {
     private func pixelToData(_ pt: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
         let plotWidth = size.width - leftPad - rightPad
         let plotHeight = size.height - topPad - bottomPad
-        let fraction = Double((pt.x - leftPad) / plotWidth)
-        let temp = editorTemperature(for: fraction)
+        let fraction = max(0, min(1, Double((pt.x - leftPad) / plotWidth)))
+        let temp = temperature(at: fraction)
         let percent = 1.0 - Double((pt.y - topPad) / plotHeight)
         return (temp, percent)
     }
 
-    /// Editor coordinates are fixed, evenly spaced columns. This keeps
-    /// dragging predictable and gives the upper thermal range more authored
-    /// control points without making handles ride the warped axis labels.
-    private func editorFraction(for temp: Double) -> Double {
-        let columns = CurveColumns.temperatures()
-        guard columns.count > 1 else { return 0 }
-        let clamped = max(columns[0], min(columns[columns.count - 1], temp))
-
-        for index in 0..<(columns.count - 1) {
-            let lower = columns[index]
-            let upper = columns[index + 1]
-            guard clamped <= upper || index == columns.count - 2 else { continue }
-            let local = upper == lower ? 0 : (clamped - lower) / (upper - lower)
-            return (Double(index) + local) / Double(columns.count - 1)
-        }
-
-        return 1
+    private func temperatureFraction(for temp: Double) -> Double {
+        let span = plotTempRange.upperBound - plotTempRange.lowerBound
+        guard span > 0 else { return 0 }
+        return (temp - plotTempRange.lowerBound) / span
     }
 
-    private func editorTemperature(for fraction: Double) -> Double {
-        let columns = CurveColumns.temperatures()
-        guard columns.count > 1 else { return columns.first ?? plotTempRange.lowerBound }
-        let clamped = max(0, min(1, fraction))
-        let scaled = clamped * Double(columns.count - 1)
-        let index = min(columns.count - 2, max(0, Int(floor(scaled))))
-        let local = scaled - Double(index)
-        return columns[index] + (columns[index + 1] - columns[index]) * local
+    private func temperature(at fraction: Double) -> Double {
+        plotTempRange.lowerBound + fraction * (plotTempRange.upperBound - plotTempRange.lowerBound)
     }
 
 }
