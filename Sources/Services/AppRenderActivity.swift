@@ -12,7 +12,7 @@ import SwiftUI
 
 private let appRenderActivityLog = AppLog.make(category: "AppRenderActivity")
 
-enum AppRenderMode: Equatable {
+enum AppRenderMode: Equatable, Hashable {
     case backgroundVisible
     case interactive
     case occluded
@@ -23,10 +23,14 @@ enum AppRenderMode: Equatable {
 
     var preferredFramesPerSecond: Int {
         switch self {
-        case .interactive: return 60
+        case .interactive: return Self.maximumDisplayFramesPerSecond
         case .backgroundVisible: return 12
         case .occluded: return 1
         }
+    }
+
+    private static var maximumDisplayFramesPerSecond: Int {
+        max(60, NSScreen.screens.map(\.maximumFramesPerSecond).max() ?? 60)
     }
 
     var frameProfilerSchedule: PeriodicTimelineSchedule {

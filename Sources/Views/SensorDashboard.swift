@@ -15,7 +15,7 @@ struct SensorDashboard: View {
     @ObservedObject var runtime: AgentSnapshotState
     @ObservedObject var curveModel: FanCurveModel
     @ObservedObject var installState: InstallationState
-    @State private var isAppActive: Bool = NSApp.isActive
+    let renderMode: AppRenderMode
 
     @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
 
@@ -48,14 +48,9 @@ struct SensorDashboard: View {
         )
         .onAppear {
             LoadAssistStore.migrateLegacyIfNeeded(defaults: Self.suite)
-            isAppActive = NSApp.isActive
-            sensorDashboardLog.info("sensor_dashboard.appeared active=\(isAppActive, privacy: .public)")
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            isAppActive = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-            isAppActive = false
+            sensorDashboardLog.info(
+                "sensor_dashboard.appeared render_mode=\(String(describing: renderMode), privacy: .public) fps=\(renderMode.preferredFramesPerSecond, privacy: .public)"
+            )
         }
     }
 
@@ -83,6 +78,8 @@ struct SensorDashboard: View {
                         .font(.system(.largeTitle, design: .rounded).weight(.regular))
                         .foregroundStyle(.primary)
                         .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .animation(.easeOut(duration: 0.38), value: displayed)
                     Text(unit.symbol)
                         .font(.title3)
                         .foregroundStyle(.secondary)
@@ -427,6 +424,7 @@ struct SensorDashboard: View {
         value: Double,
         tint: Color
     ) -> some View {
+        let roundedValue = Int(value.rounded())
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Image(systemName: icon)
@@ -436,9 +434,11 @@ struct SensorDashboard: View {
                     .font(.callout)
                     .foregroundColor(.secondary)
                 Spacer()
-                Text("\(Int(value.rounded()))%")
+                Text("\(roundedValue)%")
                     .font(.system(.callout, design: .rounded).weight(.medium))
                     .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .animation(.easeOut(duration: 0.32), value: roundedValue)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -447,13 +447,16 @@ struct SensorDashboard: View {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(tint)
                         .frame(width: geo.size.width * CGFloat(value / 100))
+                        .animation(.easeOut(duration: 0.32), value: value)
                 }
             }
             .frame(height: 4)
         }
     }
 
+    @ViewBuilder
     private func fanRow(_ fan: AgentFanSnapshot) -> some View {
+        let displayedRPM = Int(fan.actualRPM)
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
@@ -468,9 +471,11 @@ struct SensorDashboard: View {
                     }
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text("\(Int(fan.actualRPM))")
+                    Text("\(displayedRPM)")
                         .font(.system(.title3, design: .rounded))
                         .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .animation(.easeOut(duration: 0.38), value: displayedRPM)
                     Text("RPM")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -494,7 +499,7 @@ struct SensorDashboard: View {
             rpm: fan.actualRPM,
             minRPM: fan.minRPM,
             maxRPM: fan.maxRPM,
-            isActive: isAppActive
+            renderMode: renderMode
         )
     }
 
@@ -502,7 +507,7 @@ struct SensorDashboard: View {
         let rpm: Float
         let minRPM: Float
         let maxRPM: Float
-        let isActive: Bool
+        let renderMode: AppRenderMode
 
         private var isSpinning: Bool { rpm > 0 }
 
@@ -513,8 +518,8 @@ struct SensorDashboard: View {
         }
 
         var body: some View {
-            if isActive, isSpinning {
-                TimelineView(.periodic(from: .now, by: 1.0 / 60.0)) { context in
+            if renderMode.isVisible, isSpinning {
+                TimelineView(renderMode.frameProfilerSchedule) { context in
                     Image(systemName: "fan.fill")
                         .font(.caption)
                         .foregroundColor(Color.accentColor)
@@ -525,6 +530,7 @@ struct SensorDashboard: View {
                             )
                         )
                 }
+                .id(renderMode)
             } else {
                 Image(systemName: "fan.fill")
                     .font(.caption)

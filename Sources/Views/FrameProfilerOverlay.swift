@@ -19,24 +19,41 @@
         @State private var frameMilliseconds: Double = 0
 
         var body: some View {
-            TimelineView(renderMode.frameProfilerSchedule) { context in
-                Text(label)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(.black.opacity(0.72), in: Capsule())
-                    .allowsHitTesting(false)
-                    .onAppear {
-                        sampleFrame(at: context.date)
-                    }
-                    .onChange(of: context.date) { date in
-                        sampleFrame(at: date)
-                    }
+            timelineBody
+                .id(renderMode)
+                .onChange(of: renderMode) { _ in
+                    resetSamples()
+                }
+        }
+
+        @ViewBuilder
+        private var timelineBody: some View {
+            switch renderMode {
+            case .interactive:
+                TimelineView(.animation(minimumInterval: 1.0 / Double(renderMode.preferredFramesPerSecond))) { context in
+                    labelView(date: context.date)
+                }
+            case .backgroundVisible, .occluded:
+                TimelineView(renderMode.frameProfilerSchedule) { context in
+                    labelView(date: context.date)
+                }
             }
-            .onChange(of: renderMode) { _ in
-                resetSamples()
-            }
+        }
+
+        private func labelView(date: Date) -> some View {
+            Text(label)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(.black.opacity(0.72), in: Capsule())
+                .allowsHitTesting(false)
+                .onAppear {
+                    sampleFrame(at: date)
+                }
+                .onChange(of: date) { nextDate in
+                    sampleFrame(at: nextDate)
+                }
         }
 
         private var label: String {

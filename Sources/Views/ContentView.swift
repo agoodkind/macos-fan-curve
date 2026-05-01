@@ -97,7 +97,8 @@ struct ContentView: View {
             SensorDashboard(
                 runtime: runtimeState,
                 curveModel: curveModel,
-                installState: installState
+                installState: installState,
+                renderMode: renderActivity.mode
             )
             .frame(width: sidebarWidth)
         }
