@@ -1,0 +1,186 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>FanCurve · SVG Export</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:48px;background:#E8E7E2;margin:0}
+h1{margin:0 0 6px;font-size:24px;letter-spacing:-0.4px}
+p{margin:0 0 32px;color:#666;font-size:14px}
+.row{display:flex;gap:32px;align-items:center;margin-bottom:24px;background:#fff;padding:20px 24px;border-radius:18px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.lbl{font:600 14px -apple-system,sans-serif;color:#222;width:140px}
+.lbl small{display:block;font-weight:400;color:#888;font-size:12px;margin-top:2px}
+.sw{display:flex;gap:16px;align-items:center}
+.sw .pv{display:flex;flex-direction:column;align-items:center;gap:6px}
+.sw .pv span{font:11px ui-monospace,monospace;color:#999}
+button{padding:10px 16px;border-radius:8px;border:1px solid #c96442;background:#c96442;color:#fff;cursor:pointer;font-size:13px;font-weight:500;margin-left:auto}
+button:hover{background:#b3543a}
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<h1>FanCurve · SVG Export</h1>
+<p>Each tier is rendered into a 1024×1024 SVG you can drop into Xcode / Figma / a website.</p>
+<div id="root"></div>
+
+<script type="text/babel">
+// ── Shared SVG defs (mirrors icons.jsx) ─────────────────────────
+const SHARED_DEFS = (
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop stopColor="#2B3340" />
+      <stop offset="1" stopColor="#0F141C" />
+    </linearGradient>
+    <linearGradient id="glassStroke" x1="120" y1="100" x2="890" y2="914" gradientUnits="userSpaceOnUse">
+      <stop stopColor="#566475" />
+      <stop offset="1" stopColor="#27303A" />
+    </linearGradient>
+    <linearGradient id="curveCool2Hot" x1="160" y1="800" x2="900" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stopColor="#62C8FF" />
+      <stop offset="0.55" stopColor="#9BA8FF" />
+      <stop offset="0.78" stopColor="#FFB268" />
+      <stop offset="1" stopColor="#FF652D" />
+    </linearGradient>
+    <radialGradient id="plotFillHotV4" cx="0.85" cy="0.18" r="0.95" gradientUnits="objectBoundingBox">
+      <stop offset="0" stopColor="#FF652D" stopOpacity="0.55" />
+      <stop offset="0.45" stopColor="#FF8A4B" stopOpacity="0.22" />
+      <stop offset="1" stopColor="#1B79F2" stopOpacity="0" />
+    </radialGradient>
+    <filter id="shadow" x="36" y="40" width="952" height="952" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="34" floodColor="#09111D" floodOpacity="0.2" />
+    </filter>
+  </defs>
+);
+
+const Tile = () => (
+  <g filter="url(#shadow)">
+    <rect x="96" y="96" width="832" height="832" rx="184" fill="url(#tile)" />
+    <rect x="110" y="110" width="804" height="804" rx="170" stroke="url(#glassStroke)" strokeWidth="6" />
+  </g>
+);
+
+function IconV4({ tier = 4 }) {
+  const M = 220;
+  const plotX = M, plotY = M, plotW = 1024 - 2 * M, plotH = 1024 - 2 * M;
+  const gx0 = plotX, gx1 = plotX + plotW;
+  const gy0 = plotY, gy1 = plotY + plotH;
+  const cols = 6, rows = 6;
+  const xs = Array.from({ length: cols + 1 }, (_, i) => gx0 + (gx1 - gx0) * (i / cols));
+  const ys = Array.from({ length: rows + 1 }, (_, i) => gy0 + (gy1 - gy0) * (i / rows));
+  const sx = gx0 + 90, sy = gy1 - 80;
+  const ex = gx1 - 90, ey = gy0 + 80;
+  const curveD = `M${sx} ${sy} C ${gx0 + 360} ${gy1 - 60}, ${gx1 - 360} ${gy0 + 60}, ${ex} ${ey}`;
+  const t1sx = 280, t1sy = 750, t1ex = 744, t1ey = 274;
+  const t1d = `M${t1sx} ${t1sy} C 510 760, 514 264, ${t1ex} ${t1ey}`;
+  const slW = 80, slH = 280;
+  const slX = gx1 - slW - 36, slY = gy1 - slH - 36;
+  const slCx = slX + slW / 2;
+
+  if (tier === 1) {
+    return (<>{SHARED_DEFS}<Tile />
+      <path d={t1d} stroke="url(#curveCool2Hot)" strokeWidth="170" strokeLinecap="round" fill="none" />
+    </>);
+  }
+  if (tier === 2) {
+    return (<>{SHARED_DEFS}<Tile />
+      <path d={t1d} stroke="url(#curveCool2Hot)" strokeWidth="150" strokeLinecap="round" fill="none" />
+      <circle cx={t1sx} cy={t1sy} r="62" fill="#D2EBFF" />
+      <circle cx={t1sx} cy={t1sy} r="40" fill="#1B79F2" />
+      <circle cx={t1ex} cy={t1ey} r="62" fill="#FFE7D2" />
+      <circle cx={t1ex} cy={t1ey} r="40" fill="#FF652D" />
+    </>);
+  }
+  if (tier === 3) {
+    return (<>{SHARED_DEFS}
+      <defs><clipPath id="v4PlotClip3"><rect x={plotX} y={plotY} width={plotW} height={plotH} rx="44" /></clipPath></defs>
+      <Tile />
+      <rect x={plotX} y={plotY} width={plotW} height={plotH} rx="44" fill="#141B24" />
+      <g clipPath="url(#v4PlotClip3)">
+        <rect x={plotX} y={plotY} width={plotW} height={plotH} fill="url(#plotFillHotV4)" />
+      </g>
+      <rect x={plotX} y={plotY} width={plotW} height={plotH} rx="44" fill="none" stroke="#425163" strokeWidth="4" />
+      <path d={curveD} stroke="url(#curveCool2Hot)" strokeWidth="160" strokeLinecap="round" fill="none" />
+      <circle cx={sx} cy={sy} r="64" fill="#D2EBFF" />
+      <circle cx={sx} cy={sy} r="42" fill="#1B79F2" />
+      <circle cx={ex} cy={ey} r="64" fill="#FFE7D2" />
+      <circle cx={ex} cy={ey} r="42" fill="#FF652D" />
+    </>);
+  }
+  // tier 4
+  return (<>{SHARED_DEFS}
+    <defs><clipPath id="v4PlotClip"><rect x={plotX} y={plotY} width={plotW} height={plotH} rx="44" /></clipPath></defs>
+    <Tile />
+    <rect x={plotX} y={plotY} width={plotW} height={plotH} rx="44" fill="#141B24" />
+    <g clipPath="url(#v4PlotClip)">
+      <g opacity="0.22" stroke="#4F7EAF" strokeWidth="3">
+        {ys.slice(1, -1).map((y) => <path key={`h${y}`} d={`M${gx0} ${y}H${gx1}`} />)}
+        {xs.slice(1, -1).map((x) => <path key={`v${x}`} d={`M${x} ${gy0}V${gy1}`} />)}
+      </g>
+      <rect x={plotX} y={plotY} width={plotW} height={plotH} fill="url(#plotFillHotV4)" />
+    </g>
+    <rect x={plotX} y={plotY} width={plotW} height={plotH} rx="44" fill="none" stroke="#425163" strokeWidth="4" />
+    <path d={curveD} stroke="url(#curveCool2Hot)" strokeWidth="110" strokeLinecap="round" fill="none" />
+    <circle cx={sx} cy={sy} r="50" fill="#D2EBFF" />
+    <circle cx={sx} cy={sy} r="32" fill="#1B79F2" />
+    <circle cx={ex} cy={ey} r="50" fill="#FFE7D2" />
+    <circle cx={ex} cy={ey} r="32" fill="#FF652D" />
+    <rect x={slX} y={slY} width={slW} height={slH} rx={slW / 2} fill="url(#curveCool2Hot)" opacity="0.9" />
+    <circle cx={slCx} cy={slY + slH - 40} r="32" fill="#FFE7D2" />
+    <circle cx={slCx} cy={slY + slH - 40} r="20" fill="#FF652D" />
+  </>);
+}
+
+const TIER_INFO = [
+  { tier: 1, name: 'favicon', desc: '16–24px · curve only' },
+  { tier: 2, name: 'menubar', desc: '22–48px · curve + 2 dots' },
+  { tier: 3, name: 'dock', desc: '64–96px · + plot frame, glow' },
+  { tier: 4, name: 'full', desc: '128px+ · + grid, slider' },
+];
+
+function Row({ tier, name, desc }) {
+  const ref = React.useRef(null);
+  const download = () => {
+    const node = ref.current;
+    // Build a clean standalone SVG string (1024×1024) with the tier rendered inside
+    const wrap = document.createElement('div');
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    svg.setAttribute('viewBox', '0 0 1024 1024');
+    svg.setAttribute('width', '1024');
+    svg.setAttribute('height', '1024');
+    svg.innerHTML = node.innerHTML;
+    wrap.appendChild(svg);
+    const blob = new Blob([wrap.innerHTML], { type: 'image/svg+xml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `fancurve-tier${tier}-${name}.svg`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  return (
+    <div className="row">
+      <div className="lbl">Tier {tier} · {name}<small>{desc}</small></div>
+      <div className="sw">
+        {[24, 48, 96, 192].map((sz) => (
+          <div key={sz} className="pv">
+            <svg width={sz} height={sz} viewBox="0 0 1024 1024" style={{ borderRadius: sz * 0.22 }}>
+              <IconV4 tier={tier} />
+            </svg>
+            <span>{sz}px</span>
+          </div>
+        ))}
+      </div>
+      {/* Hidden full-size source SVG for export */}
+      <svg ref={ref} width="0" height="0" viewBox="0 0 1024 1024" style={{ position: 'absolute', visibility: 'hidden' }}>
+        <IconV4 tier={tier} />
+      </svg>
+      <button onClick={download}>Download SVG</button>
+    </div>
+  );
+}
+
+function App() {
+  return (<div>{TIER_INFO.map((t) => <Row key={t.tier} {...t} />)}</div>);
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body></html>

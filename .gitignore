@@ -26,8 +26,5 @@ Config/local.xcconfig
 .mypy_cache/
 .swift-version
 
-# Design source files
-Design/
-
 # Research files
 research/
