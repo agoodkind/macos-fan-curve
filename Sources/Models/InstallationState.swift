@@ -44,6 +44,7 @@ final class InstallationState: ObservableObject {
     /// succeeded or the Agent has never written one.
     @Published var agentLastError: String = ""
     @Published var agentExecutableHash: String = ""
+    @Published private(set) var isRegisteringAgent = false
 
     private var timer: Timer?
     private var lastAutoRefreshAttemptedHash: String?
@@ -97,7 +98,17 @@ final class InstallationState: ObservableObject {
     /// Opens System Settings if approval is required.
     func registerAgent() {
         guard #available(macOS 13.0, *) else { return }
+        guard !isRegisteringAgent else {
+            log.notice("agent.register.skipped reason=registration-in-progress recovery=keep-current-registration")
+            return
+        }
+        isRegisteringAgent = true
+        log.notice("agent.register.started")
         Task {
+            defer {
+                isRegisteringAgent = false
+                log.notice("agent.register.finished")
+            }
             let result = await Self.registerAgentService()
             log.notice(
                 "agent.register.requested plist=\(generatedAgentPlistName, privacy: .public) status=\(result.statusBefore, privacy: .public)"

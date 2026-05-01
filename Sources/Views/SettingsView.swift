@@ -223,12 +223,29 @@ struct GeneralSettingsView: View {
     }
 
     private var agentRow: some View {
-        statusRow(
-            title: "Fan Curve Agent",
-            subtitle: generatedAgentBundleID,
-            status: agentStatusText,
-            state: agentRowState
-        )
+        HStack {
+            Circle()
+                .fill(agentRowState.color)
+                .frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Fan Curve Agent")
+                    .font(.body)
+                Text(generatedAgentBundleID)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            HStack(spacing: 6) {
+                if installState.isRegisteringAgent {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.7)
+                }
+                Text(agentStatusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var helperRowState: ServiceRowState {
@@ -247,8 +264,20 @@ struct GeneralSettingsView: View {
             Button("Restart") { restartAgent() }
                 .controlSize(.small)
         } else if !installState.agentEnabled {
-            Button("Install") { installState.registerAgent() }
-                .controlSize(.small)
+            Button {
+                installState.registerAgent()
+            } label: {
+                HStack(spacing: 6) {
+                    if installState.isRegisteringAgent {
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.7)
+                    }
+                    Text(installState.isRegisteringAgent ? "Installing" : "Install")
+                }
+            }
+            .disabled(installState.isRegisteringAgent)
+            .controlSize(.small)
         }
     }
 

@@ -65,13 +65,20 @@ struct OnboardingView: View {
     private var action: some View {
         if let (label, handler) = primaryAction {
             Button(action: handler) {
-                Text(label)
-                    .font(.system(.body, weight: .semibold))
-                    .frame(minWidth: 180)
+                HStack(spacing: 8) {
+                    if state.isRegisteringAgent {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Text(state.isRegisteringAgent ? L10n.tr("Installing Background Agent") : label)
+                }
+                .font(.system(.body, weight: .semibold))
+                .frame(minWidth: 180)
             }
             .controlSize(.large)
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
+            .disabled(state.isRegisteringAgent)
         } else if state.step == .checking {
             ProgressView()
                 .controlSize(.small)
