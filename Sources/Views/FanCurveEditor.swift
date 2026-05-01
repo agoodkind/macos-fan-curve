@@ -251,9 +251,14 @@ struct FanCurveEditor: View {
                 proposedTarget: clampedDemandTemperature,
                 deadband: markerTemperatureDeadbandC
             )
+            let demandCurvePercent = CurveInterpolation.evaluate(
+                at: clampedDemandTemperature,
+                points: model.controlPoints,
+                mode: model.interpolationMode
+            )
             let rawPercent = stabilizedMarkerTarget(
                 currentTarget: targetMarkers.rawPercent,
-                proposedTarget: runtime.rawBaselinePercent,
+                proposedTarget: demandCurvePercent,
                 deadband: markerPercentDeadband
             )
 
@@ -413,15 +418,12 @@ struct FanCurveEditor: View {
             context.draw(rpmText, at: CGPoint(x: plotLeft - 30, y: y + 11), anchor: .center)
         }
 
-        // Vertical gridlines and X axis labels use a separate visual scale.
-        // The draggable curve itself stays on fixed editor columns below; this
-        // axis only communicates that hot temperatures deserve more visual room.
         for temp in stride(
             from: plotTempRange.lowerBound,
             through: plotTempRange.upperBound,
             by: 10.0
         ) {
-            let x = axisTempToPixel(temp: temp, in: size)
+            let x = dataToPixel(temp: temp, percent: 0, in: size).x
             var line = Path()
             line.move(to: CGPoint(x: x, y: plotTop))
             line.addLine(to: CGPoint(x: x, y: plotBottom))
@@ -801,32 +803,4 @@ struct FanCurveEditor: View {
         return columns[index] + (columns[index + 1] - columns[index]) * local
     }
 
-    /// Visual-only x axis scale. Low temperatures are compressed; the hot
-    /// range is expanded. It intentionally does not define handle positions.
-    private func axisTempToPixel(temp: Double, in size: CGSize) -> CGFloat {
-        let plotWidth = size.width - leftPad - rightPad
-        return leftPad + CGFloat(axisFraction(for: temp)) * plotWidth
-    }
-
-    private func axisFraction(for temp: Double) -> Double {
-        let anchors: [(temp: Double, fraction: Double)] = [
-            (20, 0.00),
-            (40, 0.08),
-            (60, 0.20),
-            (80, 0.50),
-            (100, 0.82),
-            (110, 1.00),
-        ]
-        let clamped = max(anchors[0].temp, min(anchors[anchors.count - 1].temp, temp))
-
-        for index in 0..<(anchors.count - 1) {
-            let lower = anchors[index]
-            let upper = anchors[index + 1]
-            guard clamped <= upper.temp || index == anchors.count - 2 else { continue }
-            let linear = (clamped - lower.temp) / (upper.temp - lower.temp)
-            return lower.fraction + (upper.fraction - lower.fraction) * linear
-        }
-
-        return 1
-    }
 }
