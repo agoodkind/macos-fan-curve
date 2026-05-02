@@ -9,14 +9,13 @@
 import Foundation
 
 enum CurveColumns {
-    static let tempRange: ClosedRange<Double> = 20...110
+    static let axisScale = TemperatureAxisScale.fanCurveDefault
+    static let tempRange: ClosedRange<Double> = axisScale.temperatureRangeC
     static let pointCount: Int = 8
 
     static func temperatures(count: Int = pointCount) -> [Double] {
         if count == pointCount {
-            // Keep early anchors intuitive, then spend extra columns in the
-            // thermally relevant high range.
-            return [20, 40, 60, 72, 83, 93, 102, 110]
+            return axisScale.controlPointTemperaturesC
         }
 
         guard count > 1 else { return [tempRange.lowerBound] }

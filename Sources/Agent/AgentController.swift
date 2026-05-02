@@ -57,30 +57,26 @@ final class AgentController: @unchecked Sendable {
     private var filteredTemperatureSlow: Double?
     private var previousFastTemperature: Double?
     private var previousSlowTemperature: Double?
-    private var lastAppliedRPMByFan: [UInt: Float] = [:]
+    private var rampStateByFan: [UInt: RampCommandState] = [:]
     private var lastPublishedSnapshot: AgentSnapshot?
     private var rawCurvePercentEMA: Double?
     private var controllerMode: AgentControllerMode = .holding
     private var thermalDebt: Double = 0
     private var lastCommandLogPercentByFan: [UInt: Double] = [:]
+    private let acousticRampGovernor = AcousticRampGovernor()
 
     private let pollInterval: TimeInterval = 1.0
     private let fastTemperatureEMAAlpha: Double = 0.16
     private let slowTemperatureEMAAlpha: Double = 0.045
-    private let rawCurvePercentRiseAlpha: Double = 0.16
+    private let rawCurvePercentRiseAlpha: Double = 0.07
     private let rawCurvePercentFallAlpha: Double = 0.015
     private let runtimeBandSize: Double = 0.06
-    private let maxRPMRisePerTick: Float = 120
-    private let maxRPMFallPerTick: Float = 45
     private let emergencyRampTemperatureC: Double = 92.0
-    private let emergencyMaxRPMRisePerTick: Float = 520
-    private let thermalDebtRiseRatePerTick: Double = 0.012
+    private let thermalDebtRiseRatePerTick: Double = 0.006
     private let thermalDebtFallRatePerTick: Double = 0.012
-    private let thermalDebtMinRPMFallPerTick: Float = 15
-    private let thermalLeadSeconds: Double = 5.0
-    private let maximumThermalLeadC: Double = 4.0
+    private let thermalLeadSeconds: Double = 2.0
+    private let maximumThermalLeadC: Double = 1.5
     private let minimumCommandPercentDelta: Double = 0.006
-    private let minimumCommandRPMDelta: Float = 35
 
     private let tempKeys: [String] = SensorCatalog.keysForCurrentHardware()
         .filter { $0.type == .temperature }
@@ -190,7 +186,7 @@ final class AgentController: @unchecked Sendable {
                 filteredTemperatureSlow = nil
                 previousFastTemperature = nil
                 previousSlowTemperature = nil
-                lastAppliedRPMByFan.removeAll()
+                rampStateByFan.removeAll()
                 lastCommandLogPercentByFan.removeAll()
                 rawCurvePercentEMA = nil
                 controllerMode = .holding
@@ -249,20 +245,15 @@ final class AgentController: @unchecked Sendable {
                 previous: &previousSlowTemperature,
                 alpha: slowTemperatureEMAAlpha)
             filteredTemperatureSlow = slowTemp
+            let fastTrend = previousFastTemperature.map { fastTemp - $0 } ?? 0
+            let slowTrend = previousSlowTemperature.map { slowTemp - $0 } ?? 0
 
             let boost = sharedConfig.loadBoostEnabled()
             let curvePercent: Double
             if boost {
                 curvePercent = 1.0
-                filteredTemperatureFast = nil
-                filteredTemperatureSlow = nil
-                previousFastTemperature = nil
-                previousSlowTemperature = nil
-                lastAppliedRPMByFan.removeAll()
                 rawCurvePercentEMA = nil
-                lastCommandLogPercentByFan.removeAll()
                 controllerMode = .emergency
-                thermalDebt = 0
             } else {
                 let points = sharedConfig.loadCurve()
                 let mode = sharedConfig.loadInterpolationMode()
@@ -327,20 +318,21 @@ final class AgentController: @unchecked Sendable {
                 let command = fanCommandFor(
                     percent: runtimeState.committedPercent, minRPM: fan.minRPM, maxRPM: fan.maxRPM)
                 let smoothedCommand =
-                    boost
-                    ? command
-                    : slewLimitedCommand(
+                    rampGovernedCommand(
                         command,
                         for: UInt(fanIndex),
                         currentFan: fan,
-                        currentTemperatureC: maxCPUTemp)
+                        currentTemperatureC: maxCPUTemp,
+                        fastTrendCPerTick: fastTrend,
+                        slowTrendCPerTick: slowTrend,
+                        now: now)
                 switch command {
                 case .setRPM:
                     if case .setRPM(let rpm) = smoothedCommand {
                         setFans.append((index: UInt(fanIndex), rpm: rpm))
                     }
                 case .auto:
-                    lastAppliedRPMByFan.removeValue(forKey: UInt(fanIndex))
+                    rampStateByFan.removeValue(forKey: UInt(fanIndex))
                     autoFans.append(UInt(fanIndex))
                 }
             }
@@ -446,6 +438,11 @@ final class AgentController: @unchecked Sendable {
         let holdRemainingSeconds: Double
     }
 
+    private struct RampCommandState {
+        let rpm: Float
+        let timestamp: Date
+    }
+
     private func bandControlledState(
         rawBaselinePercent: Double,
         rawTemperatureC: Double,
@@ -479,7 +476,7 @@ final class AgentController: @unchecked Sendable {
             nextCommittedPercent = max(minAllowedPercent, min(maxAllowedPercent, previousCommittedPercent))
             controllerMode = .holding
         } else if targetDelta > 0 {
-            let riseStep = max(0.006, min(0.03, targetDelta * rawCurvePercentRiseAlpha))
+            let riseStep = max(0.0025, min(0.012, targetDelta * rawCurvePercentRiseAlpha))
             nextCommittedPercent = min(maxAllowedPercent, previousCommittedPercent + riseStep)
             controllerMode = .rampingUp
         } else {
@@ -552,7 +549,7 @@ final class AgentController: @unchecked Sendable {
         let risePressure = max(0, fastTemperatureC - slowTemperatureC - 0.25) / 3.0
         let fastTrendPressure = max(0, fastTrend - 0.04) * 2.8
         let sustainedLoadPressure = max(0, cpuLoad - 45.0) / 55.0 * 0.35
-        let bandEscalationPressure = steppedUp ? 0.22 : 0.0
+        let bandEscalationPressure = steppedUp ? 0.06 : 0.0
 
         let stableCooling =
             fastTrend <= 0.01
@@ -581,50 +578,49 @@ final class AgentController: @unchecked Sendable {
         )
     }
 
-    /// Limit how quickly commanded RPM can change between ticks so the
-    /// acoustic ramp feels closer to Apple's gradual fan behavior.
-    private func slewLimitedCommand(
+    /// Limit commanded RPM by elapsed time so config pushes and timer ticks
+    /// share one acoustic envelope.
+    private func rampGovernedCommand(
         _ command: FanCommand,
         for index: UInt,
         currentFan: FanInfo,
-        currentTemperatureC: Double
+        currentTemperatureC: Double,
+        fastTrendCPerTick: Double,
+        slowTrendCPerTick: Double,
+        now: Date
     ) -> FanCommand {
         switch command {
         case .auto:
-            lastAppliedRPMByFan.removeValue(forKey: index)
+            rampStateByFan.removeValue(forKey: index)
             return .auto
         case .setRPM(let requestedRPM):
-            let baseline =
-                commandBaselineRPM(
-                    fanIndex: index,
-                    requestedRPM: requestedRPM,
-                    currentFan: currentFan)
-            let delta = requestedRPM - baseline
-            let limitedDelta: Float
-            if delta > 0 {
-                let riseLimit =
-                    currentTemperatureC >= emergencyRampTemperatureC
-                    ? emergencyMaxRPMRisePerTick
-                    : maxRPMRisePerTick
-                limitedDelta = min(delta, riseLimit)
-            } else {
-                let effectiveMaxRPMFallPerTick =
-                    maxRPMFallPerTick
-                    - Float(thermalDebt) * (maxRPMFallPerTick - thermalDebtMinRPMFallPerTick)
-                limitedDelta = max(delta, -effectiveMaxRPMFallPerTick)
-            }
-            let next = snappedCommandRPM(
+            let baseline = commandBaselineRPM(
+                fanIndex: index,
                 requestedRPM: requestedRPM,
-                candidateRPM: max(0, baseline + limitedDelta),
-                delta: delta)
-            lastAppliedRPMByFan[index] = next
+                currentFan: currentFan)
+            let previousTimestamp = rampStateByFan[index]?.timestamp ?? now
+            let decision = acousticRampGovernor.decision(
+                for: AcousticRampGovernor.Input(
+                    requestedRPM: requestedRPM,
+                    baselineRPM: baseline,
+                    elapsedSeconds: now.timeIntervalSince(previousTimestamp),
+                    currentTemperatureC: currentTemperatureC,
+                    fastTrendCPerTick: fastTrendCPerTick,
+                    slowTrendCPerTick: slowTrendCPerTick,
+                    thermalDebt: thermalDebt))
+            rampStateByFan[index] = RampCommandState(rpm: decision.commandedRPM, timestamp: now)
+            logRampDecisionIfNeeded(
+                fanIndex: index,
+                decision: decision,
+                currentFan: currentFan,
+                currentTemperatureC: currentTemperatureC)
             logCommandChangeIfNeeded(
                 fanIndex: index,
                 requestedRPM: requestedRPM,
-                commandedRPM: next,
+                commandedRPM: decision.commandedRPM,
                 currentFan: currentFan,
                 currentTemperatureC: currentTemperatureC)
-            return .setRPM(next)
+            return .setRPM(decision.commandedRPM)
         }
     }
 
@@ -633,8 +629,8 @@ final class AgentController: @unchecked Sendable {
         requestedRPM: Float,
         currentFan: FanInfo
     ) -> Float {
-        if let previous = lastAppliedRPMByFan[fanIndex] {
-            return previous
+        if let previous = rampStateByFan[fanIndex] {
+            return previous.rpm
         }
 
         let observedRPM = currentFan.actualRPM > 0 ? currentFan.actualRPM : currentFan.targetRPM
@@ -643,20 +639,6 @@ final class AgentController: @unchecked Sendable {
             return min(currentFan.targetRPM, observedRPM)
         }
         return max(currentFan.targetRPM, observedRPM)
-    }
-
-    private func snappedCommandRPM(
-        requestedRPM: Float,
-        candidateRPM: Float,
-        delta: Float
-    ) -> Float {
-        guard abs(delta) > minimumCommandRPMDelta else {
-            return requestedRPM
-        }
-        if delta > 0 {
-            return min(requestedRPM, candidateRPM)
-        }
-        return max(requestedRPM, candidateRPM)
     }
 
     private func logCommandChangeIfNeeded(
@@ -675,6 +657,18 @@ final class AgentController: @unchecked Sendable {
         lastCommandLogPercentByFan[fanIndex] = commandedPercent
         log.info(
             "agent.fan.command fan=\(fanIndex, privacy: .public) requestedRPM=\(Int(requestedRPM), privacy: .public) commandedRPM=\(Int(commandedRPM), privacy: .public) actualRPM=\(Int(currentFan.actualRPM), privacy: .public) tempC=\(Int(currentTemperatureC), privacy: .public) mode=\(controllerMode.rawValue, privacy: .public)"
+        )
+    }
+
+    private func logRampDecisionIfNeeded(
+        fanIndex: UInt,
+        decision: AcousticRampGovernor.Decision,
+        currentFan: FanInfo,
+        currentTemperatureC: Double
+    ) {
+        guard decision.limited || decision.emergencyOverride else { return }
+        log.info(
+            "agent.fan.ramp_governor fan=\(fanIndex, privacy: .public) requestedRPM=\(Int(decision.requestedRPM), privacy: .public) commandedRPM=\(Int(decision.commandedRPM), privacy: .public) baselineRPM=\(Int(decision.baselineRPM), privacy: .public) actualRPM=\(Int(currentFan.actualRPM), privacy: .public) elapsedMs=\(Int(decision.elapsedSeconds * 1000), privacy: .public) rateRPMPerSecond=\(Int(decision.rateRPMPerSecond), privacy: .public) tempC=\(Int(currentTemperatureC), privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% emergency=\(decision.emergencyOverride, privacy: .public) mode=\(controllerMode.rawValue, privacy: .public)"
         )
     }
 }

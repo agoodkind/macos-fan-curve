@@ -49,11 +49,13 @@ These instructions are strict project rules for all automated coding agents work
 - Keep derived data and products on the configured Makefile paths: `build/` and `Products/`.
 - Do not hand-edit generated Xcode project or workspace files as source of truth.
 - Before handing off a code change, run the narrowest Make target that proves the change. Use `make test` when behavior changed, `make build` when compilation is the proof, and `make log-audit` when logging changed.
+- After making a code change, also run `make run` before handing off so the local app artifact is built, staged, and launched from the canonical path. Report the `make run` result to the user.
 - If a required verification cannot be run, state the exact command that was skipped and why.
 
 ## Completion Evidence
 
 - Final responses must list the exact verification commands run and whether each passed, failed, or was skipped.
+- Final responses after code changes must include the `make run` result, or explicitly state that `make run` was skipped and why.
 - Do not say a task is fixed, complete, working, or verified unless the relevant Make target passed in the current worktree.
 - If a command fails, report the first concrete failure and the next required fix. Do not bury failing verification under a general success summary.
 

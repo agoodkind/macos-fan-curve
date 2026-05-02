@@ -58,6 +58,7 @@ struct FanCurveEditor: View {
     private let rightPad: CGFloat = 24
 
     private let plotTempRange: ClosedRange<Double> = CurveColumns.tempRange
+    private let temperatureAxisScale = CurveColumns.axisScale
     private let curveColor = Color.accentColor
 
     @AppStorage(SharedConfigKeys.overdriveEnabled, store: Self.suite)
@@ -85,6 +86,12 @@ struct FanCurveEditor: View {
     private let runtimeMarkerAnimation = Animation.easeInOut(duration: 2.4)
     private let markerTemperatureDeadbandC: Double = 0.25
     private let markerPercentDeadband: Double = 0.006
+    private let demandMarkerTemperatureDeadbandC: Double = 0.6
+    private let demandMarkerPercentDeadband: Double = 0.012
+    private let demandMarkerTemperatureAlpha: Double = 0.22
+    private let demandMarkerPercentAlpha: Double = 0.18
+    private let demandMarkerMaximumTemperatureStepC: Double = 1.2
+    private let demandMarkerMaximumPercentStep: Double = 0.015
 
     var body: some View {
         GeometryReader { geo in
@@ -246,20 +253,20 @@ struct FanCurveEditor: View {
                 proposedTarget: actualFanPercent,
                 deadband: markerPercentDeadband
             )
-            let rawTemperature = stabilizedMarkerTarget(
+            let rawTemperature = dampedMarkerTarget(
                 currentTarget: targetMarkers.rawTemperature,
                 proposedTarget: clampedDemandTemperature,
-                deadband: markerTemperatureDeadbandC
+                deadband: demandMarkerTemperatureDeadbandC,
+                alpha: demandMarkerTemperatureAlpha,
+                maximumStep: demandMarkerMaximumTemperatureStepC
             )
-            let demandCurvePercent = CurveInterpolation.evaluate(
-                at: clampedDemandTemperature,
-                points: model.controlPoints,
-                mode: model.interpolationMode
-            )
-            let rawPercent = stabilizedMarkerTarget(
+            let rawDemandPercent = max(0, min(1, runtime.rawBaselinePercent))
+            let rawPercent = dampedMarkerTarget(
                 currentTarget: targetMarkers.rawPercent,
-                proposedTarget: demandCurvePercent,
-                deadband: markerPercentDeadband
+                proposedTarget: rawDemandPercent,
+                deadband: demandMarkerPercentDeadband,
+                alpha: demandMarkerPercentAlpha,
+                maximumStep: demandMarkerMaximumPercentStep
             )
 
             return MarkerValues(
@@ -319,6 +326,22 @@ struct FanCurveEditor: View {
         guard currentTarget > 0 else { return proposedTarget }
         guard abs(currentTarget - proposedTarget) >= deadband else { return currentTarget }
         return proposedTarget
+    }
+
+    private func dampedMarkerTarget(
+        currentTarget: Double,
+        proposedTarget: Double,
+        deadband: Double,
+        alpha: Double,
+        maximumStep: Double
+    ) -> Double {
+        guard currentTarget > 0 else { return proposedTarget }
+        let delta = proposedTarget - currentTarget
+        guard abs(delta) >= deadband else { return currentTarget }
+
+        let easedStep = delta * max(0, min(1, alpha))
+        let clampedStep = max(-maximumStep, min(maximumStep, easedStep))
+        return currentTarget + clampedStep
     }
 
     private func stableMarkerTemperatureTarget(
@@ -391,6 +414,8 @@ struct FanCurveEditor: View {
 
     private func drawGrid(context: GraphicsContext, size: CGSize) {
         let gridColor = Color.primary.opacity(0.05)
+        let minorGridColor = Color.primary.opacity(0.025)
+        let majorGridColor = Color.primary.opacity(0.065)
         let labelColor = Color.secondary
 
         let plotLeft = leftPad
@@ -418,25 +443,52 @@ struct FanCurveEditor: View {
             context.draw(rpmText, at: CGPoint(x: plotLeft - 30, y: y + 11), anchor: .center)
         }
 
-        for temp in stride(
-            from: plotTempRange.lowerBound,
-            through: plotTempRange.upperBound,
-            by: 10.0
-        ) {
+        for temp in temperatureAxisScale.minorTickTemperaturesC
+            where !temperatureAxisScale.majorTickTemperaturesC.contains(temp)
+        {
             let x = dataToPixel(temp: temp, percent: 0, in: size).x
             var line = Path()
             line.move(to: CGPoint(x: x, y: plotTop))
             line.addLine(to: CGPoint(x: x, y: plotBottom))
-            context.stroke(line, with: .color(gridColor), lineWidth: 0.5)
+            context.stroke(line, with: .color(minorGridColor), lineWidth: 0.5)
+        }
 
-            let labeledTemps: Set<Int> = [20, 40, 60, 70, 80, 90, 100, 110]
-            if labeledTemps.contains(Int(temp.rounded())) {
-                let text = Text("\(displayTemp(temp))\(unit.symbol)")
-                    .font(.system(size: 10, design: .rounded).weight(.medium))
-                    .foregroundColor(labelColor)
-                context.draw(text, at: CGPoint(x: x, y: plotBottom + 14), anchor: .center)
+        for temp in temperatureAxisScale.majorTickTemperaturesC {
+            let x = dataToPixel(temp: temp, percent: 0, in: size).x
+            var line = Path()
+            line.move(to: CGPoint(x: x, y: plotTop))
+            line.addLine(to: CGPoint(x: x, y: plotBottom))
+            context.stroke(line, with: .color(majorGridColor), lineWidth: 0.65)
+        }
+
+        for temp in labeledTemperatureTicks(in: size) {
+            let x = dataToPixel(temp: temp, percent: 0, in: size).x
+            let text = Text("\(displayTemp(temp))\(unit.symbol)")
+                .font(.system(size: 10, design: .rounded).weight(.medium))
+                .foregroundColor(labelColor)
+            context.draw(text, at: CGPoint(x: x, y: plotBottom + 14), anchor: .center)
+        }
+    }
+
+    private func labeledTemperatureTicks(in size: CGSize) -> [Double] {
+        let minimumLabelGap: CGFloat = 52
+        let majorTicks = temperatureAxisScale.majorTickTemperaturesC
+        guard let firstTick = majorTicks.first else { return [] }
+
+        var labels = [firstTick]
+        var lastLabelX = dataToPixel(temp: firstTick, percent: 0, in: size).x
+
+        for temp in majorTicks.dropFirst() {
+            let x = dataToPixel(temp: temp, percent: 0, in: size).x
+            if x - lastLabelX >= minimumLabelGap {
+                labels.append(temp)
+                lastLabelX = x
+            } else if temp == majorTicks.last {
+                labels[labels.count - 1] = temp
             }
         }
+
+        return labels
     }
 
     private func drawAxisTitles(context: GraphicsContext, size: CGSize) {
@@ -775,13 +827,11 @@ struct FanCurveEditor: View {
     }
 
     private func temperatureFraction(for temp: Double) -> Double {
-        let span = plotTempRange.upperBound - plotTempRange.lowerBound
-        guard span > 0 else { return 0 }
-        return (temp - plotTempRange.lowerBound) / span
+        temperatureAxisScale.fraction(for: temp)
     }
 
     private func temperature(at fraction: Double) -> Double {
-        plotTempRange.lowerBound + fraction * (plotTempRange.upperBound - plotTempRange.lowerBound)
+        temperatureAxisScale.temperatureC(at: fraction)
     }
 
 }
