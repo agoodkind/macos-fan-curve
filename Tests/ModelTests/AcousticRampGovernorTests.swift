@@ -25,9 +25,8 @@ final class AcousticRampGovernorTests: XCTestCase {
                 slowTrendCPerTick: 0,
                 thermalDebt: 0))
 
-        expect(decision.commandedRPM).to(beCloseTo(4_028, within: 0.1))
+        expect(decision.commandedRPM).to(beCloseTo(4_016, within: 0.1))
         expect(decision.limited) == true
-        expect(decision.emergencyOverride) == false
     }
 
     func testDecisionUsesElapsedTimeForLongerRiseBudget() {
@@ -41,7 +40,7 @@ final class AcousticRampGovernorTests: XCTestCase {
                 slowTrendCPerTick: 0,
                 thermalDebt: 0))
 
-        expect(decision.commandedRPM).to(beCloseTo(4_280, within: 0.1))
+        expect(decision.commandedRPM).to(beCloseTo(4_160, within: 0.1))
         expect(decision.limited) == true
     }
 
@@ -60,7 +59,7 @@ final class AcousticRampGovernorTests: XCTestCase {
         expect(decision.limited) == true
     }
 
-    func testDecisionRaisesRateForEmergencyTemperature() {
+    func testDecisionUsesHotRateAtHighTemperature() {
         let decision = governor.decision(
             for: AcousticRampGovernor.Input(
                 requestedRPM: 6_000,
@@ -71,9 +70,9 @@ final class AcousticRampGovernorTests: XCTestCase {
                 slowTrendCPerTick: 0,
                 thermalDebt: 0))
 
-        expect(decision.commandedRPM).to(beCloseTo(4_360, within: 0.1))
-        expect(decision.rateRPMPerSecond).to(beCloseTo(360, within: 0.1))
-        expect(decision.emergencyOverride) == true
+        expect(decision.commandedRPM).to(beCloseTo(4_038, within: 0.1))
+        expect(decision.rateRPMPerSecond).to(beCloseTo(38, within: 0.1))
+        expect(decision.limited) == true
     }
 
     func testDecisionSlowsFallWhenThermalDebtIsHigh() {
@@ -87,8 +86,8 @@ final class AcousticRampGovernorTests: XCTestCase {
                 slowTrendCPerTick: 0,
                 thermalDebt: 1))
 
-        expect(decision.commandedRPM).to(beCloseTo(5_985, within: 0.1))
-        expect(decision.rateRPMPerSecond).to(beCloseTo(15, within: 0.1))
+        expect(decision.commandedRPM).to(beCloseTo(5_992, within: 0.1))
+        expect(decision.rateRPMPerSecond).to(beCloseTo(8, within: 0.1))
         expect(decision.limited) == true
     }
 }

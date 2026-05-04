@@ -59,24 +59,31 @@ final class AgentController: @unchecked Sendable {
     private var previousSlowTemperature: Double?
     private var rampStateByFan: [UInt: RampCommandState] = [:]
     private var lastPublishedSnapshot: AgentSnapshot?
-    private var rawCurvePercentEMA: Double?
     private var controllerMode: AgentControllerMode = .holding
     private var thermalDebt: Double = 0
     private var lastCommandLogPercentByFan: [UInt: Double] = [:]
+    private var conditionedDemandPercent: Double?
+    private var conditionedDemandPercentVelocity: Double = 0
+    private var conditionedDemandTemperatureC: Double?
+    private var conditionedDemandTemperatureVelocityC: Double = 0
+    private var lastDemandConditioningTime: Date?
     private let acousticRampGovernor = AcousticRampGovernor()
 
     private let pollInterval: TimeInterval = 1.0
     private let fastTemperatureEMAAlpha: Double = 0.16
     private let slowTemperatureEMAAlpha: Double = 0.045
-    private let rawCurvePercentRiseAlpha: Double = 0.07
-    private let rawCurvePercentFallAlpha: Double = 0.015
     private let runtimeBandSize: Double = 0.06
-    private let emergencyRampTemperatureC: Double = 92.0
     private let thermalDebtRiseRatePerTick: Double = 0.006
     private let thermalDebtFallRatePerTick: Double = 0.012
     private let thermalLeadSeconds: Double = 2.0
     private let maximumThermalLeadC: Double = 1.5
     private let minimumCommandPercentDelta: Double = 0.006
+    private let demandNormalRiseVelocityPerSecond: Double = 0.08
+    private let demandNormalFallVelocityPerSecond: Double = 0.06
+    private let demandNormalAccelerationPerSecond: Double = 0.035
+    private let demandTemperatureRiseVelocityCPerSecond: Double = 4.0
+    private let demandTemperatureFallVelocityCPerSecond: Double = 3.0
+    private let demandTemperatureAccelerationCPerSecond: Double = 1.6
 
     private let tempKeys: [String] = SensorCatalog.keysForCurrentHardware()
         .filter { $0.type == .temperature }
@@ -188,7 +195,11 @@ final class AgentController: @unchecked Sendable {
                 previousSlowTemperature = nil
                 rampStateByFan.removeAll()
                 lastCommandLogPercentByFan.removeAll()
-                rawCurvePercentEMA = nil
+                conditionedDemandPercent = nil
+                conditionedDemandPercentVelocity = 0
+                conditionedDemandTemperatureC = nil
+                conditionedDemandTemperatureVelocityC = 0
+                lastDemandConditioningTime = nil
                 controllerMode = .holding
                 thermalDebt = 0
                 publishSnapshotIfNeeded(
@@ -203,7 +214,11 @@ final class AgentController: @unchecked Sendable {
                         cpuLoadPercent: cpuLoad,
                         gpuLoadPercent: gpuLoad,
                         effectiveCurvePercent: 0,
+                        baseCurvePercent: 0,
                         rawBaselinePercent: 0,
+                        thermalDemandPercent: 0,
+                        thermalDemandSource: .curve,
+                        thermalDemandTemperatureC: maxCPUTemp > 0 ? maxCPUTemp : nil,
                         committedPercent: 0,
                         controllerMode: .holding,
                         bandIndex: 0,
@@ -249,24 +264,24 @@ final class AgentController: @unchecked Sendable {
             let slowTrend = previousSlowTemperature.map { slowTemp - $0 } ?? 0
 
             let boost = sharedConfig.loadBoostEnabled()
+            let pressureTemperature = thermalPressureTemperature(
+                rawTemperatureC: maxCPUTemp,
+                fastTemperatureC: fastTemp,
+                slowTemperatureC: slowTemp)
+            let points = sharedConfig.loadCurve()
+            let mode = sharedConfig.loadInterpolationMode()
+            let baseCurvePercent = CurveInterpolation.evaluate(at: pressureTemperature, points: points, mode: mode)
             let curvePercent: Double
             if boost {
                 curvePercent = 1.0
-                rawCurvePercentEMA = nil
-                controllerMode = .emergency
             } else {
-                let points = sharedConfig.loadCurve()
-                let mode = sharedConfig.loadInterpolationMode()
-                let pressureTemperature = thermalPressureTemperature(
-                    rawTemperatureC: maxCPUTemp,
-                    fastTemperatureC: fastTemp,
-                    slowTemperatureC: slowTemp)
-                curvePercent = CurveInterpolation.evaluate(at: pressureTemperature, points: points, mode: mode)
+                curvePercent = baseCurvePercent
             }
 
             var assistAppliedKinds: [LoadAssistKind] = []
             var assistFloorPercent: Double?
             var rawBaselinePercent = curvePercent
+            var demandSource: ThermalDemandSource = .curve
             if !boost {
                 for kind in LoadAssistKind.allCases where sharedConfig.loadLoadAssistEnabled(kind) {
                     let loadPercent = kind == .cpu ? cpuLoad : gpuLoad
@@ -278,38 +293,54 @@ final class AgentController: @unchecked Sendable {
                         rawBaselinePercent = assistFloor
                         assistFloorPercent = assistFloor
                         assistAppliedKinds = [kind]
+                        demandSource = .assist
                     } else if assistFloor == rawBaselinePercent, assistFloor > 0 {
                         assistFloorPercent = assistFloor
                         assistAppliedKinds.append(kind)
+                        demandSource = .assist
                     }
                 }
             }
+            let rawDemandPercent = max(0, min(1, rawBaselinePercent))
+            let conditionedDemand = conditionedThermalDemand(
+                rawPercent: boost ? 1.0 : rawDemandPercent,
+                rawTemperatureC: pressureTemperature,
+                now: now)
 
             let runtimeState: RuntimeBandState
             if boost {
                 runtimeState = RuntimeBandState(
-                    committedPercent: 1.0,
-                    bandIndex: bandIndex(for: 1.0),
+                    committedPercent: conditionedDemand.percent,
+                    bandIndex: bandIndex(for: conditionedDemand.percent),
                     committedTemperatureC: maxCPUTemp,
+                    baseCurvePercent: baseCurvePercent,
                     rawBaselinePercent: 1.0,
-                    rawPressureTemperatureC: maxCPUTemp,
-                    mode: .emergency,
+                    thermalDemandPercent: conditionedDemand.percent,
+                    thermalDemandSource: .boost,
+                    rawPressureTemperatureC: conditionedDemand.temperatureC,
+                    mode: .rampingUp,
                     holdRemainingSeconds: 0
                 )
             } else {
+                let observedFanPercent = observedCurvePercent(fans: result.fans)
                 runtimeState = bandControlledState(
                     rawBaselinePercent: rawBaselinePercent,
+                    conditionedDemandPercent: conditionedDemand.percent,
+                    conditionedDemandTemperatureC: conditionedDemand.temperatureC,
+                    baseCurvePercent: baseCurvePercent,
+                    demandSource: demandSource,
                     rawTemperatureC: maxCPUTemp,
                     fastTemperatureC: fastTemp,
                     slowTemperatureC: slowTemp,
                     cpuLoad: cpuLoad,
-                    assistFloorPercent: assistFloorPercent
+                    assistFloorPercent: assistFloorPercent,
+                    observedFanPercent: observedFanPercent
                 )
             }
 
             let assistSummary = assistAppliedKinds.map(\.rawValue).joined(separator: ",")
             log.debug(
-                "agent.tick cpuTemp=\(Int(maxCPUTemp), privacy: .public)C cpuLoad=\(Int(cpuLoad), privacy: .public)% gpuLoad=\(Int(gpuLoad), privacy: .public)% raw=\(Int(runtimeState.rawBaselinePercent * 100), privacy: .public)% committed=\(Int(runtimeState.committedPercent * 100), privacy: .public)% mode=\(runtimeState.mode.rawValue, privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% boost=\(boost, privacy: .public) assist=\(assistSummary, privacy: .public)"
+                "agent.tick cpuTemp=\(Int(maxCPUTemp), privacy: .public)C cpuLoad=\(Int(cpuLoad), privacy: .public)% gpuLoad=\(Int(gpuLoad), privacy: .public)% raw=\(Int(runtimeState.rawBaselinePercent * 100), privacy: .public)% demand=\(Int(runtimeState.thermalDemandPercent * 100), privacy: .public)% demandSource=\(runtimeState.thermalDemandSource.rawValue, privacy: .public) committed=\(Int(runtimeState.committedPercent * 100), privacy: .public)% mode=\(runtimeState.mode.rawValue, privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% boost=\(boost, privacy: .public) assist=\(assistSummary, privacy: .public)"
             )
 
             var setFans: [(index: UInt, rpm: Float)] = []
@@ -362,7 +393,11 @@ final class AgentController: @unchecked Sendable {
                     cpuLoadPercent: cpuLoad,
                     gpuLoadPercent: gpuLoad,
                     effectiveCurvePercent: runtimeState.committedPercent,
+                    baseCurvePercent: runtimeState.baseCurvePercent,
                     rawBaselinePercent: runtimeState.rawBaselinePercent,
+                    thermalDemandPercent: runtimeState.thermalDemandPercent,
+                    thermalDemandSource: runtimeState.thermalDemandSource,
+                    thermalDemandTemperatureC: runtimeState.rawPressureTemperatureC,
                     committedPercent: runtimeState.committedPercent,
                     controllerMode: runtimeState.mode,
                     bandIndex: runtimeState.bandIndex,
@@ -432,7 +467,10 @@ final class AgentController: @unchecked Sendable {
         let committedPercent: Double
         let bandIndex: Int
         let committedTemperatureC: Double
+        let baseCurvePercent: Double
         let rawBaselinePercent: Double
+        let thermalDemandPercent: Double
+        let thermalDemandSource: ThermalDemandSource
         let rawPressureTemperatureC: Double?
         let mode: AgentControllerMode
         let holdRemainingSeconds: Double
@@ -445,53 +483,31 @@ final class AgentController: @unchecked Sendable {
 
     private func bandControlledState(
         rawBaselinePercent: Double,
+        conditionedDemandPercent: Double,
+        conditionedDemandTemperatureC: Double,
+        baseCurvePercent: Double,
+        demandSource: ThermalDemandSource,
         rawTemperatureC: Double,
         fastTemperatureC: Double,
         slowTemperatureC: Double,
         cpuLoad: Double,
-        assistFloorPercent: Double?
+        assistFloorPercent: Double?,
+        observedFanPercent: Double?
     ) -> RuntimeBandState {
         let fastTrend = previousFastTemperature.map { fastTemperatureC - $0 } ?? 0
         let slowTrend = previousSlowTemperature.map { slowTemperatureC - $0 } ?? 0
-        let pressureTemperature = thermalPressureTemperature(
-            rawTemperatureC: rawTemperatureC,
-            fastTemperatureC: fastTemperatureC,
-            slowTemperatureC: slowTemperatureC)
-
         let baselinePercent = max(0, min(1, rawBaselinePercent))
-        let targetPercent = max(baselinePercent, assistFloorPercent ?? 0)
-        let previousCommittedPercent = rawCurvePercentEMA ?? targetPercent
-        let emergency = rawTemperatureC >= emergencyRampTemperatureC
-
-        let maxCurveOvershoot = emergency ? 1.0 : (slowTemperatureC >= 85 ? 0.12 : 0.08)
-        let maxAllowedPercent = min(1.0, targetPercent + maxCurveOvershoot)
-        let minAllowedPercent = max(assistFloorPercent ?? 0, targetPercent - 0.02)
-
-        let targetDelta = targetPercent - previousCommittedPercent
-        let nextCommittedPercent: Double
-        if emergency {
-            nextCommittedPercent = max(previousCommittedPercent, targetPercent)
-            controllerMode = .emergency
-        } else if abs(targetDelta) < 0.006 {
-            nextCommittedPercent = max(minAllowedPercent, min(maxAllowedPercent, previousCommittedPercent))
-            controllerMode = .holding
-        } else if targetDelta > 0 {
-            let riseStep = max(0.0025, min(0.012, targetDelta * rawCurvePercentRiseAlpha))
-            nextCommittedPercent = min(maxAllowedPercent, previousCommittedPercent + riseStep)
+        let targetPercent = conditionedDemandPercent
+        let committedPercent = max(0, min(1, targetPercent))
+        let observedPercent = observedFanPercent ?? committedPercent
+        if observedPercent < committedPercent - 0.006 {
             controllerMode = .rampingUp
-        } else {
-            let aboveCurveBy = previousCommittedPercent - targetPercent
-            if aboveCurveBy > maxCurveOvershoot {
-                nextCommittedPercent = max(maxAllowedPercent, previousCommittedPercent - 0.035)
-            } else {
-                let fallStep = max(0.0012, min(0.006, abs(targetDelta) * rawCurvePercentFallAlpha))
-                nextCommittedPercent = max(minAllowedPercent, previousCommittedPercent - fallStep)
-            }
+        } else if observedPercent > committedPercent + 0.006 {
             controllerMode = .rampingDown
+        } else {
+            controllerMode = .holding
         }
 
-        let committedPercent = max(0, min(1, nextCommittedPercent))
-        rawCurvePercentEMA = committedPercent
         let nextBandIndex = bandIndex(for: committedPercent)
 
         updateThermalDebt(
@@ -503,17 +519,30 @@ final class AgentController: @unchecked Sendable {
             cpuLoad: cpuLoad,
             rawBaselinePercent: rawBaselinePercent,
             committedPercent: committedPercent,
-            steppedUp: committedPercent > previousCommittedPercent
+            steppedUp: (observedFanPercent ?? committedPercent) < committedPercent
         )
         return RuntimeBandState(
-            committedPercent: max(committedPercent, assistFloorPercent ?? 0),
+            committedPercent: committedPercent,
             bandIndex: nextBandIndex,
             committedTemperatureC: slowTemperatureC,
-            rawBaselinePercent: rawBaselinePercent,
-            rawPressureTemperatureC: pressureTemperature,
+            baseCurvePercent: baseCurvePercent,
+            rawBaselinePercent: baselinePercent,
+            thermalDemandPercent: committedPercent,
+            thermalDemandSource: demandSource,
+            rawPressureTemperatureC: conditionedDemandTemperatureC,
             mode: controllerMode,
             holdRemainingSeconds: 0
         )
+    }
+
+    private func observedCurvePercent(fans: [FanInfo]) -> Double? {
+        let percents = fans.compactMap { fan -> Double? in
+            guard fan.maxRPM > fan.minRPM, fan.actualRPM > 0 else { return nil }
+            let percent = Double((fan.actualRPM - fan.minRPM) / (fan.maxRPM - fan.minRPM))
+            return max(0, min(1, percent))
+        }
+        guard !percents.isEmpty else { return nil }
+        return percents.reduce(0, +) / Double(percents.count)
     }
 
     private func bandIndex(for percent: Double) -> Int {
@@ -531,7 +560,95 @@ final class AgentController: @unchecked Sendable {
         let fastTrend = previousFastTemperature.map { fastTemperatureC - $0 } ?? 0
         let trendLead = max(0, min(maximumThermalLeadC, fastTrend * thermalLeadSeconds))
         let ledTemperature = fastTemperatureC + trendLead
-        return max(rawTemperatureC, slowTemperatureC, ledTemperature)
+        return max(slowTemperatureC, ledTemperature)
+    }
+
+    private func conditionedThermalDemand(
+        rawPercent: Double,
+        rawTemperatureC: Double,
+        now: Date
+    ) -> (percent: Double, temperatureC: Double) {
+        let targetPercent = max(0, min(1, rawPercent))
+        guard
+            let currentPercent = conditionedDemandPercent,
+            let currentTemperature = conditionedDemandTemperatureC,
+            let lastTime = lastDemandConditioningTime
+        else {
+            conditionedDemandPercent = targetPercent
+            conditionedDemandPercentVelocity = 0
+            conditionedDemandTemperatureC = rawTemperatureC
+            conditionedDemandTemperatureVelocityC = 0
+            lastDemandConditioningTime = now
+            return (targetPercent, rawTemperatureC)
+        }
+
+        let dt = max(0.001, min(5.0, now.timeIntervalSince(lastTime)))
+        let maxPercentVelocity =
+            targetPercent >= currentPercent
+            ? demandNormalRiseVelocityPerSecond
+            : demandNormalFallVelocityPerSecond
+        let nextPercent = accelerationLimitedStep(
+            current: currentPercent,
+            target: targetPercent,
+            velocity: conditionedDemandPercentVelocity,
+            maxVelocity: maxPercentVelocity,
+            maxAcceleration: demandNormalAccelerationPerSecond,
+            elapsedSeconds: dt)
+
+        let maxTemperatureVelocity =
+            rawTemperatureC >= currentTemperature
+            ? demandTemperatureRiseVelocityCPerSecond
+            : demandTemperatureFallVelocityCPerSecond
+        let nextTemperature = accelerationLimitedStep(
+            current: currentTemperature,
+            target: rawTemperatureC,
+            velocity: conditionedDemandTemperatureVelocityC,
+            maxVelocity: maxTemperatureVelocity,
+            maxAcceleration: demandTemperatureAccelerationCPerSecond,
+            elapsedSeconds: dt)
+
+        conditionedDemandPercent = nextPercent.value
+        conditionedDemandPercentVelocity = nextPercent.velocity
+        conditionedDemandTemperatureC = nextTemperature.value
+        conditionedDemandTemperatureVelocityC = nextTemperature.velocity
+        lastDemandConditioningTime = now
+        return (nextPercent.value, nextTemperature.value)
+    }
+
+    private func accelerationLimitedStep(
+        current: Double,
+        target: Double,
+        velocity: Double,
+        maxVelocity: Double,
+        maxAcceleration: Double,
+        elapsedSeconds: Double
+    ) -> (value: Double, velocity: Double) {
+        let delta = target - current
+        guard delta != 0, elapsedSeconds > 0 else {
+            return (target, 0)
+        }
+
+        let direction = delta > 0 ? 1.0 : -1.0
+        let clampedMaxVelocity = max(0, maxVelocity)
+        let clampedAcceleration = max(0, maxAcceleration)
+        let stoppingVelocity = sqrt(2 * clampedAcceleration * abs(delta))
+        let desiredVelocity = direction * min(clampedMaxVelocity, stoppingVelocity)
+        let nextVelocity = limitedStep(
+            current: velocity,
+            target: desiredVelocity,
+            maximumDelta: clampedAcceleration * elapsedSeconds)
+        let nextValue = current + nextVelocity * elapsedSeconds
+
+        if (target - nextValue).sign != delta.sign || abs(target - nextValue) < 0.0001 {
+            return (target, 0)
+        }
+        return (nextValue, nextVelocity)
+    }
+
+    private func limitedStep(current: Double, target: Double, maximumDelta: Double) -> Double {
+        let delta = target - current
+        guard abs(delta) > maximumDelta else { return target }
+        return current + maximumDelta * (delta > 0 ? 1 : -1)
     }
 
     private func updateThermalDebt(
@@ -666,9 +783,9 @@ final class AgentController: @unchecked Sendable {
         currentFan: FanInfo,
         currentTemperatureC: Double
     ) {
-        guard decision.limited || decision.emergencyOverride else { return }
+        guard decision.limited else { return }
         log.info(
-            "agent.fan.ramp_governor fan=\(fanIndex, privacy: .public) requestedRPM=\(Int(decision.requestedRPM), privacy: .public) commandedRPM=\(Int(decision.commandedRPM), privacy: .public) baselineRPM=\(Int(decision.baselineRPM), privacy: .public) actualRPM=\(Int(currentFan.actualRPM), privacy: .public) elapsedMs=\(Int(decision.elapsedSeconds * 1000), privacy: .public) rateRPMPerSecond=\(Int(decision.rateRPMPerSecond), privacy: .public) tempC=\(Int(currentTemperatureC), privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% emergency=\(decision.emergencyOverride, privacy: .public) mode=\(controllerMode.rawValue, privacy: .public)"
+            "agent.fan.ramp_governor fan=\(fanIndex, privacy: .public) requestedRPM=\(Int(decision.requestedRPM), privacy: .public) commandedRPM=\(Int(decision.commandedRPM), privacy: .public) baselineRPM=\(Int(decision.baselineRPM), privacy: .public) actualRPM=\(Int(currentFan.actualRPM), privacy: .public) elapsedMs=\(Int(decision.elapsedSeconds * 1000), privacy: .public) rateRPMPerSecond=\(Int(decision.rateRPMPerSecond), privacy: .public) tempC=\(Int(currentTemperatureC), privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% mode=\(controllerMode.rawValue, privacy: .public)"
         )
     }
 }

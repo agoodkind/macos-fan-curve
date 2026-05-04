@@ -55,8 +55,8 @@ final class AgentSnapshotState: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                isAppActive = true
-                scheduleReload(force: true)
+                self.isAppActive = true
+                self.scheduleReload(force: true)
             }
         }
 
@@ -87,8 +87,8 @@ final class AgentSnapshotState: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                isAppHidden = false
-                scheduleReload(force: true)
+                self.isAppHidden = false
+                self.scheduleReload(force: true)
             }
         }
 
@@ -152,7 +152,11 @@ final class AgentSnapshotState: ObservableObject {
     var cpuLoadPercent: Double { snapshot?.cpuLoadPercent ?? 0 }
     var gpuLoadPercent: Double { snapshot?.gpuLoadPercent ?? 0 }
     var effectiveCurvePercent: Double { snapshot?.effectiveCurvePercent ?? 0 }
+    var baseCurvePercent: Double { snapshot?.baseCurvePercent ?? 0 }
     var rawBaselinePercent: Double { snapshot?.rawBaselinePercent ?? 0 }
+    var thermalDemandPercent: Double? { snapshot?.thermalDemandPercent }
+    var thermalDemandSource: ThermalDemandSource { snapshot?.thermalDemandSource ?? .curve }
+    var thermalDemandTemperature: Double? { snapshot?.thermalDemandTemperatureC }
     var committedPercent: Double { snapshot?.committedPercent ?? 0 }
     var controllerMode: AgentControllerMode { snapshot?.controllerMode ?? .holding }
     var bandIndex: Int { snapshot?.bandIndex ?? 0 }

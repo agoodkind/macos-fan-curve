@@ -29,7 +29,7 @@ var overdriveTargetRPM: Float {
 /// shared UserDefaults suite so the GUI and the Agent agree.
 ///
 /// Semantics:
-/// - percent <= 0 with underdrive off: fan goes to auto.
+/// - percent <= 0 with underdrive off: fan is held at the reported minimum RPM.
 /// - percent <= 0 with underdrive on: fan is forced to 0 RPM in manual mode.
 /// - percent > 0 with overdrive off: interpolate between minRPM and maxRPM.
 /// - percent > 0 with overdrive on: interpolate between minRPM and overdriveTargetRPM.
@@ -39,13 +39,11 @@ func fanCommandFor(percent: Double, minRPM: Float, maxRPM: Float) -> FanCommand 
     let overdrive = defaults.bool(forKey: SharedConfigKeys.overdriveEnabled)
     let underdrive = defaults.bool(forKey: SharedConfigKeys.underdriveEnabled)
 
-    if percent <= 0 {
-        return underdrive ? .setRPM(0) : .auto
-    }
-    let effectiveMax = overdrive ? max(maxRPM, overdriveTargetRPM) : maxRPM
-    let effectiveMin: Float = underdrive ? 0 : minRPM
-    let rpm = effectiveMin + Float(percent) * (effectiveMax - effectiveMin)
-    return .setRPM(rpm)
+    return FanCommandMapping(
+        overdriveEnabled: overdrive,
+        underdriveEnabled: underdrive,
+        overdriveTargetRPM: overdriveTargetRPM
+    ).command(percent: percent, minRPM: minRPM, maxRPM: maxRPM)
 }
 
 /// Access the shared UserDefaults suite used by GUI + Agent.
@@ -95,7 +93,7 @@ class FanCurveModel: ObservableObject {
     /// Shares its semantics with `fanCommandFor`. Kept for GUI preview uses.
     func rpmForFan(percent: Double, minRPM: Float, maxRPM: Float) -> Float {
         switch fanCommandFor(percent: percent, minRPM: minRPM, maxRPM: maxRPM) {
-        case .auto: return 0
+        case .auto: return minRPM
         case .setRPM(let rpm): return rpm
         }
     }

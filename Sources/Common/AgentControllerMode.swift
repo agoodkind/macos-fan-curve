@@ -12,24 +12,25 @@ import Foundation
 private let agentControllerModeLog = AppLog.make(category: "AgentControllerMode")
 
 enum AgentControllerMode: Codable, Sendable, Equatable {
-    case emergency
     case holding
     case rampingDown
     case rampingUp
 
     init?(rawValue: String) {
         switch rawValue {
-        case Self.emergency.rawValue: self = .emergency
         case Self.holding.rawValue: self = .holding
         case Self.rampingDown.rawValue: self = .rampingDown
         case Self.rampingUp.rawValue: self = .rampingUp
-        default: return nil
+        default:
+            agentControllerModeLog.notice(
+                "controller_mode.decode_unknown rawValue=\(rawValue, privacy: .public) recovery=reject-snapshot"
+            )
+            return nil
         }
     }
 
     var rawValue: String {
         switch self {
-        case .emergency: return "emergency"
         case .holding: return "holding"
         case .rampingDown: return "rampingDown"
         case .rampingUp: return "rampingUp"

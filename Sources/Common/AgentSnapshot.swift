@@ -9,7 +9,7 @@
 import Foundation
 
 struct AgentSnapshot: Codable, Sendable, Equatable {
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 5
 
     let schemaVersion: Int
     let timestampEpoch: Double
@@ -22,7 +22,11 @@ struct AgentSnapshot: Codable, Sendable, Equatable {
     let cpuLoadPercent: Double
     let gpuLoadPercent: Double
     let effectiveCurvePercent: Double
+    let baseCurvePercent: Double
     let rawBaselinePercent: Double
+    let thermalDemandPercent: Double?
+    let thermalDemandSource: ThermalDemandSource
+    let thermalDemandTemperatureC: Double?
     let committedPercent: Double
     let controllerMode: AgentControllerMode
     let bandIndex: Int
@@ -42,7 +46,11 @@ struct AgentSnapshot: Codable, Sendable, Equatable {
         cpuLoadPercent: Double,
         gpuLoadPercent: Double,
         effectiveCurvePercent: Double,
+        baseCurvePercent: Double,
         rawBaselinePercent: Double,
+        thermalDemandPercent: Double?,
+        thermalDemandSource: ThermalDemandSource,
+        thermalDemandTemperatureC: Double?,
         committedPercent: Double,
         controllerMode: AgentControllerMode,
         bandIndex: Int,
@@ -62,7 +70,11 @@ struct AgentSnapshot: Codable, Sendable, Equatable {
         self.cpuLoadPercent = cpuLoadPercent
         self.gpuLoadPercent = gpuLoadPercent
         self.effectiveCurvePercent = effectiveCurvePercent
+        self.baseCurvePercent = baseCurvePercent
         self.rawBaselinePercent = rawBaselinePercent
+        self.thermalDemandPercent = thermalDemandPercent
+        self.thermalDemandSource = thermalDemandSource
+        self.thermalDemandTemperatureC = thermalDemandTemperatureC
         self.committedPercent = committedPercent
         self.controllerMode = controllerMode
         self.bandIndex = bandIndex

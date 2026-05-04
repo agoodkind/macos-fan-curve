@@ -13,26 +13,22 @@ struct AcousticRampGovernor: Sendable {
         let quietRiseRPMPerSecond: Float
         let warmRiseRPMPerSecond: Float
         let hotRiseRPMPerSecond: Float
-        let emergencyRiseRPMPerSecond: Float
         let quietFallRPMPerSecond: Float
         let thermalDebtMinimumFallRPMPerSecond: Float
         let warmTemperatureC: Double
         let hotTemperatureC: Double
-        let emergencyTemperatureC: Double
         let risingFastTrendCPerTick: Double
         let risingSlowTrendCPerTick: Double
         let minimumSnapRPMDelta: Float
 
         static let fanCurveDefault = Policy(
-            quietRiseRPMPerSecond: 28,
-            warmRiseRPMPerSecond: 48,
-            hotRiseRPMPerSecond: 82,
-            emergencyRiseRPMPerSecond: 360,
-            quietFallRPMPerSecond: 45,
-            thermalDebtMinimumFallRPMPerSecond: 15,
+            quietRiseRPMPerSecond: 16,
+            warmRiseRPMPerSecond: 24,
+            hotRiseRPMPerSecond: 38,
+            quietFallRPMPerSecond: 18,
+            thermalDebtMinimumFallRPMPerSecond: 8,
             warmTemperatureC: 80,
             hotTemperatureC: 86,
-            emergencyTemperatureC: 92,
             risingFastTrendCPerTick: 0.14,
             risingSlowTrendCPerTick: 0.06,
             minimumSnapRPMDelta: 35)
@@ -54,7 +50,6 @@ struct AcousticRampGovernor: Sendable {
         let baselineRPM: Float
         let elapsedSeconds: TimeInterval
         let rateRPMPerSecond: Float
-        let emergencyOverride: Bool
         let limited: Bool
     }
 
@@ -73,7 +68,6 @@ struct AcousticRampGovernor: Sendable {
                 baselineRPM: input.baselineRPM,
                 elapsedSeconds: normalizedElapsedSeconds(input.elapsedSeconds),
                 rateRPMPerSecond: 0,
-                emergencyOverride: false,
                 limited: false)
         }
 
@@ -97,7 +91,6 @@ struct AcousticRampGovernor: Sendable {
             baselineRPM: input.baselineRPM,
             elapsedSeconds: elapsedSeconds,
             rateRPMPerSecond: rateRPMPerSecond,
-            emergencyOverride: isEmergencyTemperature(input.currentTemperatureC) && delta > 0,
             limited: commandedRPM != input.requestedRPM)
     }
 
@@ -112,10 +105,6 @@ struct AcousticRampGovernor: Sendable {
     }
 
     private func selectedRiseRateRPMPerSecond(input: Input) -> Float {
-        if isEmergencyTemperature(input.currentTemperatureC) {
-            return policy.emergencyRiseRPMPerSecond
-        }
-
         let thermalDebt = max(0, min(1, input.thermalDebt))
         let thermalDebtRate = policy.quietRiseRPMPerSecond
             + Float(thermalDebt) * (policy.hotRiseRPMPerSecond - policy.quietRiseRPMPerSecond)
@@ -156,9 +145,5 @@ struct AcousticRampGovernor: Sendable {
 
     private func normalizedElapsedSeconds(_ elapsedSeconds: TimeInterval) -> TimeInterval {
         max(0, min(10, elapsedSeconds))
-    }
-
-    private func isEmergencyTemperature(_ temperatureC: Double) -> Bool {
-        temperatureC >= policy.emergencyTemperatureC
     }
 }

@@ -85,6 +85,7 @@ let externalDependencies: [TargetDependency] = [
 let modelTestSources: SourceFilesList = [
     "Sources/App/L10n.swift",
     "Sources/Common/SharedConfigKeys.swift",
+    "Sources/Common/AgentFanSnapshot.swift",
     "Sources/Models/TemperatureUnit.swift",
     "Sources/Models/TemperatureAxisScale.swift",
     "Sources/Models/SystemUsage.swift",
@@ -92,8 +93,10 @@ let modelTestSources: SourceFilesList = [
     "Sources/Models/CurveColumns.swift",
     "Sources/Models/CurvePoint.swift",
     "Sources/Models/FanCommand.swift",
+    "Sources/Models/FanCommandMapping.swift",
     "Sources/Models/InterpolationMode.swift",
     "Sources/Models/LoadAssistKind.swift",
+    "Sources/Models/ThermalDemandSource.swift",
     "Sources/Models/LoadAssistStore.swift",
     "Sources/Models/WorkloadGenerator.swift",
     "Sources/Models/CPULoadSampler.swift",
@@ -101,6 +104,7 @@ let modelTestSources: SourceFilesList = [
     "Sources/Models/CurvePresets.swift",
     "Sources/Models/EventArtifactWriter.swift",
     "Sources/Models/CurveInterpolation.swift",
+    "Sources/Models/LiveMarkerPresentation.swift",
 ]
 
 let strictConcurrencySettings: SettingsDictionary = [

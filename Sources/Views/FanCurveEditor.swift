@@ -19,21 +19,9 @@ struct FanCurveEditor: View {
     @State private var draggedIndex: Int?
     @State private var dragBaselinePercents: [Double] = []
     @State private var mouseLocation: CGPoint?
-    @State private var targetMarkers = MarkerValues.zero
+    @State private var markerPresenterTarget: LiveMarkerTarget?
+    @State private var previousMarkerGeneration: LiveMarkerTarget.Generation?
     private let controlPointHitRadius: CGFloat = 14
-
-    private struct MarkerValues: Equatable {
-        var committedTemperature: Double
-        var committedPercent: Double
-        var rawTemperature: Double
-        var rawPercent: Double
-
-        static let zero = MarkerValues(
-            committedTemperature: 0,
-            committedPercent: 0,
-            rawTemperature: 0,
-            rawPercent: 0)
-    }
 
     @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
 
@@ -71,6 +59,11 @@ struct FanCurveEditor: View {
     private var boostEnabled: Bool = false
 
     private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+    private let runtimeMarkerAnimation = Animation.easeInOut(duration: 1.4)
+    private let demandPresentationTemperatureAlpha: Double = 0.10
+    private let demandPresentationPercentAlpha: Double = 0.10
+    private let demandPresentationMaximumTemperatureStepC: Double = 0.7
+    private let demandPresentationMaximumPercentStep: Double = 0.007
 
     /// Visual scale for the Y axis follows the effective fan control range.
     /// Overdrive extends the top to the configured target. Underdrive drops
@@ -82,16 +75,6 @@ struct FanCurveEditor: View {
         let maxR: Float = overdriveEnabled ? max(fan.maxRPM, overdriveTargetRPM) : fan.maxRPM
         return (minR, maxR)
     }
-
-    private let runtimeMarkerAnimation = Animation.easeInOut(duration: 2.4)
-    private let markerTemperatureDeadbandC: Double = 0.25
-    private let markerPercentDeadband: Double = 0.006
-    private let demandMarkerTemperatureDeadbandC: Double = 0.6
-    private let demandMarkerPercentDeadband: Double = 0.012
-    private let demandMarkerTemperatureAlpha: Double = 0.22
-    private let demandMarkerPercentAlpha: Double = 0.18
-    private let demandMarkerMaximumTemperatureStepC: Double = 1.2
-    private let demandMarkerMaximumPercentStep: Double = 0.015
 
     var body: some View {
         GeometryReader { geo in
@@ -112,7 +95,7 @@ struct FanCurveEditor: View {
                 controlPointsOverlay(size: size)
                 // Current position and Now label render last so they sit on top
                 // of the curve line and all control points.
-                currentPositionOverlay(size: size, values: targetMarkers)
+                currentPositionOverlay(size: size, values: markerPresenterTarget?.values)
                 hoverTooltipOverlay(size: size)
                 chartLegendOverlay
                 appleAutoLabelOverlay(size: size)
@@ -142,11 +125,11 @@ struct FanCurveEditor: View {
             }
         }
         .onAppear {
-            refreshRuntimeMarkerTargets()
+            refreshRuntimeMarkerTarget()
         }
-        .onChange(of: runtime.snapshot) { _ in refreshRuntimeMarkerTargets() }
+        .onChange(of: runtime.snapshot) { _ in refreshRuntimeMarkerTarget() }
         .onChange(of: boostEnabled) { _ in
-            refreshRuntimeMarkerTargets()
+            refreshRuntimeMarkerTarget()
         }
     }
 
@@ -178,7 +161,7 @@ struct FanCurveEditor: View {
 
     // MARK: - Current Position Overlay
 
-    private func currentPositionOverlay(size: CGSize, values: MarkerValues) -> some View {
+    private func currentPositionOverlay(size: CGSize, values: LiveMarkerValues?) -> some View {
         ZStack(alignment: .topLeading) {
             if let geometry = runtimeMarkerGeometry(size: size, values: values) {
                 RuntimeMarkerOverlay(geometry: geometry)
@@ -191,20 +174,21 @@ struct FanCurveEditor: View {
 
     private func runtimeMarkerGeometry(
         size: CGSize,
-        values: MarkerValues
+        values: LiveMarkerValues?
     ) -> RuntimeMarkerOverlay.Geometry? {
-        let committedTemp = values.committedTemperature
-        let rawTemp = values.rawTemperature
-        guard committedTemp > 0, rawTemp > 0 else { return nil }
+        guard let values else { return nil }
+        let fanTemp = values.fanTemperatureC
+        let demandTemp = values.demandTemperatureC
+        guard fanTemp > 0, demandTemp > 0 else { return nil }
 
-        let committedPos = dataToPixel(
-            temp: committedTemp,
-            percent: values.committedPercent,
+        let fanPos = dataToPixel(
+            temp: fanTemp,
+            percent: values.fanPercent,
             in: size
         )
-        let demandPercent = max(0, min(1, values.rawPercent))
+        let demandPercent = max(0, min(1, values.demandPercent))
         let demandPos = dataToPixel(
-            temp: rawTemp,
+            temp: demandTemp,
             percent: demandPercent,
             in: size
         )
@@ -214,155 +198,113 @@ struct FanCurveEditor: View {
         )
         return RuntimeMarkerOverlay.Geometry(
             size: size,
-            committedPosition: committedPos,
+            fanPosition: fanPos,
             demandPosition: rawPos,
             zeroY: dataToPixel(temp: 20, percent: 0, in: size).y,
             plotLeft: leftPad
         )
     }
 
-    private func refreshRuntimeMarkerTargets() {
-        let nextTarget = runtimeMarkerTarget()
-        if nextTarget != targetMarkers {
+    private func refreshRuntimeMarkerTarget() {
+        let semanticTarget = runtimeMarkerTarget()
+        let nextTarget = demandPresentationTarget(from: semanticTarget)
+        if nextTarget != markerPresenterTarget {
             fanCurveEditorLog.debug(
                 "curve_editor.marker_target.changed active=\(runtime.curveActive, privacy: .public)"
             )
         }
-        targetMarkers = nextTarget
+        markerPresenterTarget = nextTarget
     }
 
-    private func runtimeMarkerTarget() -> MarkerValues {
-        if runtime.curveActive {
-            let controllerTemperature =
-                runtime.committedTemperature > 0
-                ? runtime.committedTemperature
-                : runtime.governingTemperature
-            let demandTemperature = runtime.rawPressureTemperature ?? runtime.governingTemperature
-            let actualFanPercent = currentFanPercent() ?? runtime.committedPercent
-
-            let clampedControllerTemperature = max(
-                plotTempRange.lowerBound, min(plotTempRange.upperBound, controllerTemperature))
-            let committedTemperature = stableMarkerTemperatureTarget(
-                currentTarget: targetMarkers.committedTemperature,
-                proposedTemperature: clampedControllerTemperature,
-                proposedPercent: actualFanPercent
-            )
-            let clampedDemandTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, demandTemperature))
-            let committedPercent = stabilizedMarkerTarget(
-                currentTarget: targetMarkers.committedPercent,
-                proposedTarget: actualFanPercent,
-                deadband: markerPercentDeadband
-            )
-            let rawTemperature = dampedMarkerTarget(
-                currentTarget: targetMarkers.rawTemperature,
-                proposedTarget: clampedDemandTemperature,
-                deadband: demandMarkerTemperatureDeadbandC,
-                alpha: demandMarkerTemperatureAlpha,
-                maximumStep: demandMarkerMaximumTemperatureStepC
-            )
-            let rawDemandPercent = max(0, min(1, runtime.rawBaselinePercent))
-            let rawPercent = dampedMarkerTarget(
-                currentTarget: targetMarkers.rawPercent,
-                proposedTarget: rawDemandPercent,
-                deadband: demandMarkerPercentDeadband,
-                alpha: demandMarkerPercentAlpha,
-                maximumStep: demandMarkerMaximumPercentStep
-            )
-
-            return MarkerValues(
-                committedTemperature: committedTemperature,
-                committedPercent: committedPercent,
-                rawTemperature: rawTemperature,
-                rawPercent: rawPercent)
-        } else {
-            let liveTemperature =
-                runtime.committedTemperature > 0
-                ? runtime.committedTemperature
-                : runtime.rawPressureTemperature ?? runtime.governingTemperature
-            guard liveTemperature > 0 else {
-                return .zero
-            }
-
-            let clampedTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, liveTemperature))
-            let previewPercent = CurveInterpolation.evaluate(
-                at: clampedTemperature,
-                points: model.controlPoints,
-                mode: model.interpolationMode
-            )
-
-            // Fan Control off means the app is not commanding a target, but the
-            // chart should still preview where the visible curve would land for
-            // the current CPU temperature. Actual fan RPM can legitimately read as
-            // zero in system-auto mode, so using RPM here incorrectly parks the
-            // markers at the origin.
-            let committedTemperature = stableMarkerTemperatureTarget(
-                currentTarget: targetMarkers.committedTemperature,
-                proposedTemperature: clampedTemperature,
-                proposedPercent: previewPercent
-            )
-            return MarkerValues(
-                committedTemperature: committedTemperature,
-                committedPercent: currentFanPercent() ?? previewPercent,
-                rawTemperature: committedTemperature,
-                rawPercent: previewPercent)
+    private func demandPresentationTarget(from semanticTarget: LiveMarkerTarget?) -> LiveMarkerTarget? {
+        guard var semanticTarget else {
+            previousMarkerGeneration = nil
+            return nil
         }
-    }
 
-    private func currentFanPercent() -> Double? {
-        let percents = runtime.fans.compactMap { fan -> Double? in
-            guard fan.maxRPM > fan.minRPM, fan.actualRPM > 0 else { return nil }
-            let percent = Double((fan.actualRPM - rpmRange.min) / (rpmRange.max - rpmRange.min))
-            return max(0, min(1, percent))
+        guard
+            let currentTarget = markerPresenterTarget,
+            isSameMarkerPresentationContext(semanticTarget.generation, currentTarget.generation)
+        else {
+            previousMarkerGeneration = semanticTarget.generation
+            return semanticTarget
         }
-        guard !percents.isEmpty else { return nil }
-        return percents.reduce(0, +) / Double(percents.count)
+
+        semanticTarget.values.demandTemperatureC = dampedMarkerTarget(
+            currentTarget: currentTarget.values.demandTemperatureC,
+            proposedTarget: semanticTarget.values.demandTemperatureC,
+            alpha: demandPresentationTemperatureAlpha,
+            maximumStep: demandPresentationMaximumTemperatureStepC
+        )
+        semanticTarget.values.demandPercent = dampedMarkerTarget(
+            currentTarget: currentTarget.values.demandPercent,
+            proposedTarget: semanticTarget.values.demandPercent,
+            alpha: demandPresentationPercentAlpha,
+            maximumStep: demandPresentationMaximumPercentStep
+        )
+        semanticTarget.values.demandBasePercent = dampedMarkerTarget(
+            currentTarget: currentTarget.values.demandBasePercent,
+            proposedTarget: semanticTarget.values.demandBasePercent,
+            alpha: demandPresentationPercentAlpha,
+            maximumStep: demandPresentationMaximumPercentStep
+        )
+        previousMarkerGeneration = semanticTarget.generation
+        return semanticTarget
     }
 
-    private func stabilizedMarkerTarget(
-        currentTarget: Double,
-        proposedTarget: Double,
-        deadband: Double
-    ) -> Double {
-        guard currentTarget > 0 else { return proposedTarget }
-        guard abs(currentTarget - proposedTarget) >= deadband else { return currentTarget }
-        return proposedTarget
+    private func isSameMarkerPresentationContext(
+        _ lhs: LiveMarkerTarget.Generation,
+        _ rhs: LiveMarkerTarget.Generation
+    ) -> Bool {
+        lhs.curveActive == rhs.curveActive
+            && lhs.boostEnabled == rhs.boostEnabled
+            && lhs.fanSignature == rhs.fanSignature
+            && lhs.rpmRangeMin == rhs.rpmRangeMin
+            && lhs.rpmRangeMax == rhs.rpmRangeMax
     }
 
     private func dampedMarkerTarget(
         currentTarget: Double,
         proposedTarget: Double,
-        deadband: Double,
         alpha: Double,
         maximumStep: Double
     ) -> Double {
-        guard currentTarget > 0 else { return proposedTarget }
         let delta = proposedTarget - currentTarget
-        guard abs(delta) >= deadband else { return currentTarget }
-
         let easedStep = delta * max(0, min(1, alpha))
         let clampedStep = max(-maximumStep, min(maximumStep, easedStep))
         return currentTarget + clampedStep
     }
 
-    private func stableMarkerTemperatureTarget(
-        currentTarget: Double,
-        proposedTemperature: Double,
-        proposedPercent: Double
-    ) -> Double {
-        guard currentTarget > 0 else { return proposedTemperature }
-        let currentPercent = CurveInterpolation.evaluate(
-            at: currentTarget,
+    private func runtimeMarkerTarget() -> LiveMarkerTarget? {
+        guard runtime.isFresh else { return nil }
+
+        let liveTemperature =
+            runtime.thermalDemandTemperature
+            ?? runtime.rawPressureTemperature
+            ?? (runtime.committedTemperature > 0 ? runtime.committedTemperature : runtime.governingTemperature)
+        guard liveTemperature > 0 else { return nil }
+
+        let clampedTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, liveTemperature))
+        let previewPercent = CurveInterpolation.evaluate(
+            at: clampedTemperature,
             points: model.controlPoints,
             mode: model.interpolationMode
         )
-        // Flat or near-flat spans do not have a meaningful unique X position for
-        // a fan-speed target. Keep the target anchored unless the fan percent
-        // materially changes; otherwise tiny CPU temp jitter turns into stressful
-        // horizontal marker motion.
-        if abs(currentPercent - proposedPercent) < 0.006 {
-            return currentTarget
-        }
-        return proposedTemperature
+        return LiveMarkerTargetFactory.make(
+            snapshotEpoch: runtime.snapshot?.timestampEpoch ?? 0,
+            curveActive: runtime.curveActive,
+            boostEnabled: runtime.boostEnabled,
+            governingTemperatureC: runtime.governingTemperature,
+            committedTemperatureC: runtime.committedTemperature,
+            rawPressureTemperatureC: runtime.rawPressureTemperature,
+            thermalDemandTemperatureC: clampedTemperature,
+            baseCurvePercent: runtime.curveActive ? runtime.baseCurvePercent : previewPercent,
+            thermalDemandPercent: runtime.thermalDemandPercent,
+            committedPercent: runtime.committedPercent,
+            rawBaselinePercent: runtime.rawBaselinePercent,
+            fans: runtime.fans,
+            rpmRange: rpmRange,
+            previewPercent: previewPercent)
     }
 
     @ViewBuilder

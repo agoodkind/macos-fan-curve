@@ -23,8 +23,7 @@ enum AppRenderMode: Equatable, Hashable {
 
     var preferredFramesPerSecond: Int {
         switch self {
-        case .interactive: return Self.maximumDisplayFramesPerSecond
-        case .backgroundVisible: return 12
+        case .interactive, .backgroundVisible: return Self.maximumDisplayFramesPerSecond
         case .occluded: return 1
         }
     }

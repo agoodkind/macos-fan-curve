@@ -9,11 +9,11 @@
 import SwiftUI
 
 /// Draws the live runtime markers as one shared surface so the dots, guides,
-/// and leash all read from the same geometry object and animation transaction.
+/// and relationship leash all read from the same geometry object and animation transaction.
 struct RuntimeMarkerOverlay: View {
     struct Geometry: Equatable {
         let size: CGSize
-        let committedPosition: CGPoint
+        let fanPosition: CGPoint
         let demandPosition: CGPoint
         let zeroY: CGFloat
         let plotLeft: CGFloat
@@ -23,13 +23,13 @@ struct RuntimeMarkerOverlay: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            RuntimeMarkerGuidesShape(geometry: geometry)
+            FanNowGuidesShape(geometry: geometry)
                 .stroke(
                     Color(nsColor: .systemOrange).opacity(0.25),
                     style: StrokeStyle(lineWidth: 1, dash: [4, 4])
                 )
 
-            RuntimeMarkerLeashShape(geometry: geometry)
+            DemandLeashShape(geometry: geometry)
                 .stroke(
                     Color(nsColor: .systemOrange).opacity(0.24),
                     style: StrokeStyle(lineWidth: 1, dash: [2, 3])
@@ -48,22 +48,22 @@ struct RuntimeMarkerOverlay: View {
                 .fill(Color(nsColor: .systemOrange))
                 .frame(width: 10, height: 10)
                 .shadow(color: Color(nsColor: .systemOrange).opacity(0.5), radius: 6)
-                .position(geometry.committedPosition)
+                .position(geometry.fanPosition)
         }
         .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
         .allowsHitTesting(false)
     }
 }
 
-private struct RuntimeMarkerGuidesShape: Shape {
-    private var committedX: CGFloat
-    private var committedY: CGFloat
+private struct FanNowGuidesShape: Shape {
+    private var fanX: CGFloat
+    private var fanY: CGFloat
     private var zeroY: CGFloat
     private var plotLeft: CGFloat
 
     init(geometry: RuntimeMarkerOverlay.Geometry) {
-        self.committedX = geometry.committedPosition.x
-        self.committedY = geometry.committedPosition.y
+        self.fanX = geometry.fanPosition.x
+        self.fanY = geometry.fanPosition.y
         self.zeroY = geometry.zeroY
         self.plotLeft = geometry.plotLeft
     }
@@ -74,13 +74,13 @@ private struct RuntimeMarkerGuidesShape: Shape {
     > {
         get {
             AnimatablePair(
-                AnimatablePair(committedX, committedY),
+                AnimatablePair(fanX, fanY),
                 AnimatablePair(zeroY, plotLeft)
             )
         }
         set {
-            committedX = newValue.first.first
-            committedY = newValue.first.second
+            fanX = newValue.first.first
+            fanY = newValue.first.second
             zeroY = newValue.second.first
             plotLeft = newValue.second.second
         }
@@ -89,27 +89,27 @@ private struct RuntimeMarkerGuidesShape: Shape {
     func path(in _: CGRect) -> Path {
         var path = Path()
 
-        path.move(to: CGPoint(x: committedX, y: committedY))
-        path.addLine(to: CGPoint(x: committedX, y: zeroY))
+        path.move(to: CGPoint(x: fanX, y: fanY))
+        path.addLine(to: CGPoint(x: fanX, y: zeroY))
 
-        path.move(to: CGPoint(x: plotLeft, y: committedY))
-        path.addLine(to: CGPoint(x: committedX, y: committedY))
+        path.move(to: CGPoint(x: plotLeft, y: fanY))
+        path.addLine(to: CGPoint(x: fanX, y: fanY))
 
         return path
     }
 }
 
-private struct RuntimeMarkerLeashShape: Shape {
+private struct DemandLeashShape: Shape {
+    private var fanX: CGFloat
+    private var fanY: CGFloat
     private var demandX: CGFloat
     private var demandY: CGFloat
-    private var committedX: CGFloat
-    private var committedY: CGFloat
 
     init(geometry: RuntimeMarkerOverlay.Geometry) {
+        self.fanX = geometry.fanPosition.x
+        self.fanY = geometry.fanPosition.y
         self.demandX = geometry.demandPosition.x
         self.demandY = geometry.demandPosition.y
-        self.committedX = geometry.committedPosition.x
-        self.committedY = geometry.committedPosition.y
     }
 
     var animatableData: AnimatablePair<
@@ -118,22 +118,22 @@ private struct RuntimeMarkerLeashShape: Shape {
     > {
         get {
             AnimatablePair(
-                AnimatablePair(demandX, demandY),
-                AnimatablePair(committedX, committedY)
+                AnimatablePair(fanX, fanY),
+                AnimatablePair(demandX, demandY)
             )
         }
         set {
-            demandX = newValue.first.first
-            demandY = newValue.first.second
-            committedX = newValue.second.first
-            committedY = newValue.second.second
+            fanX = newValue.first.first
+            fanY = newValue.first.second
+            demandX = newValue.second.first
+            demandY = newValue.second.second
         }
     }
 
     func path(in _: CGRect) -> Path {
         var path = Path()
-        path.move(to: CGPoint(x: demandX, y: demandY))
-        path.addLine(to: CGPoint(x: committedX, y: committedY))
+        path.move(to: CGPoint(x: fanX, y: fanY))
+        path.addLine(to: CGPoint(x: demandX, y: demandY))
         return path
     }
 }

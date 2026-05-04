@@ -44,6 +44,7 @@ final class InstallationState: ObservableObject {
     /// succeeded or the Agent has never written one.
     @Published var agentLastError: String = ""
     @Published var agentExecutableHash: String = ""
+    @Published var agentSnapshotSchemaVersion: Int?
     @Published private(set) var isRegisteringAgent = false
 
     private var timer: Timer?
@@ -75,6 +76,11 @@ final class InstallationState: ObservableObject {
         case .notRegistered: return "Not registered"
         default: return "Unknown"
         }
+    }
+
+    var agentSnapshotCompatible: Bool {
+        guard let agentSnapshotSchemaVersion else { return true }
+        return agentSnapshotSchemaVersion == AgentSnapshot.currentSchemaVersion
     }
 
     func startMonitoring(xpcClient: XPCClient) {
@@ -167,9 +173,12 @@ final class InstallationState: ObservableObject {
         agentLastTickEpoch = suite.double(forKey: SharedConfigKeys.agentLastTick)
         agentExecutableHash = suite.string(forKey: SharedConfigKeys.agentExecutableHash) ?? ""
         agentLastError = suite.string(forKey: SharedConfigKeys.agentLastError) ?? ""
+        agentSnapshotSchemaVersion = AgentSnapshotStore.storedSchemaVersion(defaults: suite)
 
         if agentStatus == .enabled {
-            await refreshAgentIfNeeded(runningHash: agentExecutableHash)
+            await refreshAgentIfNeeded(
+                runningHash: agentExecutableHash,
+                snapshotSchemaVersion: agentSnapshotSchemaVersion)
         }
 
         if !helperOK {
@@ -205,12 +214,16 @@ final class InstallationState: ObservableObject {
         return SMAppService.Status(rawValue: rawValue) ?? .notFound
     }
 
-    private func refreshAgentIfNeeded(runningHash: String) async {
+    private func refreshAgentIfNeeded(
+        runningHash: String,
+        snapshotSchemaVersion: Int?
+    ) async {
         guard #available(macOS 13.0, *) else { return }
 
         let appBundlePath = Bundle.main.bundleURL.path
         let stagedBundle = isLocalStagedBundle(path: appBundlePath)
         let bundledHash = BuildFingerprint.bundledAgentHash
+        let snapshotSchemaMismatch = snapshotSchemaVersion.map { $0 != AgentSnapshot.currentSchemaVersion } ?? false
         guard bundledHash != "n/a" else {
             log.error("agent.refresh.skipped reason=bundled-hash-unavailable")
             return
@@ -220,7 +233,7 @@ final class InstallationState: ObservableObject {
             log.notice("agent.refresh.context appPath=\(appBundlePath, privacy: .public) mode=non-staged-bundle")
         }
 
-        if runningHash == bundledHash {
+        if runningHash == bundledHash, !snapshotSchemaMismatch {
             clearRefreshAttempt()
             return
         }
@@ -236,7 +249,7 @@ final class InstallationState: ObservableObject {
         recordRefreshAttempt(for: bundledHash, at: now)
         let result = await Self.refreshRegisteredAgentService()
         log.notice(
-            "agent.refresh.needed appPath=\(appBundlePath, privacy: .public) stagedBundle=\(stagedBundle, privacy: .public) status=\(result.statusBefore, privacy: .public) runningHash=\(runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public)"
+            "agent.refresh.needed appPath=\(appBundlePath, privacy: .public) stagedBundle=\(stagedBundle, privacy: .public) status=\(result.statusBefore, privacy: .public) runningHash=\(runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public) snapshotSchema=\(snapshotSchemaVersion ?? -1, privacy: .public) expectedSchema=\(AgentSnapshot.currentSchemaVersion, privacy: .public) schemaMismatch=\(snapshotSchemaMismatch, privacy: .public)"
         )
 
         if let statusAfterUnregister = result.statusAfterUnregister {

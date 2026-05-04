@@ -12,6 +12,10 @@ import Foundation
 private let agentSnapshotStoreLog = AppLog.make(category: "AgentSnapshotStore")
 
 enum AgentSnapshotStore {
+    private struct SnapshotHeader: Decodable {
+        let schemaVersion: Int
+    }
+
     static func load(defaults: UserDefaults) -> AgentSnapshot? {
         guard let data = defaults.data(forKey: SharedConfigKeys.agentSnapshot) else { return nil }
         let snapshot: AgentSnapshot
@@ -30,6 +34,18 @@ enum AgentSnapshotStore {
             return nil
         }
         return snapshot
+    }
+
+    static func storedSchemaVersion(defaults: UserDefaults) -> Int? {
+        guard let data = defaults.data(forKey: SharedConfigKeys.agentSnapshot) else { return nil }
+        do {
+            return try JSONDecoder().decode(SnapshotHeader.self, from: data).schemaVersion
+        } catch {
+            agentSnapshotStoreLog.notice(
+                "snapshot.header_decode_failed error=\(error.localizedDescription, privacy: .public) recovery=treat-as-incompatible"
+            )
+            return nil
+        }
     }
 
     static func save(_ snapshot: AgentSnapshot, defaults: UserDefaults) {

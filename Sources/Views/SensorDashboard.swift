@@ -30,6 +30,12 @@ struct SensorDashboard: View {
     @AppStorage(SharedConfigKeys.gpuLoadAssistEnabled, store: suite)
     private var gpuLoadAssistEnabled: Bool = false
 
+    @AppStorage(SharedConfigKeys.overdriveEnabled, store: suite)
+    private var overdriveEnabled: Bool = false
+
+    @AppStorage(SharedConfigKeys.underdriveEnabled, store: suite)
+    private var underdriveEnabled: Bool = false
+
     private var unit: TemperatureUnit {
         TemperatureUnit(rawValue: unitRaw) ?? .celsius
     }
@@ -264,20 +270,41 @@ struct SensorDashboard: View {
     }
 
     private var controllerStateLabel: String {
-        let committed = Int((runtime.committedPercent * 100).rounded())
-        switch runtime.controllerMode {
-        case .holding:
-            if runtime.holdRemainingSeconds > 0 {
-                return "Targeting \(committed)%"
-            }
-            return "Targeting \(committed)%"
-        case .rampingUp:
-            return "Stepping up toward \(committed)%"
-        case .rampingDown:
-            return "Cooling down toward \(committed)%"
-        case .emergency:
-            return "Emergency ramp"
+        let targetPercent = clampedPercent(runtime.thermalDemandPercent ?? runtime.committedPercent)
+        let target = Int((targetPercent * 100).rounded())
+
+        guard let observedPercent else {
+            return "Targeting \(target)%"
         }
+
+        let delta = targetPercent - observedPercent
+        if delta > 0.02 {
+            return "Stepping up toward \(target)%"
+        }
+        if delta < -0.02 {
+            return "Cooling down toward \(target)%"
+        }
+        return "Targeting \(target)%"
+    }
+
+    private var observedPercent: Double? {
+        let percents = runtime.fans.compactMap { fan -> Double? in
+            guard let range = effectiveRPMRange(for: fan), fan.actualRPM > 0 else { return nil }
+            return clampedPercent(Double((fan.actualRPM - range.min) / (range.max - range.min)))
+        }
+        guard !percents.isEmpty else { return nil }
+        return percents.reduce(0, +) / Double(percents.count)
+    }
+
+    private func effectiveRPMRange(for fan: AgentFanSnapshot) -> (min: Float, max: Float)? {
+        let minRPM: Float = underdriveEnabled ? 0 : fan.minRPM
+        let maxRPM: Float = overdriveEnabled ? max(fan.maxRPM, overdriveTargetRPM) : fan.maxRPM
+        guard maxRPM > minRPM else { return nil }
+        return (minRPM, maxRPM)
+    }
+
+    private func clampedPercent(_ percent: Double) -> Double {
+        max(0, min(1, percent))
     }
 
     /// Returns true when the fan is actively spinning up or down toward a
@@ -296,7 +323,7 @@ struct SensorDashboard: View {
     }
 
     private var boostHelp: String {
-        "Pins all fans to 100% (or Overdrive target) while enabled. Useful for brief emergency cooling."
+        "Pins all fans to 100% (or Overdrive target) while enabled."
     }
 
     // MARK: - Status
@@ -305,7 +332,7 @@ struct SensorDashboard: View {
 
     private var systemStatus: SystemStatus {
         let helperReachable = runtime.isFresh ? runtime.helperReachable : installState.helperReachable
-        if helperReachable, installState.agentEnabled, installState.agentLive {
+        if helperReachable, installState.agentEnabled, installState.agentLive, installState.agentSnapshotCompatible {
             return .green
         }
         if helperReachable, installState.agentEnabled, !installState.agentLive {
@@ -321,6 +348,9 @@ struct SensorDashboard: View {
         switch systemStatus {
         case .green: return "All systems go"
         case .orange:
+            if installState.agentEnabled, installState.agentLive, !installState.agentSnapshotCompatible {
+                return "Agent update pending"
+            }
             if installState.agentEnabled, !installState.agentLive {
                 return "Agent not responding"
             }
