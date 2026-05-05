@@ -60,6 +60,8 @@ struct FanCurveEditor: View {
 
     private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
     private let runtimeMarkerAnimation = Animation.easeInOut(duration: 1.4)
+    private let fanPresentationTemperatureAlpha: Double = 0.06
+    private let fanPresentationMaximumTemperatureStepC: Double = 0.35
     private let demandPresentationTemperatureAlpha: Double = 0.10
     private let demandPresentationPercentAlpha: Double = 0.10
     private let demandPresentationMaximumTemperatureStepC: Double = 0.7
@@ -230,6 +232,12 @@ struct FanCurveEditor: View {
             return semanticTarget
         }
 
+        semanticTarget.values.fanTemperatureC = dampedMarkerTarget(
+            currentTarget: currentTarget.values.fanTemperatureC,
+            proposedTarget: semanticTarget.values.fanTemperatureC,
+            alpha: fanPresentationTemperatureAlpha,
+            maximumStep: fanPresentationMaximumTemperatureStepC
+        )
         semanticTarget.values.demandTemperatureC = dampedMarkerTarget(
             currentTarget: currentTarget.values.demandTemperatureC,
             proposedTarget: semanticTarget.values.demandTemperatureC,
