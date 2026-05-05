@@ -28,6 +28,23 @@ These instructions are strict project rules for all automated coding agents work
 - Make invalid states unrepresentable where practical.
 - Preserve Swift concurrency and isolation correctness. Do not bypass actor isolation or sendability requirements to quiet the compiler.
 
+## Fan Curve Runtime Semantics
+
+- Treat the blue curve as the base temperature curve only. It must not silently include assist, boost, acoustic damping, firmware behavior, or any other controller layer.
+- Keep runtime marker truth explicit. `Fan Now` is actual fan state: current live thermal input on X and actual RPM percent on Y. `Thermal Demand` is pre-acoustic-governor demand: the current demand input on X and desired percent on Y.
+- Do not pin `Thermal Demand` to the blue curve. Assist, boost, or controller demand may place it off-curve. That off-curve state is meaningful and must be rendered intentionally.
+- Draw the demand leash from `Fan Now` to `Thermal Demand`. Do not draw the demand leash from `Thermal Demand` to the blue curve anchor.
+- Keep `Fan Now` as the filled orange dot with its crosshair guides. Keep `Thermal Demand` as a hollow orange dot with no crosshair guides; its only guide is the leash to `Fan Now`.
+- Do not reintroduce an automatic emergency ramp path, emergency controller mode, or emergency demand source. User-initiated Boost may exist, but it must remain semantically Boost rather than masquerading as emergency.
+- Any fast swing in either direction is bad. Upward and downward fan changes must both respect acoustic damping unless the user explicitly changes that product requirement.
+- Smooth actual fan commands in the controller, not only in the UI. Visual smoothing is allowed only as presentation; it must never feed back into fan commands or snapshots.
+- Visual smoothing must stay close enough to truth that markers do not look detached or nonsensical. Avoid solutions that hide real state by letting display state drift far from actual fan RPM or demand.
+- Avoid snapshot-cadence motion artifacts such as jump-pause-jump. Marker motion should look continuous even when agent snapshots arrive discretely.
+- Prefer higher-order smoothing for live markers when changing motion behavior: `Thermal Demand` should be smoother than raw demand, and `Fan Now` should be smoother still, while both remain bounded near truth.
+- Preserve high-FPS SwiftUI interpolation where it improves perceived smoothness. Do not replace it with low-rate polling-only motion unless the replacement is proven smoother in foreground and background.
+- The temperature axis, grid lines, tick labels, control points, curve drawing, hit testing, and fan command application must share the same `TemperatureAxisScale` mapping. Do not create split-brain linear or ad hoc temperature placement.
+- The temperature axis should compress tails and expand common operating temperatures around the chosen center. Minor ticks/grid lines should reveal the non-linear scale density on both compressed sides.
+
 ## Tuist, Build, And Verification
 
 - This is a Tuist project. `Project.swift`, `Workspace.swift`, `Tuist.swift`, and `Tuist/Package.swift` are the source of truth for Xcode structure and dependencies.
