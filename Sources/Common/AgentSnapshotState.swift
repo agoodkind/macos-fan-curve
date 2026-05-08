@@ -154,9 +154,11 @@ final class AgentSnapshotState: ObservableObject {
     var effectiveCurvePercent: Double { snapshot?.effectiveCurvePercent ?? 0 }
     var baseCurvePercent: Double { snapshot?.baseCurvePercent ?? 0 }
     var rawBaselinePercent: Double { snapshot?.rawBaselinePercent ?? 0 }
-    var thermalDemandPercent: Double? { snapshot?.thermalDemandPercent }
+    var semanticDemandPercent: Double? { snapshot?.semanticDemandPercent }
     var thermalDemandSource: ThermalDemandSource { snapshot?.thermalDemandSource ?? .curve }
-    var thermalDemandTemperature: Double? { snapshot?.thermalDemandTemperatureC }
+    var semanticDemandTemperature: Double? { snapshot?.semanticDemandTemperatureC }
+    var commandedTargetPercent: Double { snapshot?.commandedTargetPercent ?? snapshot?.committedPercent ?? 0 }
+    var commandedTargetTemperature: Double? { snapshot?.commandedTargetTemperatureC }
     var committedPercent: Double { snapshot?.committedPercent ?? 0 }
     var controllerMode: AgentControllerMode { snapshot?.controllerMode ?? .holding }
     var bandIndex: Int { snapshot?.bandIndex ?? 0 }

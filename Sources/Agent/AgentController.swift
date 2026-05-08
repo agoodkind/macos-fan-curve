@@ -216,9 +216,11 @@ final class AgentController: @unchecked Sendable {
                         effectiveCurvePercent: 0,
                         baseCurvePercent: 0,
                         rawBaselinePercent: 0,
-                        thermalDemandPercent: 0,
+                        semanticDemandPercent: 0,
                         thermalDemandSource: .curve,
-                        thermalDemandTemperatureC: maxCPUTemp > 0 ? maxCPUTemp : nil,
+                        semanticDemandTemperatureC: maxCPUTemp > 0 ? maxCPUTemp : nil,
+                        commandedTargetPercent: 0,
+                        commandedTargetTemperatureC: nil,
                         committedPercent: 0,
                         controllerMode: .holding,
                         bandIndex: 0,
@@ -311,13 +313,14 @@ final class AgentController: @unchecked Sendable {
             if boost {
                 runtimeState = RuntimeBandState(
                     committedPercent: conditionedDemand.percent,
+                    commandedTargetTemperatureC: conditionedDemand.temperatureC,
                     bandIndex: bandIndex(for: conditionedDemand.percent),
                     committedTemperatureC: maxCPUTemp,
                     baseCurvePercent: baseCurvePercent,
                     rawBaselinePercent: 1.0,
-                    thermalDemandPercent: conditionedDemand.percent,
+                    semanticDemandPercent: 1.0,
                     thermalDemandSource: .boost,
-                    rawPressureTemperatureC: conditionedDemand.temperatureC,
+                    semanticDemandTemperatureC: pressureTemperature,
                     mode: .rampingUp,
                     holdRemainingSeconds: 0
                 )
@@ -325,6 +328,7 @@ final class AgentController: @unchecked Sendable {
                 let observedFanPercent = observedCurvePercent(fans: result.fans)
                 runtimeState = bandControlledState(
                     rawBaselinePercent: rawBaselinePercent,
+                    semanticDemandTemperatureC: pressureTemperature,
                     conditionedDemandPercent: conditionedDemand.percent,
                     conditionedDemandTemperatureC: conditionedDemand.temperatureC,
                     baseCurvePercent: baseCurvePercent,
@@ -340,7 +344,7 @@ final class AgentController: @unchecked Sendable {
 
             let assistSummary = assistAppliedKinds.map(\.rawValue).joined(separator: ",")
             log.debug(
-                "agent.tick cpuTemp=\(Int(maxCPUTemp), privacy: .public)C cpuLoad=\(Int(cpuLoad), privacy: .public)% gpuLoad=\(Int(gpuLoad), privacy: .public)% raw=\(Int(runtimeState.rawBaselinePercent * 100), privacy: .public)% demand=\(Int(runtimeState.thermalDemandPercent * 100), privacy: .public)% demandSource=\(runtimeState.thermalDemandSource.rawValue, privacy: .public) committed=\(Int(runtimeState.committedPercent * 100), privacy: .public)% mode=\(runtimeState.mode.rawValue, privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% boost=\(boost, privacy: .public) assist=\(assistSummary, privacy: .public)"
+                "agent.tick cpuTemp=\(Int(maxCPUTemp), privacy: .public)C cpuLoad=\(Int(cpuLoad), privacy: .public)% gpuLoad=\(Int(gpuLoad), privacy: .public)% raw=\(Int(runtimeState.rawBaselinePercent * 100), privacy: .public)% semantic=\(Int(runtimeState.semanticDemandPercent * 100), privacy: .public)% commanded=\(Int(runtimeState.committedPercent * 100), privacy: .public)% demandSource=\(runtimeState.thermalDemandSource.rawValue, privacy: .public) mode=\(runtimeState.mode.rawValue, privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% boost=\(boost, privacy: .public) assist=\(assistSummary, privacy: .public)"
             )
 
             var setFans: [(index: UInt, rpm: Float)] = []
@@ -389,15 +393,17 @@ final class AgentController: @unchecked Sendable {
                     boostEnabled: boost,
                     governingTemperatureC: maxCPUTemp,
                     committedTemperatureC: runtimeState.committedTemperatureC,
-                    rawPressureTemperatureC: runtimeState.rawPressureTemperatureC,
+                    rawPressureTemperatureC: pressureTemperature,
                     cpuLoadPercent: cpuLoad,
                     gpuLoadPercent: gpuLoad,
                     effectiveCurvePercent: runtimeState.committedPercent,
                     baseCurvePercent: runtimeState.baseCurvePercent,
                     rawBaselinePercent: runtimeState.rawBaselinePercent,
-                    thermalDemandPercent: runtimeState.thermalDemandPercent,
+                    semanticDemandPercent: runtimeState.semanticDemandPercent,
                     thermalDemandSource: runtimeState.thermalDemandSource,
-                    thermalDemandTemperatureC: runtimeState.rawPressureTemperatureC,
+                    semanticDemandTemperatureC: runtimeState.semanticDemandTemperatureC,
+                    commandedTargetPercent: runtimeState.committedPercent,
+                    commandedTargetTemperatureC: runtimeState.commandedTargetTemperatureC,
                     committedPercent: runtimeState.committedPercent,
                     controllerMode: runtimeState.mode,
                     bandIndex: runtimeState.bandIndex,
@@ -465,13 +471,14 @@ final class AgentController: @unchecked Sendable {
 
     private struct RuntimeBandState {
         let committedPercent: Double
+        let commandedTargetTemperatureC: Double?
         let bandIndex: Int
         let committedTemperatureC: Double
         let baseCurvePercent: Double
         let rawBaselinePercent: Double
-        let thermalDemandPercent: Double
+        let semanticDemandPercent: Double
         let thermalDemandSource: ThermalDemandSource
-        let rawPressureTemperatureC: Double?
+        let semanticDemandTemperatureC: Double?
         let mode: AgentControllerMode
         let holdRemainingSeconds: Double
     }
@@ -483,6 +490,7 @@ final class AgentController: @unchecked Sendable {
 
     private func bandControlledState(
         rawBaselinePercent: Double,
+        semanticDemandTemperatureC: Double,
         conditionedDemandPercent: Double,
         conditionedDemandTemperatureC: Double,
         baseCurvePercent: Double,
@@ -523,13 +531,14 @@ final class AgentController: @unchecked Sendable {
         )
         return RuntimeBandState(
             committedPercent: committedPercent,
+            commandedTargetTemperatureC: conditionedDemandTemperatureC,
             bandIndex: nextBandIndex,
             committedTemperatureC: slowTemperatureC,
             baseCurvePercent: baseCurvePercent,
             rawBaselinePercent: baselinePercent,
-            thermalDemandPercent: committedPercent,
+            semanticDemandPercent: baselinePercent,
             thermalDemandSource: demandSource,
-            rawPressureTemperatureC: conditionedDemandTemperatureC,
+            semanticDemandTemperatureC: semanticDemandTemperatureC,
             mode: controllerMode,
             holdRemainingSeconds: 0
         )

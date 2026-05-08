@@ -62,26 +62,26 @@ struct LiveMarkerTargetFactory {
         governingTemperatureC: Double,
         committedTemperatureC: Double,
         rawPressureTemperatureC: Double?,
-        thermalDemandTemperatureC: Double?,
+        semanticDemandTemperatureC: Double?,
         baseCurvePercent: Double?,
-        thermalDemandPercent: Double?,
-        committedPercent: Double,
+        semanticDemandPercent: Double?,
+        commandedTargetPercent: Double,
         rawBaselinePercent: Double,
         fans: [AgentFanSnapshot],
         rpmRange: (min: Float, max: Float),
         previewPercent: Double
     ) -> LiveMarkerTarget? {
         let liveTemperature =
-            thermalDemandTemperatureC
+            semanticDemandTemperatureC
             ?? rawPressureTemperatureC
             ?? (committedTemperatureC > 0 ? committedTemperatureC : governingTemperatureC)
         guard liveTemperature > 0 else { return nil }
 
         let fanPercent = actualFanPercent(fans: fans, rpmRange: rpmRange)
-            ?? (curveActive ? committedPercent : previewPercent)
+            ?? (curveActive ? commandedTargetPercent : previewPercent)
         let fanTemperature = fanTemperatureC ?? liveTemperature
         let demandPercent = curveActive
-            ? clampedPercent(thermalDemandPercent ?? rawBaselinePercent)
+            ? clampedPercent(semanticDemandPercent ?? rawBaselinePercent)
             : previewPercent
         let basePercent = clampedPercent(baseCurvePercent ?? previewPercent)
 

@@ -270,7 +270,7 @@ struct SensorDashboard: View {
     }
 
     private var controllerStateLabel: String {
-        let targetPercent = clampedPercent(runtime.thermalDemandPercent ?? runtime.committedPercent)
+        let targetPercent = clampedPercent(runtime.commandedTargetPercent)
         let target = Int((targetPercent * 100).rounded())
 
         guard let observedPercent else {

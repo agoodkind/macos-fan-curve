@@ -287,7 +287,7 @@ struct FanCurveEditor: View {
         guard runtime.isFresh else { return nil }
 
         let liveTemperature =
-            runtime.thermalDemandTemperature
+            runtime.semanticDemandTemperature
             ?? runtime.rawPressureTemperature
             ?? (runtime.committedTemperature > 0 ? runtime.committedTemperature : runtime.governingTemperature)
         guard liveTemperature > 0 else { return nil }
@@ -305,10 +305,10 @@ struct FanCurveEditor: View {
             governingTemperatureC: runtime.governingTemperature,
             committedTemperatureC: runtime.committedTemperature,
             rawPressureTemperatureC: runtime.rawPressureTemperature,
-            thermalDemandTemperatureC: clampedTemperature,
+            semanticDemandTemperatureC: clampedTemperature,
             baseCurvePercent: runtime.curveActive ? runtime.baseCurvePercent : previewPercent,
-            thermalDemandPercent: runtime.thermalDemandPercent,
-            committedPercent: runtime.committedPercent,
+            semanticDemandPercent: runtime.semanticDemandPercent,
+            commandedTargetPercent: runtime.commandedTargetPercent,
             rawBaselinePercent: runtime.rawBaselinePercent,
             fans: runtime.fans,
             rpmRange: rpmRange,

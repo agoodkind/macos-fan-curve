@@ -9,7 +9,7 @@
 import Foundation
 
 struct AgentSnapshot: Codable, Sendable, Equatable {
-    static let currentSchemaVersion = 5
+    static let currentSchemaVersion = 6
 
     let schemaVersion: Int
     let timestampEpoch: Double
@@ -24,9 +24,11 @@ struct AgentSnapshot: Codable, Sendable, Equatable {
     let effectiveCurvePercent: Double
     let baseCurvePercent: Double
     let rawBaselinePercent: Double
-    let thermalDemandPercent: Double?
+    let semanticDemandPercent: Double?
     let thermalDemandSource: ThermalDemandSource
-    let thermalDemandTemperatureC: Double?
+    let semanticDemandTemperatureC: Double?
+    let commandedTargetPercent: Double
+    let commandedTargetTemperatureC: Double?
     let committedPercent: Double
     let controllerMode: AgentControllerMode
     let bandIndex: Int
@@ -48,9 +50,11 @@ struct AgentSnapshot: Codable, Sendable, Equatable {
         effectiveCurvePercent: Double,
         baseCurvePercent: Double,
         rawBaselinePercent: Double,
-        thermalDemandPercent: Double?,
+        semanticDemandPercent: Double?,
         thermalDemandSource: ThermalDemandSource,
-        thermalDemandTemperatureC: Double?,
+        semanticDemandTemperatureC: Double?,
+        commandedTargetPercent: Double,
+        commandedTargetTemperatureC: Double?,
         committedPercent: Double,
         controllerMode: AgentControllerMode,
         bandIndex: Int,
@@ -72,9 +76,11 @@ struct AgentSnapshot: Codable, Sendable, Equatable {
         self.effectiveCurvePercent = effectiveCurvePercent
         self.baseCurvePercent = baseCurvePercent
         self.rawBaselinePercent = rawBaselinePercent
-        self.thermalDemandPercent = thermalDemandPercent
+        self.semanticDemandPercent = semanticDemandPercent
         self.thermalDemandSource = thermalDemandSource
-        self.thermalDemandTemperatureC = thermalDemandTemperatureC
+        self.semanticDemandTemperatureC = semanticDemandTemperatureC
+        self.commandedTargetPercent = commandedTargetPercent
+        self.commandedTargetTemperatureC = commandedTargetTemperatureC
         self.committedPercent = committedPercent
         self.controllerMode = controllerMode
         self.bandIndex = bandIndex
