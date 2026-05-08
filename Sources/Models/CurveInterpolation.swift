@@ -41,83 +41,48 @@ enum CurveInterpolation {
         return max(0, min(1, lastPoint.fanPercent))
     }
 
-    /// Monotone cubic interpolation (Fritsch-Carlson). Smooth curves that never
-    /// overshoot between control points, which is critical for fan curves where
-    /// you never want the speed to dip below a control point's value.
+    /// Rope interpolation keeps the persisted `catmullRom` mode authoritative
+    /// while making the curve behave like a tensioned line through the visible
+    /// control points.
     static func catmullRom(at temperature: Double, points: [CurvePoint]) -> Double {
-        guard points.count >= 2 else { return linear(at: temperature, points: points) }
+        axisRope(at: temperature, points: points)
+            ?? linear(at: temperature, points: points)
+    }
+
+    private static func axisRope(at temperature: Double, points: [CurvePoint]) -> Double? {
+        guard !points.isEmpty else { return 0 }
         let sorted = points.sorted { $0.temperature < $1.temperature }
-        let pointCount = sorted.count
+        let scale = TemperatureAxisScale.fanCurveDefault
+        let range = scale.temperatureRangeC
+        guard
+            let firstPoint = sorted.first,
+            let lastPoint = sorted.last,
+            abs(firstPoint.temperature - range.lowerBound) < 0.001,
+            abs(lastPoint.temperature - range.upperBound) < 0.001
+        else { return nil }
 
-        if temperature <= sorted[0].temperature { return max(0, sorted[0].fanPercent) }
-        if temperature >= sorted[pointCount - 1].temperature { return min(1, sorted[pointCount - 1].fanPercent) }
+        if temperature <= firstPoint.temperature { return max(0, firstPoint.fanPercent) }
+        if temperature >= lastPoint.temperature { return min(1, lastPoint.fanPercent) }
 
-        // Compute slopes (Fritsch-Carlson monotone method)
-        var dx = [Double](repeating: 0, count: pointCount - 1)
-        var dy = [Double](repeating: 0, count: pointCount - 1)
-        var slopes = [Double](repeating: 0, count: pointCount - 1)
-
-        for pointIndex in 0..<(pointCount - 1) {
-            dx[pointIndex] = sorted[pointIndex + 1].temperature - sorted[pointIndex].temperature
-            dy[pointIndex] = sorted[pointIndex + 1].fanPercent - sorted[pointIndex].fanPercent
-            slopes[pointIndex] = dx[pointIndex] != 0 ? dy[pointIndex] / dx[pointIndex] : 0
-        }
-
-        // Compute tangents with monotonicity constraint
-        var tangents = [Double](repeating: 0, count: pointCount)
-        tangents[0] = slopes[0]
-        tangents[pointCount - 1] = slopes[pointCount - 2]
-
-        for pointIndex in 1..<(pointCount - 1) {
-            if slopes[pointIndex - 1] * slopes[pointIndex] <= 0 {
-                tangents[pointIndex] = 0
-            } else {
-                tangents[pointIndex] = (slopes[pointIndex - 1] + slopes[pointIndex]) / 2.0
-            }
-        }
-
-        // Fritsch-Carlson monotonicity fix
-        for pointIndex in 0..<(pointCount - 1) {
-            if slopes[pointIndex] == 0 {
-                tangents[pointIndex] = 0
-                tangents[pointIndex + 1] = 0
-            } else {
-                let alpha = tangents[pointIndex] / slopes[pointIndex]
-                let beta = tangents[pointIndex + 1] / slopes[pointIndex]
-                let sum = alpha * alpha + beta * beta
-                if sum > 9 {
-                    let tau = 3.0 / sum.squareRoot()
-                    tangents[pointIndex] = tau * alpha * slopes[pointIndex]
-                    tangents[pointIndex + 1] = tau * beta * slopes[pointIndex]
+        for pointIndex in 0..<(sorted.count - 1) {
+            let leftPoint = sorted[pointIndex]
+            let rightPoint = sorted[pointIndex + 1]
+            if temperature >= leftPoint.temperature, temperature <= rightPoint.temperature {
+                let leftFraction = scale.fraction(for: leftPoint.temperature)
+                let rightFraction = scale.fraction(for: rightPoint.temperature)
+                let currentFraction = scale.fraction(for: temperature)
+                guard rightFraction != leftFraction else {
+                    return max(0, min(1, rightPoint.fanPercent))
                 }
+                let segmentFraction = (currentFraction - leftFraction) / (rightFraction - leftFraction)
+                let percent =
+                    leftPoint.fanPercent
+                    + segmentFraction * (rightPoint.fanPercent - leftPoint.fanPercent)
+                return max(0, min(1, percent))
             }
         }
 
-        // Find segment and interpolate
-        var seg = 0
-        for pointIndex in 0..<(pointCount - 1)
-        where temperature >= sorted[pointIndex].temperature && temperature <= sorted[pointIndex + 1].temperature {
-            seg = pointIndex
-            break
-        }
-
-        let segmentWidth = dx[seg]
-        let fraction = (temperature - sorted[seg].temperature) / segmentWidth
-        let fractionSquared = fraction * fraction
-        let fractionCubed = fractionSquared * fraction
-
-        let h00 = 2 * fractionCubed - 3 * fractionSquared + 1
-        let h10 = fractionCubed - 2 * fractionSquared + fraction
-        let h01 = -2 * fractionCubed + 3 * fractionSquared
-        let h11 = fractionCubed - fractionSquared
-
-        let interpolatedPercent =
-            h00 * sorted[seg].fanPercent
-            + h10 * segmentWidth * tangents[seg]
-            + h01 * sorted[seg + 1].fanPercent
-            + h11 * segmentWidth * tangents[seg + 1]
-
-        return max(0, min(1, interpolatedPercent))
+        return max(0, min(1, lastPoint.fanPercent))
     }
 
     /// Generate path points for rendering the curve in a Canvas

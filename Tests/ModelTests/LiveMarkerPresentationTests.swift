@@ -12,6 +12,28 @@ import XCTest
 @testable import FanCurveModels
 
 final class LiveMarkerPresentationTests: XCTestCase {
+    func testDemandPercentRiseTracksSemanticTargetImmediately() {
+        let presented = LiveMarkerDemandPresentation.presentPercent(
+            currentPercent: 0.23,
+            proposedPercent: 0.50,
+            alpha: 0.10,
+            maximumStep: 0.007
+        )
+
+        expect(presented).to(beCloseTo(0.50, within: 0.001))
+    }
+
+    func testDemandPercentFallRemainsDamped() {
+        let presented = LiveMarkerDemandPresentation.presentPercent(
+            currentPercent: 0.50,
+            proposedPercent: 0.23,
+            alpha: 0.10,
+            maximumStep: 0.007
+        )
+
+        expect(presented).to(beCloseTo(0.493, within: 0.001))
+    }
+
     func testCurveDemandUsesBaseCurveAnchorAndActualFanPercent() {
         let target = LiveMarkerTargetFactory.make(
             snapshotEpoch: 1,

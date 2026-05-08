@@ -8,6 +8,22 @@
 
 import Foundation
 
+struct LiveMarkerDemandPresentation {
+    static func presentPercent(
+        currentPercent: Double,
+        proposedPercent: Double,
+        alpha: Double,
+        maximumStep: Double
+    ) -> Double {
+        guard proposedPercent < currentPercent else { return proposedPercent }
+
+        let delta = proposedPercent - currentPercent
+        let easedStep = delta * max(0, min(1, alpha))
+        let clampedStep = max(-maximumStep, min(maximumStep, easedStep))
+        return currentPercent + clampedStep
+    }
+}
+
 struct LiveMarkerValues: Sendable, Equatable {
     var fanTemperatureC: Double
     var fanPercent: Double

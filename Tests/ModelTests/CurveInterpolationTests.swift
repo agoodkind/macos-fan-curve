@@ -58,13 +58,78 @@ final class CurveInterpolationTests: XCTestCase {
 
     func testCatmullRom_AtControlPoint() {
         let result = CurveInterpolation.catmullRom(at: 55, points: testPoints)
-        expect(result).to(beCloseTo(0.3, within: 0.05))
+        expect(result).to(beCloseTo(0.3, within: 0.001))
     }
 
     func testCatmullRom_OutputClamped() {
         let result = CurveInterpolation.catmullRom(at: 50, points: testPoints)
         expect(result) >= 0.0
         expect(result) <= 1.0
+    }
+
+    func testCatmullRom_UsesAxisRopeValueBetweenControlPoints() {
+        let scale = TemperatureAxisScale.fanCurveDefault
+        let points = [
+            CurvePoint(temperature: scale.temperatureC(at: 0.0), fanPercent: 0.2),
+            CurvePoint(temperature: scale.temperatureC(at: 0.5), fanPercent: 0.6),
+            CurvePoint(temperature: scale.temperatureC(at: 1.0), fanPercent: 1.0),
+        ]
+
+        let result = CurveInterpolation.catmullRom(at: scale.temperatureC(at: 0.25), points: points)
+        expect(result).to(beCloseTo(0.4, within: 0.001))
+    }
+
+    func testCatmullRom_ClampsControlPointOutputs() {
+        let badPoints = [
+            CurvePoint(temperature: 30, fanPercent: -0.5),
+            CurvePoint(temperature: 100, fanPercent: 1.5),
+        ]
+        let low = CurveInterpolation.catmullRom(at: 30, points: badPoints)
+        let high = CurveInterpolation.catmullRom(at: 100, points: badPoints)
+        expect(low).to(beCloseTo(0.0, within: 0.001))
+        expect(high).to(beCloseTo(1.0, within: 0.001))
+    }
+
+    func testCatmullRom_DoesNotDipOrOvershootCascadedPoints() {
+        let cascadedPoints = [
+            CurvePoint(temperature: 20, fanPercent: 0.0),
+            CurvePoint(temperature: 50, fanPercent: 0.0),
+            CurvePoint(temperature: 65, fanPercent: 0.65),
+            CurvePoint(temperature: 80, fanPercent: 0.65),
+            CurvePoint(temperature: 95, fanPercent: 0.82),
+            CurvePoint(temperature: 110, fanPercent: 1.0),
+        ]
+
+        var previousPercent = 0.0
+        for temperature in stride(from: 20.0, through: 110.0, by: 2.5) {
+            let percent = CurveInterpolation.catmullRom(at: temperature, points: cascadedPoints)
+            expect(percent) >= previousPercent - 0.001
+            expect(percent) >= 0.0
+            expect(percent) <= 1.0
+            previousPercent = percent
+        }
+    }
+
+    func testCatmullRom_KeepsFlatShelvesFlat() {
+        let shelfPoints = [
+            CurvePoint(temperature: 50, fanPercent: 0.2),
+            CurvePoint(temperature: 70, fanPercent: 0.55),
+            CurvePoint(temperature: 90, fanPercent: 0.55),
+            CurvePoint(temperature: 110, fanPercent: 0.9),
+        ]
+
+        let midShelf = CurveInterpolation.catmullRom(at: 80, points: shelfPoints)
+        expect(midShelf).to(beCloseTo(0.55, within: 0.001))
+    }
+
+    func testCatmullRom_FallsBackToLinearOutsideFanTemperatureAxis() {
+        let loadAssistPoints = [
+            CurvePoint(temperature: 0, fanPercent: 0.1),
+            CurvePoint(temperature: 100, fanPercent: 0.7),
+        ]
+
+        let result = CurveInterpolation.catmullRom(at: 50, points: loadAssistPoints)
+        expect(result).to(beCloseTo(0.4, within: 0.001))
     }
 
     func testEvaluate_DispatchesCorrectly() {

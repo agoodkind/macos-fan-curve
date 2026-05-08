@@ -244,9 +244,9 @@ struct FanCurveEditor: View {
             alpha: demandPresentationTemperatureAlpha,
             maximumStep: demandPresentationMaximumTemperatureStepC
         )
-        semanticTarget.values.demandPercent = dampedMarkerTarget(
-            currentTarget: currentTarget.values.demandPercent,
-            proposedTarget: semanticTarget.values.demandPercent,
+        semanticTarget.values.demandPercent = LiveMarkerDemandPresentation.presentPercent(
+            currentPercent: currentTarget.values.demandPercent,
+            proposedPercent: semanticTarget.values.demandPercent,
             alpha: demandPresentationPercentAlpha,
             maximumStep: demandPresentationMaximumPercentStep
         )
@@ -470,21 +470,13 @@ struct FanCurveEditor: View {
         // as fan control turns off.
         drawGhostCurve(context: context, size: size, opacity: 1.0 - activePhase)
 
-        let pathPoints = CurveInterpolation.pathPoints(
-            points: model.controlPoints,
-            mode: model.interpolationMode,
-            tempRange: plotTempRange,
-            steps: 300)
-        guard !pathPoints.isEmpty else { return }
-
-        let pixelPoints = pathPoints.map { dataToPixel(temp: $0.0, percent: $0.1, in: size) }
+        let pixelPoints = model.controlPoints
+            .sorted { $0.temperature < $1.temperature }
+            .map { dataToPixel(temp: $0.temperature, percent: $0.fanPercent, in: size) }
         guard let firstPt = pixelPoints.first, let lastPt = pixelPoints.last else { return }
         let zeroY = dataToPixel(temp: 20, percent: 0, in: size).y
 
-        // Line is the smoothed polyline. Fill reuses the line path but
-        // closes back to the baseline so the gradient under the curve is
-        // bounded by the same smoothed shape.
-        let line = smoothedPath(through: pixelPoints)
+        let line = smoothedRopePath(through: pixelPoints)
         var fill = line
         fill.addLine(to: CGPoint(x: lastPt.x, y: zeroY))
         fill.addLine(to: CGPoint(x: firstPt.x, y: zeroY))
@@ -519,30 +511,86 @@ struct FanCurveEditor: View {
         }
     }
 
-    /// Builds a visually-smoothed path through a sampled polyline by
-    /// replacing straight segments with quadratic Beziers through the
-    /// midpoint of each pair. This rounds micro-corners that appear when
-    /// adjacent control points sit close in temperature with a big
-    /// percent jump. Evaluation stays authoritative; only rendering is
-    /// smoothed.
-    private func smoothedPath(through pts: [CGPoint]) -> Path {
+    /// Smooths the visible rope path while keeping every control point on the
+    /// stroke. Evaluation stays piecewise linear through the same points.
+    private func smoothedRopePath(through pts: [CGPoint]) -> Path {
         var path = Path()
         guard let first = pts.first else { return path }
         path.move(to: first)
+        guard pts.count >= 2 else { return path }
         guard pts.count >= 3 else {
             for point in pts.dropFirst() { path.addLine(to: point) }
             return path
         }
-        for pointIndex in 1..<(pts.count - 1) {
-            let mid = CGPoint(
-                x: (pts[pointIndex].x + pts[pointIndex + 1].x) / 2,
-                y: (pts[pointIndex].y + pts[pointIndex + 1].y) / 2)
-            path.addQuadCurve(to: mid, control: pts[pointIndex])
-        }
-        if let lastPoint = pts.last {
-            path.addLine(to: lastPoint)
+
+        let tangents = monotoneTangents(for: pts)
+        for pointIndex in 0..<(pts.count - 1) {
+            let startPoint = pts[pointIndex]
+            let endPoint = pts[pointIndex + 1]
+            let segmentWidth = endPoint.x - startPoint.x
+            guard abs(segmentWidth) > 0.001 else {
+                path.addLine(to: endPoint)
+                continue
+            }
+
+            let control1 = CGPoint(
+                x: startPoint.x + segmentWidth / 3,
+                y: startPoint.y + tangents[pointIndex] * segmentWidth / 3
+            )
+            let control2 = CGPoint(
+                x: endPoint.x - segmentWidth / 3,
+                y: endPoint.y - tangents[pointIndex + 1] * segmentWidth / 3
+            )
+            path.addCurve(to: endPoint, control1: control1, control2: control2)
         }
         return path
+    }
+
+    private func monotoneTangents(for pts: [CGPoint]) -> [CGFloat] {
+        guard pts.count >= 2 else { return [] }
+        var slopes = [CGFloat]()
+        slopes.reserveCapacity(pts.count - 1)
+
+        for pointIndex in 0..<(pts.count - 1) {
+            let segmentWidth = pts[pointIndex + 1].x - pts[pointIndex].x
+            if abs(segmentWidth) <= 0.001 {
+                slopes.append(0)
+            } else {
+                slopes.append((pts[pointIndex + 1].y - pts[pointIndex].y) / segmentWidth)
+            }
+        }
+
+        var tangents = [CGFloat](repeating: 0, count: pts.count)
+        tangents[0] = slopes[0]
+        tangents[pts.count - 1] = slopes[slopes.count - 1]
+
+        if pts.count > 2 {
+            for pointIndex in 1..<(pts.count - 1) {
+                if slopes[pointIndex - 1] * slopes[pointIndex] <= 0 {
+                    tangents[pointIndex] = 0
+                } else {
+                    tangents[pointIndex] = (slopes[pointIndex - 1] + slopes[pointIndex]) / 2
+                }
+            }
+        }
+
+        for pointIndex in 0..<slopes.count {
+            if slopes[pointIndex] == 0 {
+                tangents[pointIndex] = 0
+                tangents[pointIndex + 1] = 0
+            } else {
+                let alpha = tangents[pointIndex] / slopes[pointIndex]
+                let beta = tangents[pointIndex + 1] / slopes[pointIndex]
+                let sum = alpha * alpha + beta * beta
+                if sum > 9 {
+                    let tau = 3 / sqrt(sum)
+                    tangents[pointIndex] = tau * alpha * slopes[pointIndex]
+                    tangents[pointIndex + 1] = tau * beta * slopes[pointIndex]
+                }
+            }
+        }
+
+        return tangents
     }
 
     /// Renders the Apple Silent preset as a dashed accent-colored guide
@@ -551,15 +599,10 @@ struct FanCurveEditor: View {
     private func drawGhostCurve(context: GraphicsContext, size: CGSize, opacity: Double) {
         guard opacity > 0.01 else { return }
         let ghostPoints = CurvePresets.appleSilent.curvePoints()
-        let pathPoints = CurveInterpolation.pathPoints(
-            points: ghostPoints,
-            mode: .catmullRom,
-            tempRange: plotTempRange,
-            steps: 300)
-        guard !pathPoints.isEmpty else { return }
-
-        let pixelPoints = pathPoints.map { dataToPixel(temp: $0.0, percent: $0.1, in: size) }
-        let line = smoothedPath(through: pixelPoints)
+        let pixelPoints = ghostPoints
+            .sorted { $0.temperature < $1.temperature }
+            .map { dataToPixel(temp: $0.temperature, percent: $0.fanPercent, in: size) }
+        let line = smoothedRopePath(through: pixelPoints)
         context.stroke(
             line,
             with: .color(curveColor.opacity(0.75 * opacity)),
