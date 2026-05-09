@@ -2,11 +2,25 @@ name: Release
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - 'Project.swift'
+      - 'Workspace.swift'
+      - 'Tuist.swift'
+      - 'Tuist/**'
+      - 'Config/**'
+      - 'Scripts/**'
+      - 'Templates/**'
+      - 'Makefile'
+      - '.tool-versions'
+      - '.github/workflows/release.yml'
+  workflow_dispatch: {}
 
 concurrency:
   group: release
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -24,13 +38,39 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
       - name: Install mise
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           curl https://mise.run | sh
           echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
 
+      - name: Cache Tuist artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.tuist
+            Tuist/.build
+          key: ${{ runner.os }}-tuist-${{ hashFiles('Tuist/Package.swift', 'Tuist/Package.resolved', '.tool-versions') }}
+          restore-keys: |
+            ${{ runner.os }}-tuist-
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: ${{ runner.os }}-derived-release-${{ hashFiles('Sources/**', 'Project.swift', 'Workspace.swift', 'Tuist/Package.resolved', 'Config/**') }}
+          restore-keys: |
+            ${{ runner.os }}-derived-release-
+
       - name: Install Tuist dependencies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mise install
           tuist install
@@ -51,15 +91,6 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "build_version=$BUILD_VERSION" >> "$GITHUB_OUTPUT"
           echo "marketing_version=$SHORT_VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Push tag
-        env:
-          TAG: ${{ steps.meta.outputs.tag }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "$TAG"
-          git push origin "$TAG"
 
       - name: Set up Node for Wrangler
         uses: actions/setup-node@v6
@@ -82,8 +113,11 @@ jobs:
 
           if [ -n "$BUILD_CERTIFICATE_BASE64" ]; then
             printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
-          else
+          elif [ -n "$BUILD_CERTIFICATE_BASE64_PART1$BUILD_CERTIFICATE_BASE64_PART2" ]; then
             printf '%s%s' "$BUILD_CERTIFICATE_BASE64_PART1" "$BUILD_CERTIFICATE_BASE64_PART2" | base64 --decode > "$CERT_PATH"
+          else
+            echo "No signing cert secret was provided (APPLE_DEVELOPER_ID_P12_BASE64 or PART1+PART2)" >&2
+            exit 1
           fi
 
           ls -l "$CERT_PATH"
@@ -136,6 +170,7 @@ jobs:
             SPARKLE_PUBLIC_ED_KEY="${{ secrets.SPARKLE_PUBLIC_ED_KEY }}"
 
       - name: Notarize DMG
+        id: notarize
         env:
           APPLE_NOTARY_KEY_ID: ${{ env.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
@@ -144,6 +179,7 @@ jobs:
         run: |
           KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
           NOTARY_OUTPUT="$RUNNER_TEMP/notarytool-submit.json"
+          NOTARY_LOG="$RUNNER_TEMP/notarytool.log"
           printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$KEY_PATH"
           set +e
           xcrun notarytool submit "Products/FanCurve-${BUILD_VERSION}.dmg" \
@@ -161,29 +197,24 @@ jobs:
             xcrun notarytool log "$SUBMISSION_ID" \
               --key "$KEY_PATH" \
               --key-id "$APPLE_NOTARY_KEY_ID" \
-              --issuer "$APPLE_NOTARY_ISSUER_ID" || true
+              --issuer "$APPLE_NOTARY_ISSUER_ID" \
+              "$NOTARY_LOG" || true
+            cat "$NOTARY_LOG" || true
           fi
           if [ "$NOTARY_STATUS" -ne 0 ] || [ "$SUBMISSION_STATUS" != "Accepted" ]; then
             exit 1
           fi
           xcrun stapler staple "Products/FanCurve-${BUILD_VERSION}.dmg"
 
-      - name: Create GitHub release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.meta.outputs.tag }}
-        run: |
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --notes "Automated release for $GITHUB_SHA"
-
-      - name: Upload release assets
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.meta.outputs.tag }}
-          BUILD_VERSION: ${{ steps.meta.outputs.build_version }}
-        run: |
-          gh release upload "$TAG" "Products/FanCurve-${BUILD_VERSION}.dmg" --clobber
+      - name: Upload notarytool diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notarytool-diagnostics
+          path: |
+            ${{ runner.temp }}/notarytool-submit.json
+            ${{ runner.temp }}/notarytool.log
+          if-no-files-found: ignore
 
       - name: Generate Sparkle appcast
         env:
@@ -203,14 +234,32 @@ jobs:
             RELEASE_TAG="$RELEASE_TAG" \
             GITHUB_RELEASE_BASE_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/"
 
-      - name: Deploy appcast worker
+      - name: Push tag
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TAG: ${{ steps.meta.outputs.tag }}
         run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "Cloudflare credentials not configured; skipping worker deploy."
-            exit 0
-          fi
-          cp build/sparkle-updates/appcast.xml deploy/appcast-worker/public/appcast.xml
-          npx wrangler deploy --config deploy/appcast-worker/wrangler.toml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes "Automated release for $GITHUB_SHA"
+
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          BUILD_VERSION: ${{ steps.meta.outputs.build_version }}
+        run: |
+          gh release upload "$TAG" \
+            "Products/FanCurve-${BUILD_VERSION}.dmg" \
+            "build/sparkle-updates/appcast.xml" \
+            --clobber
