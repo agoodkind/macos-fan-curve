@@ -84,9 +84,9 @@ Bug reports and pull requests are welcome. Run `make verify` before opening a PR
 
 ### Sharing thermal profiles
 
-FanCurve can learn a curve from your current system by observing how the firmware responds to load across the temperature range. If you run this on your machine, the result is a profile that reflects the real thermal characteristics of your specific hardware. Submitting that profile is a useful contribution because Apple Silicon variants behave differently enough that a curve tuned on an M2 Pro may not be a good starting point on an M4 Max.
+FanCurve can learn a curve from your current system by observing how the firmware responds to load across the temperature range. After the sampling run completes, clicking "Share Results" opens a pre-filled GitHub issue with your machine model, macOS version, temperature range, and the full curve data. You do not need to copy anything manually.
 
-To contribute a profile, open an issue with your chip model, the learned curve data, and any notes on the workload you used to generate it. The goal is to build a library of community-sourced presets so new installs start from something sensible for the hardware they are running on.
+Submissions are useful because Apple Silicon variants behave differently enough that a curve tuned on one chip is often a poor starting point on another. The goal is a library of community-sourced presets so new installs start from something sensible for the hardware they are running on.
 
 ## License
 
