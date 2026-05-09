@@ -1,6 +1,6 @@
 -include Config/local.xcconfig
 
-TUIST := $(shell command -v tuist 2>/dev/null || printf '%s' "mise x tuist@4.186.2 -- tuist")
+TUIST := $(shell command -v tuist 2>/dev/null || printf '%s' "mise x tuist@4.192.3 -- tuist")
 
 CONFIGURATION = Release
 BUILD_DIR = build
