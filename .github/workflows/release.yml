@@ -157,7 +157,7 @@ jobs:
             SPARKLE_FEED_URL="https://goodkind.io/fancurve/appcast.xml" \
             SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-dmg-${{ steps.meta.outputs.tag }}
           path: Products/FanCurve-${{ steps.meta.outputs.build_version }}.dmg
@@ -256,7 +256,7 @@ jobs:
             RELEASE_TAG="$RELEASE_TAG" \
             GITHUB_RELEASE_BASE_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: notary-diagnostics-${{ needs.build.outputs.tag }}
@@ -265,13 +265,13 @@ jobs:
             ${{ runner.temp }}/notarytool.log
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-dmg-stapled-${{ needs.build.outputs.tag }}
           path: Products/FanCurve-${{ needs.build.outputs.build_version }}.dmg
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-appcast-${{ needs.build.outputs.tag }}
           path: build/sparkle-updates/appcast.xml
