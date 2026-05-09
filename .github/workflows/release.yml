@@ -236,26 +236,6 @@ jobs:
 
           xcrun stapler staple "Products/FanCurve-${BUILD_VERSION}.dmg"
 
-      - name: Generate Sparkle appcast
-        env:
-          RELEASE_TAG: ${{ needs.build.outputs.tag }}
-          BUILD_VERSION: ${{ needs.build.outputs.build_version }}
-          MARKETING_VERSION: ${{ needs.build.outputs.marketing_version }}
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          key_path="$RUNNER_TEMP/sparkle_private_key"
-          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key_path"
-          export SPARKLE_PRIVATE_KEY_FILE="$key_path"
-
-          make prepare-sparkle-updates \
-            MARKETING_VERSION="$MARKETING_VERSION" \
-            CURRENT_PROJECT_VERSION="$BUILD_VERSION" \
-            RELEASE_TAG="$RELEASE_TAG" \
-            GITHUB_RELEASE_BASE_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/"
-
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -269,12 +249,6 @@ jobs:
         with:
           name: release-dmg-stapled-${{ needs.build.outputs.tag }}
           path: Products/FanCurve-${{ needs.build.outputs.build_version }}.dmg
-          if-no-files-found: error
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: release-appcast-${{ needs.build.outputs.tag }}
-          path: build/sparkle-updates/appcast.xml
           if-no-files-found: error
 
   publish:
@@ -295,11 +269,6 @@ jobs:
           name: release-dmg-stapled-${{ needs.build.outputs.tag }}
           path: release-assets
 
-      - uses: actions/download-artifact@v8
-        with:
-          name: release-appcast-${{ needs.build.outputs.tag }}
-          path: release-assets
-
       - name: Push release tag
         shell: bash
         run: |
@@ -318,7 +287,6 @@ jobs:
         run: |
           gh release create "$TAG" \
             "release-assets/FanCurve-${BUILD_VERSION}.dmg" \
-            "release-assets/appcast.xml" \
             --target "$GITHUB_SHA" \
             --title "$TAG" \
             --notes "Automated release for $GITHUB_SHA"

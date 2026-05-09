@@ -11,9 +11,12 @@ on:
         required: true
         type: string
 
+env:
+  XCODE_VERSION: "16.4"
+
 jobs:
   deploy-appcast:
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     permissions:
       contents: read
     env:
@@ -21,19 +24,61 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            deploy/appcast-worker
 
-      - name: Download appcast asset
+      - uses: ./.github/actions/setup-build-env
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+          github-token: ${{ github.token }}
+
+      - name: Install Tuist dependencies
+        run: make install-dependencies
+
+      - name: Download release DMG
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          mkdir -p release-assets
-          gh release download "$RELEASE_TAG" --pattern appcast.xml --dir release-assets
+          set -euo pipefail
+
+          mkdir -p Products
+          gh release download "$RELEASE_TAG" \
+            --pattern "FanCurve-*.dmg" \
+            --dir Products \
+            --clobber
+
+      - name: Generate Sparkle appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          dmg_path="$(find Products -maxdepth 1 -name 'FanCurve-*.dmg' -print | sort | head -n 1)"
+          if [[ -z "$dmg_path" ]]; then
+              echo "No FanCurve DMG was downloaded for ${RELEASE_TAG}" >&2
+              exit 1
+          fi
+
+          dmg_name="$(basename "$dmg_path")"
+          build_version="${dmg_name#FanCurve-}"
+          build_version="${build_version%.dmg}"
+          key_path="$RUNNER_TEMP/sparkle_private_key"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key_path"
+          export SPARKLE_PRIVATE_KEY_FILE="$key_path"
+
+          make prepare-sparkle-updates \
+            CURRENT_PROJECT_VERSION="$build_version" \
+            RELEASE_TAG="$RELEASE_TAG" \
+            GITHUB_RELEASE_BASE_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: appcast
+          path: build/sparkle-updates/appcast.xml
+          if-no-files-found: error
 
       - name: Stage appcast asset
-        run: cp release-assets/appcast.xml deploy/appcast-worker/public/appcast.xml
+        run: cp build/sparkle-updates/appcast.xml deploy/appcast-worker/public/appcast.xml
 
       - uses: actions/setup-node@v6
         with:
