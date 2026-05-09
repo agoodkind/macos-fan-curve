@@ -15,7 +15,7 @@ final class TemperatureAxisScaleTests: XCTestCase {
     private let scale = TemperatureAxisScale.fanCurveDefault
 
     func testDefaultControlPointTemperaturesCompressLowRangeAndDensifyHotRange() {
-        expect(self.scale.controlPointTemperaturesC) == [35, 65, 78, 88, 97, 105, 112, 120]
+        expect(self.scale.controlPointTemperaturesC) == [35, 78, 84, 90, 96, 101, 106, 110]
 
         let controlPointSpans = zip(
             self.scale.controlPointTemperaturesC,
@@ -23,13 +23,14 @@ final class TemperatureAxisScaleTests: XCTestCase {
         )
         .map { leftTemperature, rightTemperature in rightTemperature - leftTemperature }
 
-        expect(controlPointSpans.first) == 30
-        expect(controlPointSpans.dropFirst().max()) == 13
-        expect(controlPointSpans.last) == 8
+        expect(controlPointSpans.first) == 43
+        expect(controlPointSpans.dropFirst().max()) == 6
+        expect(controlPointSpans.last) == 4
+        expect(Array(controlPointSpans.dropFirst())) == [6, 6, 6, 5, 5, 4]
     }
 
     func testDefaultScaleRoundTripsRepresentativeTemperatures() {
-        for temperature in [35.0, 60, 65, 75, 80, 90, 100, 110, 120] {
+        for temperature in [35.0, 50, 65, 70, 78, 90, 100, 106, 110] {
             let fraction = self.scale.fraction(for: temperature)
             let roundTrippedTemperature = self.scale.temperatureC(at: fraction)
             expect(roundTrippedTemperature).to(beCloseTo(temperature, within: 0.05))
@@ -53,10 +54,10 @@ final class TemperatureAxisScaleTests: XCTestCase {
     }
 
     func testDefaultTicksIncludeRegularMajorAndMinorCandidates() {
-        expect(self.scale.majorTickTemperaturesC) == [35, 40, 50, 60, 70, 80, 90, 100, 110, 120]
+        expect(self.scale.majorTickTemperaturesC) == [35, 40, 50, 60, 70, 80, 90, 100, 110]
 
         expect(self.scale.majorTickTemperaturesC).to(contain(40))
-        expect(self.scale.minorTickTemperaturesC).to(contain(117.5))
+        expect(self.scale.minorTickTemperaturesC).to(contain(107.5))
         expect(self.scale.minorTickTemperaturesC).to(contain(102.5))
         expect(self.scale.minorTickTemperaturesC).to(contain(75))
     }

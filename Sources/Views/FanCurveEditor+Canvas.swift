@@ -40,7 +40,7 @@ extension FanCurveEditor {
         }
 
         for temp in temperatureAxisScale.minorTickTemperaturesC
-        where !temperatureAxisScale.controlPointTemperaturesC.contains(temp) {
+        where !temperatureAxisScale.majorTickTemperaturesC.contains(temp) {
             let x = dataToPixel(temp: temp, percent: 0, in: size).x
             var line = Path()
             line.move(to: CGPoint(x: x, y: plotTop))
@@ -48,7 +48,7 @@ extension FanCurveEditor {
             context.stroke(line, with: .color(minorGridColor), lineWidth: 0.5)
         }
 
-        for temp in temperatureAxisScale.controlPointTemperaturesC {
+        for temp in temperatureAxisScale.majorTickTemperaturesC {
             let x = dataToPixel(temp: temp, percent: 0, in: size).x
             var line = Path()
             line.move(to: CGPoint(x: x, y: plotTop))

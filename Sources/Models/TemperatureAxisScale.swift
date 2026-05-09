@@ -10,7 +10,7 @@ import Foundation
 
 struct TemperatureAxisScale: Sendable {
     static let fanCurveDefault = TemperatureAxisScale(
-        controlPointTemperaturesC: [35, 65, 78, 88, 97, 105, 112, 120],
+        controlPointTemperaturesC: [35, 78, 84, 90, 96, 101, 106, 110],
         minorTickStepC: 2.5,
         majorTickStepC: 10
     )
