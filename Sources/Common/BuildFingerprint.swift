@@ -6,8 +6,8 @@
 //  Copyright © 2026
 //
 
-import CryptoKit
 import AppLog
+import CryptoKit
 import Foundation
 
 private let buildFingerprintLog = AppLog.make(category: "BuildFingerprint")

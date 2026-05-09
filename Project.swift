@@ -25,16 +25,20 @@ let generatedConfigScript = TargetScript.pre(
     ]
 )
 
+let sparkleCurrentPath =
+    "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Frameworks/Sparkle.framework/Versions/Current"
+let sparkleXPCPath = "\(sparkleCurrentPath)/XPCServices"
+
 // Keep bundle assembly declarative in Tuist and reserve scripting for Sparkle's
 // documented inside-out signing requirements.
 let signSparkleScript = TargetScript.post(
     path: "Scripts/SignSparkle.swift",
     name: "Sign Sparkle nested code",
     inputPaths: [
-        "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Frameworks/Sparkle.framework/Versions/Current/Updater.app",
-        "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Frameworks/Sparkle.framework/Versions/Current/XPCServices/Downloader.xpc",
-        "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Frameworks/Sparkle.framework/Versions/Current/XPCServices/Installer.xpc",
-        "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Frameworks/Sparkle.framework/Versions/Current/Autoupdate",
+        "\(sparkleCurrentPath)/Updater.app",
+        "\(sparkleXPCPath)/Downloader.xpc",
+        "\(sparkleXPCPath)/Installer.xpc",
+        "\(sparkleCurrentPath)/Autoupdate",
         "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Frameworks/Sparkle.framework",
     ]
 )
@@ -139,14 +143,14 @@ let project = Project(
                 .executables(
                     name: "Embed Agent",
                     files: [
-                        .buildProduct(name: agentExecutableName, codeSignOnCopy: true),
+                        .buildProduct(name: agentExecutableName, codeSignOnCopy: true)
                     ]
                 ),
                 .wrapper(
                     name: "Embed Launch Agent Plist",
                     subpath: "Contents/Library/LaunchAgents",
                     files: [
-                        .glob(pattern: "Derived/Generated/FanCurve/agent-launchd.plist"),
+                        .glob(pattern: "Derived/Generated/FanCurve/agent-launchd.plist")
                     ]
                 ),
             ],

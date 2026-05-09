@@ -106,7 +106,8 @@ struct AcousticRampGovernor: Sendable {
 
     private func selectedRiseRateRPMPerSecond(input: Input) -> Float {
         let thermalDebt = max(0, min(1, input.thermalDebt))
-        let thermalDebtRate = policy.quietRiseRPMPerSecond
+        let thermalDebtRate =
+            policy.quietRiseRPMPerSecond
             + Float(thermalDebt) * (policy.hotRiseRPMPerSecond - policy.quietRiseRPMPerSecond)
         let isTemperatureRising =
             input.fastTrendCPerTick >= policy.risingFastTrendCPerTick

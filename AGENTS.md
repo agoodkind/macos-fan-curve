@@ -43,7 +43,8 @@ These instructions are strict project rules for all automated coding agents work
 - Prefer higher-order smoothing for live markers when changing motion behavior: `Thermal Demand` should be smoother than raw demand, and `Fan Now` should be smoother still, while both remain bounded near truth.
 - Preserve high-FPS SwiftUI interpolation where it improves perceived smoothness. Do not replace it with low-rate polling-only motion unless the replacement is proven smoother in foreground and background.
 - The temperature axis, grid lines, tick labels, control points, curve drawing, hit testing, and fan command application must share the same `TemperatureAxisScale` mapping. Do not create split-brain linear or ad hoc temperature placement.
-- The temperature axis should compress tails and expand common operating temperatures around the chosen center. Minor ticks/grid lines should reveal the non-linear scale density on both compressed sides.
+- The curve control-point dots are fixed, evenly spaced columns on the X axis. Change the temperatures assigned to those columns through `TemperatureAxisScale`; do not move the columns themselves or introduce ad hoc per-view dot spacing.
+- The default temperature axis should compress the low-temperature range where fans usually stay at 0% and assign progressively tighter temperature spans to the hot range where fan control needs more precision.
 
 ## Tuist, Build, And Verification
 

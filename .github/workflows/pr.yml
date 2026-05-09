@@ -1,0 +1,42 @@
+name: PR
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches-ignore:
+      - main
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  XCODE_VERSION: "16.4"
+
+jobs:
+  verify:
+    runs-on: macos-15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-build-env
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+          github-token: ${{ github.token }}
+
+      - name: Install Tuist dependencies
+        run: make install-dependencies
+
+      - name: Verify project
+        run: make verify
+
+      - name: Lint project
+        run: make lint
+
+      - name: Build project
+        run: make build

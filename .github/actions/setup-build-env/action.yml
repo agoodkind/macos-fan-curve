@@ -1,0 +1,55 @@
+name: Setup Build Env
+description: Set up Xcode, mise, and shared macOS build caches
+
+inputs:
+  xcode-version:
+    description: Xcode version to select on the runner
+    required: true
+  github-token:
+    description: GitHub token used by mise for authenticated GitHub API requests
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: ${{ inputs.xcode-version }}
+
+    - name: Restore Tuist and SwiftPM caches
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/tuist
+          ~/.local/share/mise/downloads
+          ~/.local/share/mise/installs
+          ~/.local/share/mise/plugins
+          Tuist/.build
+        key: ${{ runner.os }}-tuist-${{ hashFiles('Tuist/Package.swift', 'Tuist/Package.resolved', '.tool-versions') }}
+        restore-keys: |
+          ${{ runner.os }}-tuist-
+
+    - name: Restore build cache
+      uses: actions/cache@v4
+      with:
+        path: build
+        key: ${{ runner.os }}-build-${{ hashFiles('Sources/**', 'Tests/**', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/Package.swift', 'Tuist/Package.resolved', 'Config/**', 'Scripts/**', 'Templates/**', 'Makefile') }}
+        restore-keys: |
+          ${{ runner.os }}-build-
+
+    - name: Install mise
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+
+        curl https://mise.run | sh
+        {
+            printf '%s\n' "$HOME/.local/share/mise/bin"
+            printf '%s\n' "$HOME/.local/share/mise/shims"
+        } >> "$GITHUB_PATH"
+
+        export PATH="$HOME/.local/share/mise/bin:$HOME/.local/share/mise/shims:$PATH"
+        mise install
+        tuist version

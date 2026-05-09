@@ -8,8 +8,56 @@
 
 import Foundation
 
-struct LiveMarkerDemandPresentation {
-    static func presentPercent(
+enum LiveMarkerPresentation {
+    struct Values: Sendable, Equatable {
+        var fanTemperatureC: Double
+        var fanPercent: Double
+        var demandTemperatureC: Double
+        var demandPercent: Double
+        var demandBasePercent: Double
+
+        static let zero = Values(
+            fanTemperatureC: 0,
+            fanPercent: 0,
+            demandTemperatureC: 0,
+            demandPercent: 0,
+            demandBasePercent: 0
+        )
+    }
+
+    struct Target: Sendable, Equatable {
+        var values: Values
+        var generation: Generation
+
+        struct Generation: Sendable, Equatable {
+            var snapshotEpoch: Double
+            var curveActive: Bool
+            var boostEnabled: Bool
+            var fanSignature: String
+            var rpmRangeMin: Float
+            var rpmRangeMax: Float
+        }
+    }
+
+    struct TargetInput: Sendable {
+        var snapshotEpoch: Double
+        var curveActive: Bool
+        var boostEnabled: Bool
+        var governingTemperatureC: Double
+        var committedTemperatureC: Double
+        var rawPressureTemperatureC: Double?
+        var semanticDemandTemperatureC: Double?
+        var baseCurvePercent: Double?
+        var semanticDemandPercent: Double?
+        var commandedTargetPercent: Double
+        var rawBaselinePercent: Double
+        var fans: [AgentFanSnapshot]
+        var rpmRange: (min: Float, max: Float)
+        var previewPercent: Double
+        var fanTemperatureC: Double?
+    }
+
+    static func presentDemandPercent(
         currentPercent: Double,
         proposedPercent: Double,
         alpha: Double,
@@ -22,83 +70,42 @@ struct LiveMarkerDemandPresentation {
         let clampedStep = max(-maximumStep, min(maximumStep, easedStep))
         return currentPercent + clampedStep
     }
-}
 
-struct LiveMarkerValues: Sendable, Equatable {
-    var fanTemperatureC: Double
-    var fanPercent: Double
-    var demandTemperatureC: Double
-    var demandPercent: Double
-    var demandBasePercent: Double
-
-    static let zero = LiveMarkerValues(
-        fanTemperatureC: 0,
-        fanPercent: 0,
-        demandTemperatureC: 0,
-        demandPercent: 0,
-        demandBasePercent: 0)
-}
-
-struct LiveMarkerTarget: Sendable, Equatable {
-    var values: LiveMarkerValues
-    var generation: Generation
-
-    struct Generation: Sendable, Equatable {
-        var snapshotEpoch: Double
-        var curveActive: Bool
-        var boostEnabled: Bool
-        var fanSignature: String
-        var rpmRangeMin: Float
-        var rpmRangeMax: Float
-    }
-}
-
-struct LiveMarkerTargetFactory {
-    static func make(
-        snapshotEpoch: Double,
-        curveActive: Bool,
-        boostEnabled: Bool,
-        fanTemperatureC: Double? = nil,
-        governingTemperatureC: Double,
-        committedTemperatureC: Double,
-        rawPressureTemperatureC: Double?,
-        semanticDemandTemperatureC: Double?,
-        baseCurvePercent: Double?,
-        semanticDemandPercent: Double?,
-        commandedTargetPercent: Double,
-        rawBaselinePercent: Double,
-        fans: [AgentFanSnapshot],
-        rpmRange: (min: Float, max: Float),
-        previewPercent: Double
-    ) -> LiveMarkerTarget? {
+    static func makeTarget(from input: TargetInput) -> Target? {
         let liveTemperature =
-            semanticDemandTemperatureC
-            ?? rawPressureTemperatureC
-            ?? (committedTemperatureC > 0 ? committedTemperatureC : governingTemperatureC)
+            input.semanticDemandTemperatureC
+            ?? input.rawPressureTemperatureC
+            ?? (input.committedTemperatureC > 0
+                ? input.committedTemperatureC : input.governingTemperatureC)
         guard liveTemperature > 0 else { return nil }
 
-        let fanPercent = actualFanPercent(fans: fans, rpmRange: rpmRange)
-            ?? (curveActive ? commandedTargetPercent : previewPercent)
-        let fanTemperature = fanTemperatureC ?? liveTemperature
-        let demandPercent = curveActive
-            ? clampedPercent(semanticDemandPercent ?? rawBaselinePercent)
-            : previewPercent
-        let basePercent = clampedPercent(baseCurvePercent ?? previewPercent)
+        let fanPercent =
+            actualFanPercent(fans: input.fans, rpmRange: input.rpmRange)
+            ?? (input.curveActive ? input.commandedTargetPercent : input.previewPercent)
+        let fanTemperature = input.fanTemperatureC ?? liveTemperature
+        let demandPercent =
+            input.curveActive
+            ? clampedPercent(input.semanticDemandPercent ?? input.rawBaselinePercent)
+            : input.previewPercent
+        let basePercent = clampedPercent(input.baseCurvePercent ?? input.previewPercent)
 
-        return LiveMarkerTarget(
-            values: LiveMarkerValues(
+        return Target(
+            values: Values(
                 fanTemperatureC: fanTemperature,
                 fanPercent: clampedPercent(fanPercent),
                 demandTemperatureC: liveTemperature,
                 demandPercent: demandPercent,
-                demandBasePercent: basePercent),
-            generation: LiveMarkerTarget.Generation(
-                snapshotEpoch: snapshotEpoch,
-                curveActive: curveActive,
-                boostEnabled: boostEnabled,
-                fanSignature: fanSignature(fans),
-                rpmRangeMin: rpmRange.min,
-                rpmRangeMax: rpmRange.max))
+                demandBasePercent: basePercent
+            ),
+            generation: Target.Generation(
+                snapshotEpoch: input.snapshotEpoch,
+                curveActive: input.curveActive,
+                boostEnabled: input.boostEnabled,
+                fanSignature: fanSignature(input.fans),
+                rpmRangeMin: input.rpmRange.min,
+                rpmRangeMax: input.rpmRange.max
+            )
+        )
     }
 
     private static func actualFanPercent(

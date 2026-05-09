@@ -14,19 +14,22 @@ import XCTest
 final class TemperatureAxisScaleTests: XCTestCase {
     private let scale = TemperatureAxisScale.fanCurveDefault
 
-    func testDefaultScaleExpandsTowardReversalCenterAndCompressesTails() {
-        let coldTailGap = self.scale.fraction(for: 30) - self.scale.fraction(for: 20)
-        let nearCenterLeftGap = self.scale.fraction(for: 80) - self.scale.fraction(for: 70)
-        let nearCenterRightGap = self.scale.fraction(for: 90) - self.scale.fraction(for: 80)
-        let hotTailGap = self.scale.fraction(for: 110) - self.scale.fraction(for: 100)
+    func testDefaultControlPointTemperaturesCompressLowRangeAndDensifyHotRange() {
+        expect(self.scale.controlPointTemperaturesC) == [35, 65, 78, 88, 97, 105, 112, 120]
 
-        expect(nearCenterLeftGap).to(beGreaterThan(coldTailGap))
-        expect(nearCenterRightGap).to(beGreaterThan(hotTailGap))
-        expect(self.scale.fraction(for: 80)).to(beCloseTo(2.0 / 3.0, within: 0.001))
+        let controlPointSpans = zip(
+            self.scale.controlPointTemperaturesC,
+            self.scale.controlPointTemperaturesC.dropFirst()
+        )
+        .map { leftTemperature, rightTemperature in rightTemperature - leftTemperature }
+
+        expect(controlPointSpans.first) == 30
+        expect(controlPointSpans.dropFirst().max()) == 13
+        expect(controlPointSpans.last) == 8
     }
 
     func testDefaultScaleRoundTripsRepresentativeTemperatures() {
-        for temperature in [20.0, 60, 70, 75, 80, 90, 100, 110] {
+        for temperature in [35.0, 60, 65, 75, 80, 90, 100, 110, 120] {
             let fraction = self.scale.fraction(for: temperature)
             let roundTrippedTemperature = self.scale.temperatureC(at: fraction)
             expect(roundTrippedTemperature).to(beCloseTo(temperature, within: 0.05))
@@ -34,15 +37,15 @@ final class TemperatureAxisScaleTests: XCTestCase {
     }
 
     func testCurveColumnsUseSharedAxisScale() {
-        expect(CurveColumns.tempRange.lowerBound).to(equal(self.scale.temperatureRangeC.lowerBound))
-        expect(CurveColumns.tempRange.upperBound).to(equal(self.scale.temperatureRangeC.upperBound))
-        expect(CurveColumns.temperatures()).to(equal(self.scale.controlPointTemperaturesC))
+        expect(CurveColumns.tempRange.lowerBound) == self.scale.temperatureRangeC.lowerBound
+        expect(CurveColumns.tempRange.upperBound) == self.scale.temperatureRangeC.upperBound
+        expect(CurveColumns.temperatures()) == self.scale.controlPointTemperaturesC
     }
 
     func testDefaultControlPointsAreEvenlySpacedOnAxis() {
         let controlPointFractions = self.scale.controlPointTemperaturesC.map { self.scale.fraction(for: $0) }
 
-        expect(controlPointFractions.count).to(equal(8))
+        expect(controlPointFractions.count) == 8
         for (index, fraction) in controlPointFractions.enumerated() {
             let expectedFraction = Double(index) / Double(controlPointFractions.count - 1)
             expect(fraction).to(beCloseTo(expectedFraction, within: 0.001))
@@ -50,11 +53,11 @@ final class TemperatureAxisScaleTests: XCTestCase {
     }
 
     func testDefaultTicksIncludeRegularMajorAndMinorCandidates() {
-        expect(self.scale.majorTickTemperaturesC).to(equal([20, 30, 40, 50, 60, 70, 80, 90, 100, 110]))
+        expect(self.scale.majorTickTemperaturesC) == [35, 40, 50, 60, 70, 80, 90, 100, 110, 120]
 
         expect(self.scale.majorTickTemperaturesC).to(contain(40))
+        expect(self.scale.minorTickTemperaturesC).to(contain(117.5))
         expect(self.scale.minorTickTemperaturesC).to(contain(102.5))
         expect(self.scale.minorTickTemperaturesC).to(contain(75))
-        expect(self.scale.minorTickTemperaturesC).to(contain(107.5))
     }
 }

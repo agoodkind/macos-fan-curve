@@ -9,7 +9,7 @@
 import Foundation
 
 enum ThermalDemandSource: String, Codable, Sendable, Equatable {
-    case curve
     case assist
     case boost
+    case curve
 }

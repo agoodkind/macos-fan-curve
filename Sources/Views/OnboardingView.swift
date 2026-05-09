@@ -135,8 +135,8 @@ struct OnboardingView: View {
             )
         case .agentMissing:
             return L10n.tr(
-                "The background agent applies your curve even when FanCurve is closed. "
-                    + "It starts automatically at login. Click to install."
+                "Install the background agent so FanCurve can apply your curve after the app closes "
+                    + "and start again at login."
             )
         case .agentAwaitingApproval:
             return L10n.tr(

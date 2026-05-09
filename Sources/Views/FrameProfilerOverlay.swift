@@ -30,7 +30,9 @@
         private var timelineBody: some View {
             switch renderMode {
             case .interactive:
-                TimelineView(.animation(minimumInterval: 1.0 / Double(renderMode.preferredFramesPerSecond))) { context in
+                TimelineView(
+                    .animation(minimumInterval: 1.0 / Double(renderMode.preferredFramesPerSecond))
+                ) { context in
                     labelView(date: context.date)
                 }
             case .backgroundVisible, .occluded:
@@ -71,14 +73,14 @@
             }
 
             framesInWindow += 1
-            guard let windowStartDate else { return }
+            guard let sampleWindowStartDate = windowStartDate else { return }
 
-            let elapsed = date.timeIntervalSince(windowStartDate)
+            let elapsed = date.timeIntervalSince(sampleWindowStartDate)
             guard elapsed >= 1 else { return }
 
             fps = Double(framesInWindow) / elapsed
             framesInWindow = 0
-            self.windowStartDate = date
+            windowStartDate = date
         }
 
         private func resetSamples() {

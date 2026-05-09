@@ -34,7 +34,8 @@ struct AdvancedSettingsView: View {
             get: { overdrive },
             set: { newValue in
                 if newValue { confirmOverdrive = true } else { overdrive = false }
-            })
+            }
+        )
     }
 
     private var underdriveBinding: Binding<Bool> {
@@ -42,90 +43,16 @@ struct AdvancedSettingsView: View {
             get: { underdrive },
             set: { newValue in
                 if newValue { confirmUnderdrive = true } else { underdrive = false }
-            })
+            }
+        )
     }
 
     var body: some View {
         ScrollView {
             Form {
-                Section {
-                    LoadAssistModuleView(kind: .cpu)
-                    LoadAssistModuleView(kind: .gpu)
-                } header: {
-                    Text("Load Assist")
-                } footer: {
-                    Text(
-                        "Each assist curve maps load percent to a minimum fan floor. "
-                            + "The agent evaluates the temperature curve, CPU assist, and GPU assist, "
-                            + "then applies whichever result is highest."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
-                Section {
-                    prioritySliderRow(
-                        title: "Normal curve",
-                        value: $curveNormalPriority,
-                        help:
-                            "Priority used for normal curve writes. Higher values preempt lower-priority fan clients."
-                    )
-                    prioritySliderRow(
-                        title: "When boost is on",
-                        value: $userBoostPriority,
-                        help:
-                            "Priority used while Boost is active. "
-                            + "Raise it above competing fan apps if Boost should win."
-                    )
-                } header: {
-                    Text("Client Priority")
-                } footer: {
-                    Text(
-                        "Priority the agent uses when writing fans. Higher values preempt lower. "
-                            + "Defaults match other fan aware apps: normal curve at 10, boost at 50. "
-                            + "Raise boost above 50 if boost should preempt an active lmd LLM run."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
-                Section {
-                    Toggle(isOn: overdriveBinding) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Overdrive")
-                            Text(
-                                "100% on the curve requests \(Int(overdriveTargetRPM)) RPM. Fans can wear faster."
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Toggle(isOn: underdriveBinding) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Underdrive")
-                            Text(
-                                "0% writes 0 RPM in manual mode. Fans can stop completely and the machine can overheat."
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-                } header: {
-                    Label {
-                        Text("Expanded Range")
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(Color(nsColor: .systemOrange))
-                    }
-                } footer: {
-                    Text(
-                        "These modes bypass the firmware reported safe range. "
-                            + "Enable them only if you understand the risks."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
+                loadAssistSection
+                prioritySection
+                expandedRangeSection
             }
             .formStyle(.grouped)
             .padding()
@@ -136,11 +63,7 @@ struct AdvancedSettingsView: View {
                 confirmOverdrive = false
             }
         } message: {
-            Text(
-                "Overdrive pushes fan targets beyond the firmware reported max. "
-                    + "Sustained high RPM shortens bearing life and increases noise. "
-                    + "Only enable if you accept the tradeoff."
-            )
+            Text(overdriveWarningText)
         }
         .alert("Enable Underdrive?", isPresented: $confirmUnderdrive) {
             Button("Enable", role: .destructive) { underdrive = true }
@@ -148,11 +71,81 @@ struct AdvancedSettingsView: View {
                 confirmUnderdrive = false
             }
         } message: {
-            Text(
-                "Underdrive lets the curve force fans to 0 RPM in manual mode. "
-                    + "Without airflow your machine can overheat under load and throttle or shut down. "
-                    + "Only enable if you know your thermal limits."
+            Text(underdriveWarningText)
+        }
+    }
+
+    private var loadAssistSection: some View {
+        Section {
+            LoadAssistModuleView(kind: .cpu)
+            LoadAssistModuleView(kind: .gpu)
+        } header: {
+            Text("Load Assist")
+        } footer: {
+            Text(loadAssistFooterText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var prioritySection: some View {
+        Section {
+            prioritySliderRow(
+                title: "Normal curve",
+                value: $curveNormalPriority,
+                help:
+                    "Priority used for normal curve writes. Higher values preempt lower-priority fan clients."
             )
+            prioritySliderRow(
+                title: "When boost is on",
+                value: $userBoostPriority,
+                help:
+                    "Priority used while Boost is active. Raise it above competing fan apps if Boost should win."
+            )
+        } header: {
+            Text("Client Priority")
+        } footer: {
+            Text(priorityFooterText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var expandedRangeSection: some View {
+        Section {
+            Toggle(isOn: overdriveBinding) {
+                rangeToggleContent(
+                    title: "Overdrive",
+                    detail: "100% on the curve requests \(Int(overdriveTargetRPM)) RPM. Fans can wear faster."
+                )
+            }
+
+            Toggle(isOn: underdriveBinding) {
+                rangeToggleContent(
+                    title: "Underdrive",
+                    detail: "0% writes 0 RPM in manual mode. Fans can stop completely and the machine can overheat."
+                )
+            }
+        } header: {
+            Label {
+                Text("Expanded Range")
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Color(nsColor: .systemOrange))
+            }
+        } footer: {
+            Text(expandedRangeFooterText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func rangeToggleContent(title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -182,12 +175,33 @@ struct AdvancedSettingsView: View {
             .help(help)
         }
     }
-}
 
-/// Computes SHA256 short fingerprints of the main app and embedded agent
-/// binaries. Cached in static properties so the About tab does not
-/// re-hash on every render.
-enum BuildHashes {
-    static let appHash: String = BuildFingerprint.runningExecutableHash
-    static let agentHash: String = BuildFingerprint.bundledAgentHash
+    private var loadAssistFooterText: String {
+        "Each assist curve maps load percent to a minimum fan floor. "
+            + "The agent evaluates the temperature curve, CPU assist, and GPU assist, "
+            + "then applies whichever result is highest."
+    }
+
+    private var priorityFooterText: String {
+        "Priority the agent uses when writing fans. Higher values preempt lower. "
+            + "Defaults match other fan aware apps: normal curve at 10, boost at 50. "
+            + "Raise boost above 50 if boost should preempt an active lmd LLM run."
+    }
+
+    private var expandedRangeFooterText: String {
+        "These modes bypass the firmware reported safe range. "
+            + "Enable them only if you understand the risks."
+    }
+
+    private var overdriveWarningText: String {
+        "Overdrive pushes fan targets beyond the firmware reported max. "
+            + "Sustained high RPM shortens bearing life and increases noise. "
+            + "Only enable if you accept the tradeoff."
+    }
+
+    private var underdriveWarningText: String {
+        "Underdrive lets the curve force fans to 0 RPM in manual mode. "
+            + "Without airflow your machine can overheat under load and throttle or shut down. "
+            + "Only enable if you know your thermal limits."
+    }
 }

@@ -2,69 +2,80 @@ name: Release
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+    paths:
+      - Sources/**
+      - Tests/**
+      - Project.swift
+      - Workspace.swift
+      - Tuist.swift
+      - Tuist/**
+      - Config/**
+      - Scripts/**
+      - Templates/**
+      - Makefile
+      - .tool-versions
+      - .github/workflows/release.yml
+      - .github/actions/setup-build-env/action.yml
+  workflow_dispatch:
 
 concurrency:
   group: release
-  cancel-in-progress: true
+  cancel-in-progress: false
+
+env:
+  XCODE_VERSION: "16.4"
+  APPLE_TEAM_ID: H3BMXM4W7H
+  APPLE_CODE_SIGN_IDENTITY: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
+  APPLE_NOTARY_KEY_ID: JHC8GR65Q3
 
 jobs:
-  release:
+  build:
     runs-on: macos-15
     permissions:
-      contents: write
-
-    env:
-      APPLE_TEAM_ID: H3BMXM4W7H
-      APPLE_CODE_SIGN_IDENTITY: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
-      APPLE_NOTARY_KEY_ID: JHC8GR65Q3
+      contents: read
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      build_version: ${{ steps.meta.outputs.build_version }}
+      marketing_version: ${{ steps.meta.outputs.marketing_version }}
 
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Install mise
-        run: |
-          curl https://mise.run | sh
-          echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/setup-build-env
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+          github-token: ${{ github.token }}
 
       - name: Install Tuist dependencies
-        run: |
-          mise install
-          tuist install
+        run: make install-dependencies
 
       - name: Compute release metadata
         id: meta
+        shell: bash
         run: |
-          TS=$(date -u +%Y%m%d%H%M)
-          HEX=$(printf '%x' "$GITHUB_RUN_NUMBER")
-          SHA=$(git rev-parse --short HEAD)
-          BUILD_VERSION="${TS}${GITHUB_RUN_NUMBER}"
-          TAG="${TS}-${HEX}-${SHA}"
-          SHORT_VERSION=$(date -u +%y.%-m.%-d)
-          if [ "${#BUILD_VERSION}" -gt 18 ]; then
-            echo "CURRENT_PROJECT_VERSION exceeds Apple's 18-character CFBundleVersion limit: $BUILD_VERSION" >&2
-            exit 1
+          set -euo pipefail
+
+          timestamp_utc="$(date -u +%Y%m%d%H%M)"
+          hex_run_number="$(printf '%x' "$GITHUB_RUN_NUMBER")"
+          short_sha="$(git rev-parse --short HEAD)"
+          build_version="${timestamp_utc}${GITHUB_RUN_NUMBER}"
+          tag="${timestamp_utc}-${hex_run_number}-${short_sha}"
+          marketing_version="$(date -u +%y.%-m.%-d)"
+
+          if [[ "${#build_version}" -gt 18 ]]; then
+              echo "CURRENT_PROJECT_VERSION exceeds Apple's 18-character CFBundleVersion limit: ${build_version}" >&2
+              exit 1
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "build_version=$BUILD_VERSION" >> "$GITHUB_OUTPUT"
-          echo "marketing_version=$SHORT_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Push tag
-        env:
-          TAG: ${{ steps.meta.outputs.tag }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "$TAG"
-          git push origin "$TAG"
-
-      - name: Set up Node for Wrangler
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22"
+          {
+              printf 'tag=%s\n' "$tag"
+              printf 'build_version=%s\n' "$build_version"
+              printf 'marketing_version=%s\n' "$marketing_version"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Install signing certificate
         env:
@@ -74,43 +85,53 @@ jobs:
           P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
           APPLE_CODE_SIGN_IDENTITY: ${{ env.APPLE_CODE_SIGN_IDENTITY }}
+        shell: bash
         run: |
-          CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
-          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
-          export CERT_PATH
-          KEYCHAIN_PASSWORD="${KEYCHAIN_PASSWORD:-$P12_PASSWORD}"
+          set -euo pipefail
 
-          if [ -n "$BUILD_CERTIFICATE_BASE64" ]; then
-            printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+          certificate_path="$RUNNER_TEMP/build_certificate.p12"
+          keychain_path="$RUNNER_TEMP/build.keychain-db"
+          keychain_password="${KEYCHAIN_PASSWORD:-$P12_PASSWORD}"
+
+          if [[ -n "${BUILD_CERTIFICATE_BASE64:-}" ]]; then
+              printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
           else
-            printf '%s%s' "$BUILD_CERTIFICATE_BASE64_PART1" "$BUILD_CERTIFICATE_BASE64_PART2" | base64 --decode > "$CERT_PATH"
+              printf '%s%s' "$BUILD_CERTIFICATE_BASE64_PART1" "$BUILD_CERTIFICATE_BASE64_PART2" | base64 --decode > "$certificate_path"
           fi
 
-          ls -l "$CERT_PATH"
-          file "$CERT_PATH"
-          openssl pkcs12 -in "$CERT_PATH" -nokeys -passin pass:"$P12_PASSWORD" >/dev/null
+          openssl pkcs12 -in "$certificate_path" -nokeys -passin pass:"$P12_PASSWORD" >/dev/null
 
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH"
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
-          DEVELOPER_ID_SIGN_IDENTITY_SHA1="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -v identity="\"$APPLE_CODE_SIGN_IDENTITY\"" 'index($0, identity) { print $2; exit }')"
-          if [ -z "$DEVELOPER_ID_SIGN_IDENTITY_SHA1" ]; then
-            echo "Developer ID Application signing identity was not found in imported keychain" >&2
-            exit 1
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+
+          developer_id_identity_sha1="$(
+              security find-identity -v -p codesigning "$keychain_path" \
+                  | awk -v identity="\"$APPLE_CODE_SIGN_IDENTITY\"" 'index($0, identity) { print $2; exit }'
+          )"
+
+          if [[ -z "$developer_id_identity_sha1" ]]; then
+              echo "Developer ID Application signing identity was not found in imported keychain" >&2
+              exit 1
           fi
-          echo "DEVELOPER_ID_SIGN_IDENTITY_SHA1=$DEVELOPER_ID_SIGN_IDENTITY_SHA1" >> "$GITHUB_ENV"
-          echo "DMG_SIGN_IDENTITY=$DEVELOPER_ID_SIGN_IDENTITY_SHA1" >> "$GITHUB_ENV"
+
+          {
+              printf 'DEVELOPER_ID_SIGN_IDENTITY_SHA1=%s\n' "$developer_id_identity_sha1"
+              printf 'DMG_SIGN_IDENTITY=%s\n' "$developer_id_identity_sha1"
+          } >> "$GITHUB_ENV"
 
       - name: Write CI xcconfig
         env:
           APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
           CODE_SIGN_IDENTITY: ${{ env.DEVELOPER_ID_SIGN_IDENTITY_SHA1 }}
           SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+        shell: bash
         run: |
+          set -euo pipefail
+
           cat > Config/local.xcconfig <<EOF
           CODE_SIGN_IDENTITY = ${CODE_SIGN_IDENTITY}
           DEVELOPMENT_TEAM = ${APPLE_TEAM_ID}
@@ -128,74 +149,106 @@ jobs:
         env:
           MARKETING_VERSION: ${{ steps.meta.outputs.marketing_version }}
           CURRENT_PROJECT_VERSION: ${{ steps.meta.outputs.build_version }}
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         run: |
           make release-assets \
             MARKETING_VERSION="$MARKETING_VERSION" \
             CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
             SPARKLE_FEED_URL="https://goodkind.io/fancurve/appcast.xml" \
-            SPARKLE_PUBLIC_ED_KEY="${{ secrets.SPARKLE_PUBLIC_ED_KEY }}"
+            SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY"
 
-      - name: Notarize DMG
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-dmg-${{ steps.meta.outputs.tag }}
+          path: Products/FanCurve-${{ steps.meta.outputs.build_version }}.dmg
+          if-no-files-found: error
+
+  notarize:
+    runs-on: macos-15
+    needs: build
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-build-env
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+          github-token: ${{ github.token }}
+
+      - name: Install Tuist dependencies
+        run: make install-dependencies
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dmg-${{ needs.build.outputs.tag }}
+          path: Products
+
+      - name: Notarize and staple DMG
         env:
           APPLE_NOTARY_KEY_ID: ${{ env.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-          BUILD_VERSION: ${{ steps.meta.outputs.build_version }}
+          BUILD_VERSION: ${{ needs.build.outputs.build_version }}
+        shell: bash
         run: |
-          KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
-          NOTARY_OUTPUT="$RUNNER_TEMP/notarytool-submit.json"
-          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          set -euo pipefail
+
+          key_path="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          submit_output_path="$RUNNER_TEMP/notarytool-submit.json"
+          log_output_path="$RUNNER_TEMP/notarytool.log"
+
+          : > "$submit_output_path"
+          : > "$log_output_path"
+          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$key_path"
+
           set +e
           xcrun notarytool submit "Products/FanCurve-${BUILD_VERSION}.dmg" \
-            --key "$KEY_PATH" \
+            --key "$key_path" \
             --key-id "$APPLE_NOTARY_KEY_ID" \
             --issuer "$APPLE_NOTARY_ISSUER_ID" \
             --wait \
-            --output-format json > "$NOTARY_OUTPUT"
-          NOTARY_STATUS=$?
+            --output-format json > "$submit_output_path"
+          submit_exit_code=$?
           set -e
-          cat "$NOTARY_OUTPUT"
-          SUBMISSION_ID="$(plutil -extract id raw -o - "$NOTARY_OUTPUT" 2>/dev/null || true)"
-          SUBMISSION_STATUS="$(plutil -extract status raw -o - "$NOTARY_OUTPUT" 2>/dev/null || true)"
-          if [ -n "$SUBMISSION_ID" ]; then
-            xcrun notarytool log "$SUBMISSION_ID" \
-              --key "$KEY_PATH" \
-              --key-id "$APPLE_NOTARY_KEY_ID" \
-              --issuer "$APPLE_NOTARY_ISSUER_ID" || true
+
+          submission_id="$(plutil -extract id raw -o - "$submit_output_path" 2>/dev/null || true)"
+          submission_status="$(plutil -extract status raw -o - "$submit_output_path" 2>/dev/null || true)"
+
+          if [[ -n "$submission_id" ]]; then
+              xcrun notarytool log "$submission_id" \
+                --key "$key_path" \
+                --key-id "$APPLE_NOTARY_KEY_ID" \
+                --issuer "$APPLE_NOTARY_ISSUER_ID" > "$log_output_path" || true
           fi
-          if [ "$NOTARY_STATUS" -ne 0 ] || [ "$SUBMISSION_STATUS" != "Accepted" ]; then
-            exit 1
+
+          if [[ "$submit_exit_code" -ne 0 ]]; then
+              exit "$submit_exit_code"
           fi
+
+          if [[ "$submission_status" != "Accepted" ]]; then
+              echo "Notary submission was not accepted: ${submission_status:-missing status}" >&2
+              exit 1
+          fi
+
           xcrun stapler staple "Products/FanCurve-${BUILD_VERSION}.dmg"
-
-      - name: Create GitHub release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.meta.outputs.tag }}
-        run: |
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --notes "Automated release for $GITHUB_SHA"
-
-      - name: Upload release assets
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.meta.outputs.tag }}
-          BUILD_VERSION: ${{ steps.meta.outputs.build_version }}
-        run: |
-          gh release upload "$TAG" "Products/FanCurve-${BUILD_VERSION}.dmg" --clobber
 
       - name: Generate Sparkle appcast
         env:
-          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
-          BUILD_VERSION: ${{ steps.meta.outputs.build_version }}
-          MARKETING_VERSION: ${{ steps.meta.outputs.marketing_version }}
-          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+          BUILD_VERSION: ${{ needs.build.outputs.build_version }}
+          MARKETING_VERSION: ${{ needs.build.outputs.marketing_version }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        shell: bash
         run: |
-          KEY_PATH="$RUNNER_TEMP/sparkle_private_key"
-          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$KEY_PATH"
-          export SPARKLE_PRIVATE_KEY_FILE="$KEY_PATH"
+          set -euo pipefail
+
+          key_path="$RUNNER_TEMP/sparkle_private_key"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key_path"
+          export SPARKLE_PRIVATE_KEY_FILE="$key_path"
 
           make prepare-sparkle-updates \
             MARKETING_VERSION="$MARKETING_VERSION" \
@@ -203,14 +256,77 @@ jobs:
             RELEASE_TAG="$RELEASE_TAG" \
             GITHUB_RELEASE_BASE_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/"
 
-      - name: Deploy appcast worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: notary-diagnostics-${{ needs.build.outputs.tag }}
+          path: |
+            ${{ runner.temp }}/notarytool-submit.json
+            ${{ runner.temp }}/notarytool.log
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-dmg-stapled-${{ needs.build.outputs.tag }}
+          path: Products/FanCurve-${{ needs.build.outputs.build_version }}.dmg
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-appcast-${{ needs.build.outputs.tag }}
+          path: build/sparkle-updates/appcast.xml
+          if-no-files-found: error
+
+  publish:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - notarize
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dmg-stapled-${{ needs.build.outputs.tag }}
+          path: release-assets
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-appcast-${{ needs.build.outputs.tag }}
+          path: release-assets
+
+      - name: Push release tag
+        shell: bash
         run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "Cloudflare credentials not configured; skipping worker deploy."
-            exit 0
-          fi
-          cp build/sparkle-updates/appcast.xml deploy/appcast-worker/public/appcast.xml
-          npx wrangler deploy --config deploy/appcast-worker/wrangler.toml
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ needs.build.outputs.tag }}" "$GITHUB_SHA"
+          git push origin "refs/tags/${{ needs.build.outputs.tag }}"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes "Automated release for $GITHUB_SHA"
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+          BUILD_VERSION: ${{ needs.build.outputs.build_version }}
+        run: |
+          gh release upload "$TAG" \
+            "release-assets/FanCurve-${BUILD_VERSION}.dmg" \
+            "release-assets/appcast.xml" \
+            --clobber

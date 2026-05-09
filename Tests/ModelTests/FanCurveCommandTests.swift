@@ -20,7 +20,7 @@ final class FanCurveCommandTests: XCTestCase {
 
         let command = mapping.command(percent: 0, minRPM: 2_317, maxRPM: 7_826)
 
-        expect(self.rpm(command)).to(equal(2_317))
+        expect(self.rpm(command)) == 2_317
     }
 
     func testZeroPercentCommandsZeroRPMWhenUnderdriveIsOn() {
@@ -31,7 +31,7 @@ final class FanCurveCommandTests: XCTestCase {
 
         let command = mapping.command(percent: 0, minRPM: 2_317, maxRPM: 7_826)
 
-        expect(self.rpm(command)).to(equal(0))
+        expect(self.rpm(command)) == 0
     }
 
     private func rpm(_ command: FanCommand) -> Float? {

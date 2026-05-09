@@ -40,31 +40,44 @@ Notes:
 - `AboutHeroIcon` stays transparent. This lets the About page use the detailed icon without the dark square background.
 - Do not hand-edit the generated PNGs unless you are intentionally changing the generation script itself.
 
+## CI Shape
+
+- Pull requests against `main` and pushes to non-`main` branches run `.github/workflows/pr.yml`:
+  - `make verify`
+  - `make lint`
+  - `make build`
+- `.github/workflows/release.yml` runs on pushes to `main` only when release-relevant files change, and it can also be started manually with `workflow_dispatch`.
+- `.github/workflows/appcast.yml` deploys the Cloudflare worker when a GitHub Release is published, and it can also redeploy a specific release tag manually.
+
 ## Release Shape
 
-- Every push to `main` creates a GitHub Release tag in the same cadence as `go-makefile`:
+- Release tags still use the same cadence as `go-makefile`:
   - `YYYYMMDDHHmm-<hex-run>-<short-sha>`
 - CI uses `YY.M.D` for the public `MARKETING_VERSION`, for example `26.4.30`.
 - CI uses `YYYYMMDDHHmm` plus the GitHub Actions run number for `CURRENT_PROJECT_VERSION`, so repeat releases on the same day keep the same public version while Sparkle and macOS receive a unique build number.
-- GitHub Releases host the signed DMG asset.
+- The release workflow builds the DMG, notarizes and staples it, generates `appcast.xml` from the stapled DMG, and only then pushes the tag and creates the GitHub Release.
+- GitHub Releases host the stapled DMG asset and `appcast.xml`.
 - Sparkle reads a stable feed URL:
   - `https://goodkind.io/fancurve/appcast.xml`
-- `goodkind.io/fancurve*` is served by the Cloudflare worker in `deploy/appcast-worker`.
+- `goodkind.io/fancurve*` is served by the Cloudflare worker in `deploy/appcast-worker`, and the deploy is intentionally decoupled from signing and notarization.
 
 ## Required Secrets For CI
 
-- `APPLE_DEVELOPER_ID_P12_BASE64`
-- `APPLE_DEVELOPER_ID_P12_PASSWORD`
-- `APPLE_KEYCHAIN_PASSWORD`
-- `APPLE_DEVELOPER_ID_P12_BASE64` or split secrets:
-  - `APPLE_DEVELOPER_ID_P12_BASE64_PART1`
-  - `APPLE_DEVELOPER_ID_P12_BASE64_PART2`
-- `APPLE_NOTARY_KEY_BASE64`
-- `APPLE_NOTARY_ISSUER_ID`
-- `SPARKLE_PUBLIC_ED_KEY`
-- `SPARKLE_PRIVATE_ED_KEY`
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
+- Release workflow:
+  - `APPLE_DEVELOPER_ID_P12_BASE64`
+  - `APPLE_DEVELOPER_ID_P12_PASSWORD`
+  - `APPLE_KEYCHAIN_PASSWORD`
+  - `APPLE_DEVELOPER_ID_P12_BASE64` or split secrets:
+    - `APPLE_DEVELOPER_ID_P12_BASE64_PART1`
+    - `APPLE_DEVELOPER_ID_P12_BASE64_PART2`
+  - `APPLE_NOTARY_KEY_BASE64`
+  - `APPLE_NOTARY_ISSUER_ID`
+  - `SPARKLE_PUBLIC_ED_KEY`
+  - `SPARKLE_PRIVATE_ED_KEY`
+- Appcast deploy workflow:
+  - `CLOUDFLARE_API_TOKEN`
+  - `CLOUDFLARE_ACCOUNT_ID`
+- GitHub Actions also provides `GITHUB_TOKEN` automatically, and the build setup uses it for authenticated `mise install` requests.
 
 ## Local Sparkle Setup
 

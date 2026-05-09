@@ -48,84 +48,8 @@ final class AgentSnapshotState: ObservableObject {
         isAppActive = NSApp.isActive
         isAppHidden = NSApp.isHidden
 
-        let didBecomeActive = NotificationCenter.default.addObserver(
-            forName: NSApplication.didBecomeActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.isAppActive = true
-                self.scheduleReload(force: true)
-            }
-        }
-
-        let didResignActive = NotificationCenter.default.addObserver(
-            forName: NSApplication.didResignActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.isAppActive = false
-            }
-        }
-
-        let didHide = NotificationCenter.default.addObserver(
-            forName: NSApplication.didHideNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.isAppHidden = true
-            }
-        }
-
-        let didUnhide = NotificationCenter.default.addObserver(
-            forName: NSApplication.didUnhideNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.isAppHidden = false
-                self.scheduleReload(force: true)
-            }
-        }
-
-        let windowNotifications: [Notification.Name] = [
-            NSWindow.didChangeOcclusionStateNotification,
-            NSWindow.didMiniaturizeNotification,
-            NSWindow.didDeminiaturizeNotification,
-            NSWindow.didBecomeKeyNotification,
-            NSWindow.didResignKeyNotification,
-        ]
-
-        let windowTokens = windowNotifications.map { name in
-            NotificationCenter.default.addObserver(
-                forName: name,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.handleVisibilityChange()
-                }
-            }
-        }
-
-        notificationTokens = [didBecomeActive, didResignActive, didHide, didUnhide] + windowTokens
-
-        let token = Unmanaged.passUnretained(self).toOpaque()
-        CFNotificationCenterAddObserver(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            token,
-            { _, observer, _, _, _ in
-                guard let observer else { return }
-                let state = Unmanaged<AgentSnapshotState>.fromOpaque(observer).takeUnretainedValue()
-                Task { @MainActor in state.handleSnapshotNotification() }
-            },
-            AgentSnapshotPush.notificationName,
-            nil,
-            .deliverImmediately)
+        notificationTokens = makeLifecycleObserverTokens() + makeWindowObserverTokens()
+        registerDarwinSnapshotObserver()
     }
 
     func stop() {
@@ -175,6 +99,74 @@ final class AgentSnapshotState: ObservableObject {
 
     private func handleSnapshotNotification() {
         scheduleReload()
+    }
+
+    private func makeLifecycleObserverTokens() -> [NSObjectProtocol] {
+        [
+            addMainActorObserver(name: NSApplication.didBecomeActiveNotification) { [weak self] in
+                guard let self else { return }
+                isAppActive = true
+                scheduleReload(force: true)
+            },
+            addMainActorObserver(name: NSApplication.didResignActiveNotification) { [weak self] in
+                self?.isAppActive = false
+            },
+            addMainActorObserver(name: NSApplication.didHideNotification) { [weak self] in
+                self?.isAppHidden = true
+            },
+            addMainActorObserver(name: NSApplication.didUnhideNotification) { [weak self] in
+                guard let self else { return }
+                isAppHidden = false
+                scheduleReload(force: true)
+            },
+        ]
+    }
+
+    private func makeWindowObserverTokens() -> [NSObjectProtocol] {
+        let windowNotifications: [Notification.Name] = [
+            NSWindow.didChangeOcclusionStateNotification,
+            NSWindow.didMiniaturizeNotification,
+            NSWindow.didDeminiaturizeNotification,
+            NSWindow.didBecomeKeyNotification,
+            NSWindow.didResignKeyNotification,
+        ]
+
+        return windowNotifications.map { name in
+            addMainActorObserver(name: name) { [weak self] in
+                self?.handleVisibilityChange()
+            }
+        }
+    }
+
+    private func addMainActorObserver(
+        name: Notification.Name,
+        handler: @escaping @MainActor () -> Void
+    ) -> NSObjectProtocol {
+        NotificationCenter.default.addObserver(
+            forName: name,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                handler()
+            }
+        }
+    }
+
+    private func registerDarwinSnapshotObserver() {
+        let token = Unmanaged.passUnretained(self).toOpaque()
+        CFNotificationCenterAddObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            token,
+            { _, observer, _, _, _ in
+                guard let observer else { return }
+                let state = Unmanaged<AgentSnapshotState>.fromOpaque(observer).takeUnretainedValue()
+                Task { @MainActor in state.handleSnapshotNotification() }
+            },
+            AgentSnapshotPush.notificationName,
+            nil,
+            .deliverImmediately
+        )
     }
 
     private func handleVisibilityChange() {
