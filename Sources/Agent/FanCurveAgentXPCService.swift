@@ -48,7 +48,7 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
     }
 
     func listener(
-        _ listener: NSXPCListener,
+        _: NSXPCListener,
         shouldAcceptNewConnection connection: NSXPCConnection
     ) -> Bool {
         agentXPCLog.info("agent.xpc.connection.accepting")
@@ -68,7 +68,7 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
         return true
     }
 
-    func getCurrentState(reply: @escaping @Sendable (Bool, Data?, String?) -> Void) {
+    func getCurrentState(reply: @Sendable (Bool, Data?, String?) -> Void) {
         agentXPCLog.debug("agent.xpc.current_state.requested")
         let runtimeState = controller.currentRuntimeStateForXPC()
 
@@ -84,7 +84,7 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
         }
     }
 
-    func registerForEvents(reply: @escaping @Sendable (Bool, String?) -> Void) {
+    func registerForEvents(reply: @Sendable (Bool, String?) -> Void) {
         guard
             let currentConnection = NSXPCConnection.current(),
             let callback = currentConnection.remoteObjectProxy as? FanCurveAgentXPCEventProtocol
@@ -102,7 +102,7 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
         reply(true, nil)
     }
 
-    func requestRefresh(reply: @escaping @Sendable (Bool, String?) -> Void) {
+    func requestRefresh(reply: @Sendable (Bool, String?) -> Void) {
         agentXPCLog.info("agent.xpc.refresh.requested")
         controller.requestTick()
         reply(true, nil)
@@ -154,7 +154,7 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
 
     func setFanControlEnabled(
         _ enabled: Bool,
-        reply: @escaping @Sendable (Bool, String?) -> Void
+        reply: @Sendable (Bool, String?) -> Void
     ) {
         agentXPCLog.info(
             "agent.xpc.fan_control.set requested=\(enabled, privacy: .public)"
@@ -166,7 +166,7 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
 
     func setBoostEnabled(
         _ enabled: Bool,
-        reply: @escaping @Sendable (Bool, String?) -> Void
+        reply: @Sendable (Bool, String?) -> Void
     ) {
         agentXPCLog.info("agent.xpc.boost.set requested=\(enabled, privacy: .public)")
         controller.sharedConfig.defaults.set(enabled, forKey: SharedConfigKeys.boostEnabled)
@@ -176,7 +176,7 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
 
     func setCurve(
         _ curveData: Data,
-        reply: @escaping @Sendable (Bool, String?) -> Void
+        reply: @Sendable (Bool, String?) -> Void
     ) {
         agentXPCLog.info("agent.xpc.curve.set bytes=\(curveData.count, privacy: .public)")
         controller.sharedConfig.defaults.set(curveData, forKey: SharedConfigKeys.curvePoints)
@@ -211,14 +211,14 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
                 )
                 return AgentCommandResponse(accepted: false, message: error.localizedDescription)
             }
-        case .requestFanRPM(let fanIndex, let rpm):
+        case .requestFanRPM(let request):
             do {
-                try await controller.xpcClient.setFanRPM(fanIndex, rpm: rpm)
+                try await controller.xpcClient.setFanRPM(request.fanIndex, rpm: request.rpm)
                 controller.requestTick()
                 return AgentCommandResponse(accepted: true, message: nil)
             } catch {
                 agentXPCLog.notice(
-                    "agent.xpc.command.fan_rpm_failed fan=\(fanIndex, privacy: .public) rpm=\(rpm, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error"
+                    "agent.xpc.command.fan_rpm_failed fan=\(request.fanIndex, privacy: .public) rpm=\(request.rpm, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error"
                 )
                 return AgentCommandResponse(accepted: false, message: error.localizedDescription)
             }
@@ -230,19 +230,19 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
             controller.sharedConfig.defaults.set(enabled, forKey: SharedConfigKeys.boostEnabled)
             publishConfigChange()
             return AgentCommandResponse(accepted: true, message: nil)
-        case .setCurve(let points, let interpolationMode):
+        case .setCurve(let update):
             do {
-                let data = try JSONEncoder().encode(CurveColumns.normalize(points))
+                let data = try JSONEncoder().encode(CurveColumns.normalize(update.points))
                 controller.sharedConfig.defaults.set(data, forKey: SharedConfigKeys.curvePoints)
                 controller.sharedConfig.defaults.set(
-                    interpolationMode.rawValue,
+                    update.interpolationMode.rawValue,
                     forKey: SharedConfigKeys.interpolationMode
                 )
                 publishConfigChange()
                 return AgentCommandResponse(accepted: true, message: nil)
             } catch {
                 agentXPCLog.error(
-                    "agent.xpc.command.curve_encode_failed point_count=\(points.count, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error"
+                    "agent.xpc.command.curve_encode_failed point_count=\(update.points.count, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error"
                 )
                 return AgentCommandResponse(accepted: false, message: error.localizedDescription)
             }

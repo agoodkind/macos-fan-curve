@@ -122,9 +122,9 @@ struct ContentView: View {
                 renderMode: renderActivity.mode,
                 presentation: presentation
             )
-                .padding(16)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .layoutPriority(1)
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .layoutPriority(1)
 
             sidebarSplitter
 

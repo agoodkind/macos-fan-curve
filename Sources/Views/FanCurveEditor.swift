@@ -176,7 +176,8 @@ struct FanCurveEditor: View {
         case .helperAwaitingApproval:
             title = "System Helper Needs Approval"
             message =
-                "Approve the System Helper in System Settings before Fan Curve can resume live temperature and fan telemetry."
+                "Approve the System Helper in System Settings before Fan Curve can resume live temperature "
+                + "and fan telemetry."
         default:
             title = "Runtime telemetry is unavailable"
             message =

@@ -24,7 +24,8 @@ extension FanCurveEditor {
     }
 
     func runtimeMarkerOverlay(geometry: RuntimeMarkerOverlay.Geometry) -> some View {
-        let markerColor = presentation.usesActiveMarkerStyling
+        let markerColor =
+            presentation.usesActiveMarkerStyling
             ? Color(nsColor: .systemOrange)
             : Color.secondary
         return ZStack(alignment: .topLeading) {

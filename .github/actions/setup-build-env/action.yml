@@ -1,5 +1,5 @@
 name: Setup Build Env
-description: Set up Xcode, XcodeGen, mise, and shared macOS build caches
+description: Set up Xcode, XcodeGen, Swift lint tools, mise, and shared macOS build caches
 
 inputs:
   xcode-version:
@@ -64,3 +64,19 @@ runs:
         fi
 
         xcodegen --version
+
+    - name: Install Swift lint tools
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if ! command -v swift-format >/dev/null 2>&1; then
+            brew install swift-format
+        fi
+
+        if ! command -v swiftlint >/dev/null 2>&1; then
+            brew install swiftlint
+        fi
+
+        swift-format --version
+        swiftlint version

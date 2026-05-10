@@ -12,8 +12,8 @@ import SwiftUI
 private let sensorDashboardSidebarViewLog = AppLog.make(category: "SensorDashboardSidebar")
 
 struct SensorDashboardSidebar: View {
-    @State var pendingAction: SidebarPendingAction?
-    @State var pendingActionStartDate: Date?
+    @State private var pendingAction: SidebarPendingAction?
+    @State private var pendingActionStartDate: Date?
     @ObservedObject var runtime: FanCurveAgentClient
     @ObservedObject var curveModel: FanCurveModel
     @ObservedObject var installState: InstallationState
@@ -211,6 +211,106 @@ struct SensorDashboardSidebar: View {
                         )
                     )
             }
+        }
+    }
+}
+
+extension SensorDashboardSidebar {
+    func isPendingAction(_ action: SidebarPendingAction) -> Bool {
+        pendingAction == action
+    }
+
+    func hasPendingAction() -> Bool {
+        pendingAction != nil
+    }
+
+    var fanControlToggleBusy: Bool {
+        if case .setFanControl = pendingAction { return true }
+        return false
+    }
+
+    func beginPendingAction(_ action: SidebarPendingAction) {
+        pendingAction = action
+        pendingActionStartDate = Date()
+        sensorDashboardSidebarViewLog.notice(
+            "sidebar.pending.started action=\(action.logName, privacy: .public)"
+        )
+    }
+
+    func reconcilePendingAction(reason: String) {
+        guard let pendingAction else { return }
+        if pendingActionFailed(pendingAction) {
+            guard pendingActionMinimumVisibleDurationElapsed() else {
+                logPendingActionMinimumDelay(pendingAction, reason: "\(reason)-failed")
+                return
+            }
+            completePendingAction(pendingAction, reason: "\(reason)-failed")
+            return
+        }
+        if pendingActionObserved(pendingAction) {
+            guard pendingActionMinimumVisibleDurationElapsed() else {
+                logPendingActionMinimumDelay(pendingAction, reason: "\(reason)-observed")
+                return
+            }
+            completePendingAction(pendingAction, reason: "\(reason)-observed")
+        }
+    }
+
+    func completePendingAction(_ action: SidebarPendingAction, reason: String) {
+        guard pendingAction == action else { return }
+        pendingAction = nil
+        pendingActionStartDate = nil
+        sensorDashboardSidebarViewLog.notice(
+            "sidebar.pending.finished action=\(action.logName, privacy: .public) reason=\(reason, privacy: .public)"
+        )
+    }
+
+    func pendingActionMinimumVisibleDurationElapsed() -> Bool {
+        pendingActionMinimumRemainingNanoseconds() == 0
+    }
+
+    func pendingActionMinimumRemainingNanoseconds() -> UInt64 {
+        guard let pendingAction else { return 0 }
+        let minimumDuration = pendingAction.minimumVisibleDuration
+        guard minimumDuration > 0 else { return 0 }
+        guard let pendingActionStartDate else { return 0 }
+        let elapsedDuration = Date().timeIntervalSince(pendingActionStartDate)
+        let remainingDuration = minimumDuration - elapsedDuration
+        guard remainingDuration > 0 else { return 0 }
+        return UInt64(remainingDuration * 1_000_000_000)
+    }
+
+    private func logPendingActionMinimumDelay(_ action: SidebarPendingAction, reason: String) {
+        sensorDashboardSidebarViewLog.debug(
+            "sidebar.pending.minimum_duration.waiting action=\(action.logName, privacy: .public) reason=\(reason, privacy: .public)"
+        )
+    }
+
+    private func pendingActionObserved(_ action: SidebarPendingAction) -> Bool {
+        switch action {
+        case .helperSetup:
+            return installState.step == .helperAwaitingApproval
+                || installState.step == .ready
+        case .agentSetup:
+            return installState.step != .agentMissing
+        case .openSystemSettings:
+            return installState.step != .agentAwaitingApproval
+                && installState.step != .helperAwaitingApproval
+        case .enableBoost:
+            return runtime.boostEnabled
+        case .disableBoost:
+            return !runtime.boostEnabled
+        case .setFanControl(let enabled):
+            return runtime.curveActive == enabled
+        }
+    }
+
+    private func pendingActionFailed(_ action: SidebarPendingAction) -> Bool {
+        switch action {
+        case .helperSetup, .agentSetup, .openSystemSettings:
+            return installState.lastError != nil
+        case .enableBoost, .disableBoost, .setFanControl:
+            return false
         }
     }
 }

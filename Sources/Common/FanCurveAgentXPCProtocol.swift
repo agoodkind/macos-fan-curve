@@ -11,14 +11,24 @@ enum FanCurveAgentXPC {
     static let serviceName = generatedAgentBundleID
 }
 
+struct AgentFanRPMRequest: Codable, Sendable, Equatable {
+    let fanIndex: UInt
+    let rpm: Float
+}
+
+struct AgentCurveUpdate: Codable, Sendable, Equatable {
+    let points: [CurvePoint]
+    let interpolationMode: InterpolationMode
+}
+
 enum AgentCommand: Codable, Sendable, Equatable {
     case openSystemSettings
     case registerHelperDaemon
     case requestFanAuto(fanIndex: UInt)
-    case requestFanRPM(fanIndex: UInt, rpm: Float)
+    case requestFanRPM(AgentFanRPMRequest)
     case setApplyInBackground(Bool)
     case setBoostEnabled(Bool)
-    case setCurve(points: [CurvePoint], interpolationMode: InterpolationMode)
+    case setCurve(AgentCurveUpdate)
     case setFanControlEnabled(Bool)
 
     var logName: String {

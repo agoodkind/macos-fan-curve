@@ -8,21 +8,21 @@
 
 import Foundation
 
-enum SetupActionAffordance: String, Codable, Sendable, Equatable {
+enum SetupActionAffordance: Codable, Sendable, Equatable {
     case approveBackgroundAgent
     case approveHelper
     case enableBackgroundAgent
     case installHelper
 }
 
-enum ControlActionAffordance: String, Codable, Sendable, Equatable {
+enum ControlActionAffordance: Codable, Sendable, Equatable {
     case disableBoost
     case enableBoost
     case turnOff
     case turnOn
 }
 
-enum RuntimeServiceRequirement: String, Codable, Sendable, Equatable {
+enum RuntimeServiceRequirement: Codable, Sendable, Equatable {
     case approvalRequired
     case required
     case satisfied
@@ -101,7 +101,7 @@ enum RuntimeHealth: Codable, Sendable, Equatable {
     case stale
 }
 
-enum RuntimeHealthIssue: String, Codable, Sendable, Equatable {
+enum RuntimeHealthIssue: Codable, Sendable, Equatable {
     case agentReportedFailure
     case helperUnavailable
     case setupIncomplete

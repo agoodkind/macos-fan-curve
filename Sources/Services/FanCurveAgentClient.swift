@@ -93,7 +93,8 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
     }
 
     func setCurve(points: [CurvePoint], interpolationMode: InterpolationMode) async throws {
-        try await send(.setCurve(points: points, interpolationMode: interpolationMode))
+        let update = AgentCurveUpdate(points: points, interpolationMode: interpolationMode)
+        try await send(.setCurve(update))
     }
 
     func setApplyInBackground(_ enabled: Bool) async throws {
@@ -109,7 +110,8 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
     }
 
     func setFanRPM(_ fanIndex: UInt, rpm: Float) async throws {
-        try await send(.requestFanRPM(fanIndex: fanIndex, rpm: rpm))
+        let request = AgentFanRPMRequest(fanIndex: fanIndex, rpm: rpm)
+        try await send(.requestFanRPM(request))
     }
 
     func setFanAuto(_ fanIndex: UInt) async throws {

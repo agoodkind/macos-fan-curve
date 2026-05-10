@@ -10,7 +10,7 @@ import AppLog
 
 private let interpolationModeLog = AppLog.make(category: "InterpolationMode")
 
-enum InterpolationMode: Codable, Sendable {
+enum InterpolationMode: Codable, Sendable, Equatable {
     case catmullRom
     case linear
 

@@ -12,6 +12,15 @@ import XCTest
 @testable import FanCurveModels
 
 final class FanCurveCommandTests: XCTestCase {
+    func testRuntimeAffordancesPreserveStringJSONPayloads() throws {
+        let data = try JSONEncoder().encode(SetupActionAffordance.approveBackgroundAgent)
+        let string = String(data: data, encoding: .utf8)
+        let decoded = try JSONDecoder().decode(SetupActionAffordance.self, from: data)
+
+        expect(string) == "\"approveBackgroundAgent\""
+        expect(decoded) == .approveBackgroundAgent
+    }
+
     func testZeroPercentCommandsMinimumRPMWhenUnderdriveIsOff() {
         let mapping = FanCommandMapping(
             overdriveEnabled: false,

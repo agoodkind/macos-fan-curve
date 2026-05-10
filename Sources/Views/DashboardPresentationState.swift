@@ -72,7 +72,8 @@ struct DashboardPresentationState: Equatable {
         curveActive: Bool,
         boostEnabled: Bool
     ) -> DashboardPresentationState {
-        let backgroundControlNeedsSetup = installationStep == .agentMissing
+        let backgroundControlNeedsSetup =
+            installationStep == .agentMissing
             || installationStep == .agentAwaitingApproval
         if installationStep == .checking || backgroundControlNeedsSetup {
             return DashboardPresentationState(
@@ -85,7 +86,8 @@ struct DashboardPresentationState: Equatable {
             )
         }
 
-        let helperNeedsSetup = installationStep == .helperMissing
+        let helperNeedsSetup =
+            installationStep == .helperMissing
             || installationStep == .helperAwaitingApproval
         if helperNeedsSetup {
             return DashboardPresentationState(

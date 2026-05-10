@@ -12,6 +12,7 @@ import Foundation
 import ServiceManagement
 
 private let log = AppLog.make(category: "InstallationState")
+
 private struct AgentServiceMutationResult: Sendable {
     let statusBefore: String
     let statusAfterUnregister: String?
@@ -325,7 +326,9 @@ final class InstallationState: ObservableObject {
             ].joined(separator: "|")
         )
     }
+}
 
+extension InstallationState {
     @available(macOS 13.0, *)
     nonisolated private static func agentService() -> SMAppService {
         SMAppService.agent(plistName: generatedAgentPlistName)
