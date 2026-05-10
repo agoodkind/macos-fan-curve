@@ -220,18 +220,7 @@ struct GeneralSettingsView: View {
         if !installState.helperEnabled || !installState.helperReachable {
             Button {
                 generalSettingsLog.info("general_settings.helper.install.tapped")
-                Task {
-                    do {
-                        try await agentClient.registerHelperDaemon()
-                    } catch {
-                        generalSettingsLog.notice(
-                            "general_settings.helper.install.command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-error"
-                        )
-                        await MainActor.run {
-                            installState.lastError = error.localizedDescription
-                        }
-                    }
-                }
+                installState.registerHelperDaemon(agentClient: agentClient)
             } label: {
                 HStack(spacing: 6) {
                     if installState.isRegisteringHelper {

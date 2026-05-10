@@ -21,7 +21,6 @@ private struct AgentServiceMutationResult: Sendable {
 
 private struct ServiceRegistrationFingerprints {
     let agent: String
-    let helper: String
 }
 
 /// Tracks whether the privileged helper and background agent are installed
@@ -57,9 +56,6 @@ final class InstallationState: ObservableObject {
     private var lastAutoRefreshAttemptedHash: String?
     private var lastAutoRefreshAttemptDate: Date?
     private let agentRefreshRetryInterval: TimeInterval = 30
-    private var lastHelperRefreshAttemptedFingerprint: String?
-    private var lastHelperRefreshAttemptDate: Date?
-    private let helperRefreshRetryInterval: TimeInterval = 30
 
     /// Convenience computed helpers for the Settings UI.
     var agentEnabled: Bool {
@@ -68,8 +64,7 @@ final class InstallationState: ObservableObject {
     }
 
     var helperEnabled: Bool {
-        guard #available(macOS 13.0, *) else { return false }
-        return SMAppService.Status(rawValue: helperRawStatus) == .enabled
+        step == .ready
     }
 
     /// True when the Agent is registered AND has written a tick within the
@@ -147,37 +142,29 @@ final class InstallationState: ObservableObject {
         }
     }
 
-    func registerHelperDaemon() {
-        guard #available(macOS 13.0, *) else { return }
+    func registerHelperDaemon(agentClient: FanCurveAgentClient) {
         guard !isRegisteringHelper else {
             log.notice("helper.register.skipped reason=registration-in-progress recovery=keep-current-registration")
             return
         }
-        let expectedFingerprint = serviceRegistrationFingerprints().helper
-        let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
         isRegisteringHelper = true
-        log.notice("helper.register.started")
+        log.notice("helper.register.started owner=agent-xpc")
         Task {
             defer {
                 isRegisteringHelper = false
                 log.notice("helper.register.finished")
             }
-            let result = await Self.registerHelperDaemonService()
-            log.notice(
-                "helper.register.requested plist=\(generatedHelperDaemonPlistName, privacy: .public) status=\(result.statusBefore, privacy: .public)"
-            )
-
-            if let errorDescription = result.errorDescription {
-                lastError = errorDescription
+            do {
+                try await agentClient.registerHelperDaemon()
+                lastError = nil
+                log.notice("helper.register.done owner=agent-xpc")
+                await refresh(agentClient: agentClient)
+            } catch {
+                lastError = error.localizedDescription
                 log.error(
-                    "helper.register.failed error=\(errorDescription, privacy: .public) recovery=show-login-item-error"
+                    "helper.register.failed owner=agent-xpc error=\(error.localizedDescription, privacy: .public) recovery=show-login-item-error"
                 )
-                return
             }
-
-            lastError = nil
-            suite.set(expectedFingerprint, forKey: SharedConfigKeys.helperRegistrationFingerprint)
-            log.notice("helper.register.done status=\(result.statusAfterRegister ?? "unknown", privacy: .public)")
         }
     }
 
@@ -211,13 +198,13 @@ final class InstallationState: ObservableObject {
 
     /// Probes current installation status.
     private func refresh(agentClient: FanCurveAgentClient) async {
-        let helperStatus = await currentHelperDaemonStatus()
         let agentStatus = await currentAgentStatus()
         let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
         let helperOK = agentClient.helperReachable
+        let runtimeSetup = agentClient.runtimeState.setup
 
         helperReachable = helperOK
-        helperRawStatus = helperStatus.rawValue
+        helperRawStatus = Self.helperRawStatus(from: runtimeSetup, helperReachable: helperOK)
         agentRawStatus = agentStatus.rawValue
 
         agentLastTickEpoch = suite.double(forKey: SharedConfigKeys.agentLastTick)
@@ -226,15 +213,6 @@ final class InstallationState: ObservableObject {
         agentSnapshotSchemaVersion = AgentSnapshotStore.storedSchemaVersion(defaults: suite)
 
         let fingerprints = serviceRegistrationFingerprints()
-        let helperStoredFingerprint = suite.string(forKey: SharedConfigKeys.helperRegistrationFingerprint)
-        if helperStatus == .enabled {
-            await refreshHelperDaemonIfNeeded(
-                storedFingerprint: helperStoredFingerprint,
-                expectedFingerprint: fingerprints.helper,
-                helperReachable: helperOK,
-                defaults: suite)
-        }
-
         if agentStatus == .enabled {
             await refreshAgentIfNeeded(
                 runningHash: agentExecutableHash,
@@ -254,36 +232,20 @@ final class InstallationState: ObservableObject {
             return
         }
 
-        if helperStatus == .requiresApproval {
-            step = .helperAwaitingApproval
-            return
-        }
-
-        if !helperOK {
-            step = .helperMissing
-            return
-        }
-
-        if helperStatus != .enabled {
-            log.notice(
-                "helper.registration.missing reachable=\(helperOK, privacy: .public) status=\(Self.describeAgentStatus(helperStatus), privacy: .public) recovery=require-app-owned-registration"
+        guard agentClient.connectionState == .connected else {
+            log.debug(
+                "agent.xpc.unavailable connection=\(String(describing: agentClient.connectionState), privacy: .public) recovery=wait-for-agent-runtime-state"
             )
-            step = .helperMissing
+            step = .checking
             return
         }
 
-        step = .ready
+        step = Self.installationStep(from: runtimeSetup)
     }
 
     private func currentAgentStatus() async -> SMAppService.Status {
         guard #available(macOS 13.0, *) else { return .notFound }
         let rawValue = await Self.currentAgentStatusRawValue()
-        return SMAppService.Status(rawValue: rawValue) ?? .notFound
-    }
-
-    private func currentHelperDaemonStatus() async -> SMAppService.Status {
-        guard #available(macOS 13.0, *) else { return .notFound }
-        let rawValue = await Self.currentHelperDaemonStatusRawValue()
         return SMAppService.Status(rawValue: rawValue) ?? .notFound
     }
 
@@ -351,57 +313,6 @@ final class InstallationState: ObservableObject {
         }
     }
 
-    private func refreshHelperDaemonIfNeeded(
-        storedFingerprint: String?,
-        expectedFingerprint: String,
-        helperReachable: Bool,
-        defaults: UserDefaults
-    ) async {
-        guard #available(macOS 13.0, *) else { return }
-        let registrationMismatch = storedFingerprint != expectedFingerprint
-        guard registrationMismatch || !helperReachable else { return }
-        let bundledHash = BuildFingerprint.bundledHelperHash
-        guard bundledHash != "n/a" else {
-            log.error("helper.refresh.skipped reason=bundled-hash-unavailable")
-            return
-        }
-
-        let now = Date()
-        guard shouldRetryHelperRefresh(for: expectedFingerprint, now: now) else {
-            log.notice(
-                "helper.refresh.deferred bundledHash=\(bundledHash, privacy: .public) recovery=wait-before-retrying"
-            )
-            return
-        }
-
-        recordHelperRefreshAttempt(for: expectedFingerprint, at: now)
-        let result = await Self.refreshRegisteredHelperDaemonService()
-        log.notice(
-            "helper.refresh.needed status=\(result.statusBefore, privacy: .public) bundledHash=\(bundledHash, privacy: .public) reachable=\(helperReachable, privacy: .public) registrationMismatch=\(registrationMismatch, privacy: .public)"
-        )
-
-        if let statusAfterUnregister = result.statusAfterUnregister {
-            log.notice("helper.refresh.unregister.done status=\(statusAfterUnregister, privacy: .public)")
-        }
-
-        if let errorDescription = result.errorDescription {
-            lastError = errorDescription
-            log.error(
-                "helper.refresh.failed status=\(result.statusBefore, privacy: .public) error=\(errorDescription, privacy: .public) recovery=show-login-item-error"
-            )
-            return
-        }
-
-        if let statusAfterRegister = result.statusAfterRegister {
-            lastError = nil
-            clearHelperRefreshAttempt()
-            log.notice("helper.refresh.done status=\(statusAfterRegister, privacy: .public)")
-            if helperReachable || registrationMismatch {
-                defaults.set(expectedFingerprint, forKey: SharedConfigKeys.helperRegistrationFingerprint)
-            }
-        }
-    }
-
     private func serviceRegistrationFingerprints() -> ServiceRegistrationFingerprints {
         ServiceRegistrationFingerprints(
             agent: [
@@ -411,13 +322,6 @@ final class InstallationState: ObservableObject {
                 generatedAgentDisplayName,
                 generatedAgentExecutableName,
                 BuildFingerprint.bundledAgentHash,
-            ].joined(separator: "|"),
-            helper: [
-                generatedAppBundleID,
-                generatedAppDisplayName,
-                generatedHelperBundleID,
-                generatedHelperDisplayName,
-                BuildFingerprint.bundledHelperHash,
             ].joined(separator: "|")
         )
     }
@@ -425,11 +329,6 @@ final class InstallationState: ObservableObject {
     @available(macOS 13.0, *)
     nonisolated private static func agentService() -> SMAppService {
         SMAppService.agent(plistName: generatedAgentPlistName)
-    }
-
-    @available(macOS 13.0, *)
-    nonisolated private static func helperDaemonService() -> SMAppService {
-        SMAppService.daemon(plistName: generatedHelperDaemonPlistName)
     }
 
     @available(macOS 13.0, *)
@@ -456,13 +355,6 @@ final class InstallationState: ObservableObject {
     }
 
     @available(macOS 13.0, *)
-    nonisolated private static func currentHelperDaemonStatusRawValue() async -> Int {
-        await Task.detached {
-            helperDaemonService().status.rawValue
-        }.value
-    }
-
-    @available(macOS 13.0, *)
     nonisolated private static func registerAgentService() async -> AgentServiceMutationResult {
         await Task.detached {
             let service = agentService()
@@ -478,33 +370,6 @@ final class InstallationState: ObservableObject {
             } catch {
                 log.error(
                     "agent.register.service.failed status=\(statusBefore, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-ui"
-                )
-                return AgentServiceMutationResult(
-                    statusBefore: statusBefore,
-                    statusAfterUnregister: nil,
-                    statusAfterRegister: nil,
-                    errorDescription: error.localizedDescription
-                )
-            }
-        }.value
-    }
-
-    @available(macOS 13.0, *)
-    nonisolated private static func registerHelperDaemonService() async -> AgentServiceMutationResult {
-        await Task.detached {
-            let service = helperDaemonService()
-            let statusBefore = describeAgentStatus(service.status)
-            do {
-                try service.register()
-                return AgentServiceMutationResult(
-                    statusBefore: statusBefore,
-                    statusAfterUnregister: nil,
-                    statusAfterRegister: describeAgentStatus(service.status),
-                    errorDescription: nil
-                )
-            } catch {
-                log.error(
-                    "helper.register.service.failed status=\(statusBefore, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-ui"
                 )
                 return AgentServiceMutationResult(
                     statusBefore: statusBefore,
@@ -572,35 +437,6 @@ final class InstallationState: ObservableObject {
         }.value
     }
 
-    @available(macOS 13.0, *)
-    nonisolated private static func refreshRegisteredHelperDaemonService() async -> AgentServiceMutationResult {
-        await Task.detached {
-            let service = helperDaemonService()
-            let statusBefore = describeAgentStatus(service.status)
-            do {
-                try service.unregister()
-                let statusAfterUnregister = describeAgentStatus(service.status)
-                try service.register()
-                return AgentServiceMutationResult(
-                    statusBefore: statusBefore,
-                    statusAfterUnregister: statusAfterUnregister,
-                    statusAfterRegister: describeAgentStatus(service.status),
-                    errorDescription: nil
-                )
-            } catch {
-                log.error(
-                    "helper.refresh.service.failed status=\(statusBefore, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-refresh-loop"
-                )
-                return AgentServiceMutationResult(
-                    statusBefore: statusBefore,
-                    statusAfterUnregister: nil,
-                    statusAfterRegister: nil,
-                    errorDescription: error.localizedDescription
-                )
-            }
-        }.value
-    }
-
     private func isLocalStagedBundle(path: String) -> Bool {
         path.hasSuffix("/Products/FanCurve.app") || path.hasSuffix("/Products/Fan Curve.app")
     }
@@ -621,19 +457,34 @@ final class InstallationState: ObservableObject {
         lastAutoRefreshAttemptDate = nil
     }
 
-    private func shouldRetryHelperRefresh(for fingerprint: String, now: Date) -> Bool {
-        guard lastHelperRefreshAttemptedFingerprint == fingerprint else { return true }
-        guard let lastHelperRefreshAttemptDate else { return true }
-        return now.timeIntervalSince(lastHelperRefreshAttemptDate) >= helperRefreshRetryInterval
+    nonisolated private static func installationStep(from setup: SetupState) -> Step {
+        switch setup {
+        case .backgroundAgentApproval:
+            return .agentAwaitingApproval
+        case .backgroundAgentRequired:
+            return .agentMissing
+        case .helperApproval:
+            return .helperAwaitingApproval
+        case .helperRequired:
+            return .helperMissing
+        case .ready:
+            return .ready
+        }
     }
 
-    private func recordHelperRefreshAttempt(for fingerprint: String, at date: Date) {
-        lastHelperRefreshAttemptedFingerprint = fingerprint
-        lastHelperRefreshAttemptDate = date
-    }
-
-    private func clearHelperRefreshAttempt() {
-        lastHelperRefreshAttemptedFingerprint = nil
-        lastHelperRefreshAttemptDate = nil
+    nonisolated private static func helperRawStatus(from setup: SetupState, helperReachable: Bool) -> Int {
+        guard #available(macOS 13.0, *) else { return 0 }
+        switch setup {
+        case .helperApproval:
+            return SMAppService.Status.requiresApproval.rawValue
+        case .helperRequired:
+            return helperReachable
+                ? SMAppService.Status.enabled.rawValue
+                : SMAppService.Status.notRegistered.rawValue
+        case .ready:
+            return SMAppService.Status.enabled.rawValue
+        case .backgroundAgentApproval, .backgroundAgentRequired:
+            return SMAppService.Status.notFound.rawValue
+        }
     }
 }

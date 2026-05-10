@@ -165,18 +165,8 @@ struct OnboardingView: View {
     }
 
     private func registerHelper() {
-        Task {
-            do {
-                try await agentClient.registerHelperDaemon()
-            } catch {
-                onboardingViewLog.notice(
-                    "onboarding.helper_register.command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-error"
-                )
-                await MainActor.run {
-                    state.lastError = error.localizedDescription
-                }
-            }
-        }
+        onboardingViewLog.notice("onboarding.helper_register.tapped owner=agent-xpc")
+        state.registerHelperDaemon(agentClient: agentClient)
     }
 
     private func openLoginItems() {

@@ -25,6 +25,9 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
         self.listener = NSXPCListener(machServiceName: serviceName)
         super.init()
         self.listener.delegate = self
+        self.controller.runtimeSetupProvider = { snapshot in
+            Self.currentRuntimeSetupInputs(snapshot: snapshot)
+        }
         self.controller.runtimeStateDidChange = { [weak self] runtimeState in
             self?.publishRuntimeState(runtimeState)
         }
@@ -254,7 +257,7 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
         guard #available(macOS 13.0, *) else {
             return AgentCommandResponse(accepted: false, message: "Helper setup requires macOS 13")
         }
-        return await Task.detached {
+        let response = await Task.detached {
             let service = SMAppService.daemon(plistName: generatedHelperDaemonPlistName)
             do {
                 try service.register()
@@ -269,6 +272,47 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
                 return AgentCommandResponse(accepted: false, message: error.localizedDescription)
             }
         }.value
+        if response.accepted {
+            controller.sharedConfig.defaults.set(
+                Self.helperRegistrationFingerprint(),
+                forKey: SharedConfigKeys.helperRegistrationFingerprint
+            )
+            controller.requestTick()
+            publishRuntimeState(controller.currentRuntimeStateForXPC())
+        }
+        return response
+    }
+
+    private static func currentRuntimeSetupInputs(snapshot: AgentSnapshot?) -> RuntimeSetupInputs {
+        RuntimeSetupInputs(
+            backgroundAgent: .satisfied,
+            helper: currentHelperRequirement(snapshot: snapshot)
+        )
+    }
+
+    private static func currentHelperRequirement(snapshot: AgentSnapshot?) -> RuntimeServiceRequirement {
+        guard #available(macOS 13.0, *) else { return .required }
+        let status = SMAppService.daemon(plistName: generatedHelperDaemonPlistName).status
+        switch status {
+        case .requiresApproval:
+            return .approvalRequired
+        case .enabled:
+            return snapshot?.helperReachable == true ? .satisfied : .required
+        case .notFound, .notRegistered:
+            return .required
+        default:
+            return .required
+        }
+    }
+
+    private static func helperRegistrationFingerprint() -> String {
+        [
+            generatedAppBundleID,
+            generatedAppDisplayName,
+            generatedHelperBundleID,
+            generatedHelperDisplayName,
+            BuildFingerprint.bundledHelperHash,
+        ].joined(separator: "|")
     }
 
     private func publishRuntimeState(_ runtimeState: RuntimeState) {

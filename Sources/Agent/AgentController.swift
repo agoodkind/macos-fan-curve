@@ -67,6 +67,7 @@ final class AgentController: @unchecked Sendable {
     var conditionedDemandTemperatureC: Double?
     var conditionedDemandTemperatureVelocityC: Double = 0
     var lastDemandConditioningTime: Date?
+    var runtimeSetupProvider: (@Sendable (AgentSnapshot?) -> RuntimeSetupInputs)?
     var runtimeStateDidChange: (@Sendable (RuntimeState) -> Void)?
     let acousticRampGovernor = AcousticRampGovernor()
 
@@ -124,7 +125,10 @@ final class AgentController: @unchecked Sendable {
     }
 
     func currentRuntimeStateForXPC() -> RuntimeState {
-        RuntimeState.fromSharedDefaultsSnapshot(lastPublishedSnapshot)
+        RuntimeState.fromSharedDefaultsSnapshot(
+            lastPublishedSnapshot,
+            setup: runtimeSetupProvider?(lastPublishedSnapshot) ?? .ready
+        )
     }
 
     func registerDarwinObserver() {
