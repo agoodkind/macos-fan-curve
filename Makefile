@@ -86,7 +86,18 @@ all: app
 
 helper-artifacts:
 	@test -d "$(HELPER_REPO)" || { echo "Missing helper repo: $(HELPER_REPO)"; exit 1; }
-	$(MAKE) -C "$(HELPER_REPO)" all $(HELPER_BUILD_SETTINGS)
+	$(MAKE) -C "$(HELPER_REPO)" generate-project
+	xcodebuild -project "$(HELPER_REPO)/SMCFanApp.xcodeproj" \
+		-scheme SMCFanHelper \
+		-configuration $(CONFIGURATION) \
+		-derivedDataPath "$(HELPER_REPO)/build" \
+		$(HELPER_BUILD_SETTINGS) \
+		APP_BUNDLE_ID="$(APP_BUNDLE_ID)" \
+		ONLY_ACTIVE_ARCH=YES \
+		build
+	@mkdir -p "$(dir $(HELPER_APP_SOURCE))"
+	@rm -rf "$(HELPER_APP_SOURCE)"
+	@cp -R "$(HELPER_REPO)/build/Build/Products/$(CONFIGURATION)/SMCFanHelper.app" "$(HELPER_APP_SOURCE)"
 	@test -x "$(HELPER_APP_SOURCE)/Contents/MacOS/$(HELPER_BUNDLE_ID)" || { echo "Missing helper executable in $(HELPER_APP_SOURCE)"; exit 1; }
 
 icons:
