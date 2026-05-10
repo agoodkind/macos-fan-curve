@@ -46,6 +46,25 @@ These instructions are strict project rules for all automated coding agents work
 - The curve control-point dots are fixed, evenly spaced columns on the X axis. Change the temperatures assigned to those columns through `TemperatureAxisScale`; do not move the columns themselves or introduce ad hoc per-view dot spacing.
 - The default temperature axis should compress the low-temperature range where fans usually stay at 0% and assign progressively tighter temperature spans to the hot range where fan control needs more precision.
 
+## App, Agent, And Helper Architecture
+
+- The intended runtime architecture is:
+
+  ```text
+  Fan Curve.app  <->  FanCurveAgent XPC  <->  Privileged Helper XPC
+       |
+       | one-time bootstrap only
+       v
+  SMAppService registration / System Settings approval for FanCurveAgent
+  ```
+
+- `Fan Curve.app` may directly bootstrap the Background Agent because the agent XPC endpoint does not exist until the agent is registered, approved, and running.
+- This bootstrap exception is limited to Background Agent lifecycle setup: checking `SMAppService` status, registering or unregistering the agent, opening System Settings approval, and showing the Background Agent setup UI.
+- The app must not use this exception for runtime behavior after the agent is available.
+- Runtime telemetry, helper status, curve control, boost, apply-in-background, and fan-control commands should flow through app-facing Agent XPC.
+- The app must not directly probe or command the privileged helper for normal product flows. The agent owns helper communication and translates helper state into product-level runtime state.
+- Shared defaults may persist user preferences, but they should not be treated as the primary live app-agent runtime bus once the XPC path exists.
+
 ## Tuist, Build, And Verification
 
 - This is a Tuist project. `Project.swift`, `Workspace.swift`, `Tuist.swift`, and `Tuist/Package.swift` are the source of truth for Xcode structure and dependencies.
