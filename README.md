@@ -1,18 +1,10 @@
-<p align="center">
-  <img src="Sources/App/Assets.xcassets/AppIcon.appiconset/AppIcon-128@2x.png" width="128" height="128" alt="FanCurve app icon">
-</p>
+# FanCurve
 
-<h1 align="center">FanCurve</h1>
+![FanCurve app icon](Sources/App/Assets.xcassets/AppIcon.appiconset/AppIcon-128@2x.png)
 
-<p align="center">
-  Quiet fan control for Apple Silicon Macs.
-</p>
+Quiet fan control for Apple Silicon Macs.
 
-<p align="center">
-  <a href="https://github.com/agoodkind/macos-fan-curve/releases">Download</a>
-  ·
-  <a href="LICENSE">MIT License</a>
-</p>
+[Download](https://github.com/agoodkind/macos-fan-curve/releases) · [MIT License](LICENSE)
 
 FanCurve is a macOS app for editing and applying fan curves on Apple Silicon Macs. It uses [macos-smc-fan](https://github.com/agoodkind/macos-smc-fan) to read sensor data and send fan commands, then applies the selected curve from a background agent.
 
@@ -48,34 +40,6 @@ FanCurve uses [Tuist](https://tuist.dev) to generate the Xcode workspace. Use th
 make install-dependencies
 make build
 make run
-```
-
-Other useful targets:
-
-| Command | What it does |
-|---|---|
-| `make generate-project` | Regenerates `FanCurveApp.xcworkspace` |
-| `make open-project` | Regenerates and opens the workspace in Xcode |
-| `make app` | Builds and stages `Products/FanCurve.app` |
-| `make dmg` | Builds `Products/FanCurve-Release.dmg` |
-| `make test` | Runs the model test suite |
-| `make lint` | Runs SwiftLint and logging audits |
-| `make verify` | Runs guard checks and tests |
-
-## Project Layout
-
-```
-Sources/
-  App/        SwiftUI app entry point and window scaffolding
-  Agent/      Background login item that polls sensors and writes fan commands
-  Views/      Curve editor, sensor dashboard, and settings views
-  Models/     Fan curve, interpolation, command mapping, and presets
-  Services/   XPC client, sensor polling, and shared config
-  Common/     Logging, constants, and shared utilities
-Tests/ModelTests/      Model-level unit tests
-Scripts/               Build, audit, icon generation, and signing utilities
-Templates/             Generated plist templates
-deploy/appcast-worker/ Cloudflare worker that serves the Sparkle update feed
 ```
 
 ## Contributing
