@@ -6,7 +6,10 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import SwiftUI
+
+private let contentViewLog = AppLog.make(category: "ContentView")
 
 struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
@@ -21,10 +24,14 @@ struct ContentView: View {
 
     private let minSidebarWidth: Double = 200
     private let maxSidebarWidth: Double = 400
+    private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+
+    @AppStorage(SharedConfigKeys.boostEnabled, store: suite)
+    private var boostEnabled: Bool = false
 
     var body: some View {
         Group {
-            if installState.step == .ready {
+            if presentation.showsDashboardSidebar {
                 mainLayout
             } else {
                 OnboardingView(state: installState)
@@ -58,8 +65,16 @@ struct ContentView: View {
             #if DEBUG
                 FrameProfiler.shared.setSamplingActive(renderActivity.mode == .interactive)
             #endif
+            contentViewLog.notice(
+                "content_view.appeared installation_step=\(String(describing: installState.step), privacy: .public) ready=\(fanControlReady, privacy: .public) presentation=\(String(describing: presentation.layout), privacy: .public)"
+            )
             installState.startMonitoring(xpcClient: xpcClient)
             runtimeState.start()
+        }
+        .onChange(of: installState.step) { step in
+            contentViewLog.notice(
+                "content_view.installation_step.changed step=\(String(describing: step), privacy: .public) ready=\(fanControlReady, privacy: .public) presentation=\(String(describing: presentation.layout), privacy: .public)"
+            )
         }
         .onChange(of: renderActivity.mode) { mode in
             #if DEBUG
@@ -85,9 +100,27 @@ struct ContentView: View {
         .help("Settings")
     }
 
+    private var fanControlReady: Bool {
+        installState.step == .ready
+    }
+
+    private var presentation: DashboardPresentationState {
+        DashboardPresentationState.make(
+            installationStep: installState.step,
+            telemetryFresh: runtimeState.isFresh,
+            curveActive: curveModel.isActive,
+            boostEnabled: boostEnabled
+        )
+    }
+
     private var mainLayout: some View {
         HStack(spacing: 0) {
-            FanCurveEditor(model: curveModel, runtime: runtimeState, renderMode: renderActivity.mode)
+            FanCurveEditor(
+                model: curveModel,
+                runtime: runtimeState,
+                renderMode: renderActivity.mode,
+                presentation: presentation
+            )
                 .padding(16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .layoutPriority(1)
@@ -98,7 +131,8 @@ struct ContentView: View {
                 runtime: runtimeState,
                 curveModel: curveModel,
                 installState: installState,
-                renderMode: renderActivity.mode
+                renderMode: renderActivity.mode,
+                presentation: presentation
             )
             .frame(width: sidebarWidth)
         }

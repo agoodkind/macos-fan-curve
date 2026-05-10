@@ -122,6 +122,10 @@ final class AgentController: @unchecked Sendable {
         agentControllerLog.notice("agent.fans.reset.auto")
     }
 
+    func currentRuntimeStateForXPC() -> RuntimeState {
+        RuntimeState.fromSharedDefaultsSnapshot(lastPublishedSnapshot)
+    }
+
     func registerDarwinObserver() {
         let observer = Unmanaged.passUnretained(self).toOpaque()
         CFNotificationCenterAddObserver(

@@ -1,4 +1,4 @@
-#include "local.xcconfig"
+#include? "local.xcconfig"
 SWIFT_OPTIMIZATION_LEVEL = -O
 ENABLE_HARDENED_RUNTIME = YES
 CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO

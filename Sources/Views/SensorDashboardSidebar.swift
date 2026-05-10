@@ -19,6 +19,11 @@ struct SensorDashboardSidebar: View {
     let gpuLoadAssistEnabled: Bool
     let overdriveEnabled: Bool
     let underdriveEnabled: Bool
+    let presentation: DashboardPresentationState
+
+    var fanControlReady: Bool {
+        presentation.controlState == .fanControl
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -50,16 +55,25 @@ struct SensorDashboardSidebar: View {
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                let displayed = Int(unit.convert(fromCelsius: runtime.governingTemperature))
-                Text("\(displayed)")
-                    .font(.system(.largeTitle, design: .rounded).weight(.regular))
-                    .foregroundStyle(.primary)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .animation(.easeOut(duration: 0.38), value: displayed)
-                Text(unit.symbol)
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
+                if let displayedTemperature {
+                    Text("\(displayedTemperature)")
+                        .font(.system(.largeTitle, design: .rounded).weight(.regular))
+                        .foregroundStyle(.primary)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .animation(.easeOut(duration: 0.38), value: displayedTemperature)
+                    Text(unit.symbol)
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("--")
+                        .font(.system(.largeTitle, design: .rounded).weight(.regular))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    Text("unavailable")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -111,23 +125,27 @@ struct SensorDashboardSidebar: View {
                     Text(fanControlStateLabel)
                         .font(.caption)
                         .foregroundColor(fanControlStateColor)
-                    if curveModel.isActive, !boost {
+                    if fanControlReady, curveModel.isActive, !boost {
                         Text(controllerStateLabel)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
                 }
                 Spacer()
-                Toggle("", isOn: $curveModel.isActive)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.regular)
-                    .tint(Color.accentColor)
-                    .disabled(boost)
-                    .help(boost ? "Turn Boost off first to change this." : "")
+                if presentation.showsFanControlToggle {
+                    Toggle("", isOn: $curveModel.isActive)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.regular)
+                        .tint(Color.accentColor)
+                        .disabled(boost)
+                        .help(boost ? "Turn Boost off first to change this." : "")
+                }
             }
 
-            if curveModel.isActive {
+            if presentation.helperActionVisible {
+                setupButton
+            } else if presentation.showsBoostControl, curveModel.isActive {
                 boostButton
                     .transition(
                         .asymmetric(

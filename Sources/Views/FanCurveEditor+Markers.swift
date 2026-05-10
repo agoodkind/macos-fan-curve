@@ -9,38 +9,56 @@
 import SwiftUI
 
 extension FanCurveEditor {
-    var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            if model.isActive {
-                Circle()
-                    .fill(Color(nsColor: .systemGreen))
-                    .frame(width: 6, height: 6)
-                Text("Fans are following this curve")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Circle()
-                    .fill(Color.secondary.opacity(0.5))
-                    .frame(width: 6, height: 6)
-                Text("Preview only. Turn on Fan Control to apply.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-    }
-
     func currentPositionOverlay(
         size: CGSize,
         values: LiveMarkerPresentation.Values?
     ) -> some View {
         ZStack(alignment: .topLeading) {
             if let geometry = runtimeMarkerGeometry(size: size, values: values) {
-                RuntimeMarkerOverlay(geometry: geometry)
+                runtimeMarkerOverlay(geometry: geometry)
                     .animation(runtimeMarkerAnimation, value: geometry)
             }
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .allowsHitTesting(false)
+    }
+
+    func runtimeMarkerOverlay(geometry: RuntimeMarkerOverlay.Geometry) -> some View {
+        let markerColor = presentation.usesActiveMarkerStyling
+            ? Color(nsColor: .systemOrange)
+            : Color.secondary
+        return ZStack(alignment: .topLeading) {
+            FanNowGuidesShape(geometry: geometry)
+                .stroke(
+                    markerColor.opacity(presentation.usesActiveMarkerStyling ? 0.25 : 0.18),
+                    style: StrokeStyle(lineWidth: 1, dash: [4, 4])
+                )
+
+            DemandLeashShape(geometry: geometry)
+                .stroke(
+                    markerColor.opacity(presentation.usesActiveMarkerStyling ? 0.24 : 0.2),
+                    style: StrokeStyle(lineWidth: 1, dash: [2, 3])
+                )
+
+            Circle()
+                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.96))
+                .overlay(
+                    Circle().stroke(markerColor.opacity(0.58), lineWidth: 1.4)
+                )
+                .frame(width: 9, height: 9)
+                .shadow(color: markerColor.opacity(0.12), radius: 2)
+                .position(geometry.demandPosition)
+
+            Circle()
+                .fill(markerColor.opacity(presentation.usesActiveMarkerStyling ? 1.0 : 0.52))
+                .frame(width: 10, height: 10)
+                .shadow(
+                    color: markerColor.opacity(presentation.usesActiveMarkerStyling ? 0.5 : 0.16),
+                    radius: presentation.usesActiveMarkerStyling ? 6 : 2
+                )
+                .position(geometry.fanPosition)
+        }
+        .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
         .allowsHitTesting(false)
     }
 
@@ -157,7 +175,7 @@ extension FanCurveEditor {
     }
 
     func runtimeMarkerTarget() -> LiveMarkerPresentation.Target? {
-        guard runtime.isFresh else { return nil }
+        guard presentation.showsRuntimeMarkers else { return nil }
 
         let liveTemperature =
             runtime.semanticDemandTemperature
@@ -174,13 +192,13 @@ extension FanCurveEditor {
         return LiveMarkerPresentation.makeTarget(
             from: LiveMarkerPresentation.TargetInput(
                 snapshotEpoch: runtime.snapshot?.timestampEpoch ?? 0,
-                curveActive: runtime.curveActive,
-                boostEnabled: runtime.boostEnabled,
+                curveActive: presentation.usesActiveCurveStyling,
+                boostEnabled: boostEnabled,
                 governingTemperatureC: runtime.governingTemperature,
                 committedTemperatureC: runtime.committedTemperature,
                 rawPressureTemperatureC: runtime.rawPressureTemperature,
                 semanticDemandTemperatureC: clampedTemperature,
-                baseCurvePercent: runtime.curveActive ? runtime.baseCurvePercent : previewPercent,
+                baseCurvePercent: presentation.usesActiveCurveStyling ? runtime.baseCurvePercent : previewPercent,
                 semanticDemandPercent: runtime.semanticDemandPercent,
                 commandedTargetPercent: runtime.commandedTargetPercent,
                 rawBaselinePercent: runtime.rawBaselinePercent,
@@ -198,13 +216,17 @@ extension FanCurveEditor {
                 Spacer()
                 HStack(spacing: 12) {
                     legendItem(
-                        fill: Color(nsColor: .systemOrange),
+                        fill: presentation.usesActiveMarkerStyling
+                            ? Color(nsColor: .systemOrange)
+                            : Color.secondary.opacity(0.52),
                         stroke: nil,
                         label: "Fan Now"
                     )
                     legendItem(
                         fill: Color(nsColor: .windowBackgroundColor).opacity(0.96),
-                        stroke: Color(nsColor: .systemOrange).opacity(0.58),
+                        stroke: presentation.usesActiveMarkerStyling
+                            ? Color(nsColor: .systemOrange).opacity(0.58)
+                            : Color.secondary.opacity(0.58),
                         label: "Thermal Demand"
                     )
                 }

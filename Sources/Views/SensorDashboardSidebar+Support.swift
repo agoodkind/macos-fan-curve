@@ -6,7 +6,10 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import SwiftUI
+
+private let sensorDashboardSidebarLog = AppLog.make(category: "SensorDashboardSidebar")
 
 extension SensorDashboardSidebar {
     enum SystemStatus { case green, orange, red }
@@ -46,11 +49,14 @@ extension SensorDashboardSidebar {
     }
 
     var fanControlStateLabel: String {
+        if presentation.controlState == .monitorOnly { return "Monitor only" }
+        if !fanControlReady { return "Not Set Up" }
         if boost { return "Boost active" }
         return curveModel.isActive ? "Curve active" : "Off"
     }
 
     var fanControlStateColor: Color {
+        if !fanControlReady { return .secondary }
         if boost { return Color(nsColor: .systemOrange) }
         return curveModel.isActive ? Color.accentColor : .secondary
     }
@@ -102,70 +108,256 @@ extension SensorDashboardSidebar {
     }
 
     var boostButton: some View {
-        let label = Label(
-            boost ? "Stop Boost" : "Boost Fans",
-            systemImage: "bolt.fill"
-        )
-        return Group {
-            if #available(macOS 26.0, *) {
-                modernBoostButton(label: label)
-            } else if boost {
-                Button {
-                    boost.toggle()
-                } label: {
-                    label.frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Color(nsColor: .systemOrange))
-                .controlSize(.regular)
-                .help(boostHelp)
-            } else {
-                Button {
-                    boost.toggle()
-                } label: {
-                    label.frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .help(boostHelp)
+        sidebarProminentActionButton(
+            title: boost ? "Stop Boost" : "Boost Fans",
+            systemImage: "bolt.fill",
+            tint: Color(nsColor: .systemOrange),
+            active: boost,
+            isBusy: false,
+            action: {
+                sensorDashboardSidebarLog.notice(
+                    "sidebar.boost.toggled next_enabled=\((!boost), privacy: .public)"
+                )
+                boost.toggle()
             }
-        }
-    }
-
-    @available(macOS 26.0, *)
-    private func modernBoostButton(label _: Label<Text, Image>) -> some View {
-        let orange = Color(nsColor: .systemOrange)
-        return Button {
-            boost.toggle()
-        } label: {
-            ZStack {
-                Text(boost ? "Stop Boost" : "Boost Fans")
-                    .foregroundStyle(boost ? Color.white : Color.primary)
-                HStack {
-                    Image(systemName: "bolt.fill")
-                        .foregroundStyle(boost ? Color.white : orange)
-                    Spacer()
-                }
-                .padding(.leading, 14)
-            }
-            .font(.callout.weight(.medium))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 7)
-        }
-        .buttonStyle(.plain)
-        .background {
-            Capsule()
-                .fill(boost ? orange : orange.opacity(0.12))
-        }
-        .overlay(
-            Capsule()
-                .stroke(orange.opacity(boost ? 0 : 0.45), lineWidth: 0.8)
         )
         .help(boostHelp)
     }
 
+    private func sidebarProminentActionButton(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        active: Bool,
+        isBusy: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Group {
+            styledSidebarProminentActionButton(
+                title: title,
+                systemImage: systemImage,
+                tint: tint,
+                active: active,
+                isBusy: isBusy,
+                action: action
+            )
+        }
+        .controlSize(.large)
+        .tint(tint)
+        .frame(maxWidth: .infinity)
+        .allowsHitTesting(!isBusy)
+    }
+
+    @ViewBuilder
+    private func styledSidebarProminentActionButton(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        active: Bool,
+        isBusy: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        #if compiler(>=6.2)
+            if #available(macOS 26.0, *) {
+                if active {
+                    sidebarProminentActionButtonBody(
+                        title: title,
+                        systemImage: systemImage,
+                        active: active,
+                        isBusy: isBusy,
+                        action: action
+                    )
+                    .buttonStyle(.glassProminent)
+                } else {
+                    sidebarProminentActionButtonBody(
+                        title: title,
+                        systemImage: systemImage,
+                        active: active,
+                        isBusy: isBusy,
+                        action: action
+                    )
+                    .buttonStyle(.glass)
+                }
+            } else {
+                legacySidebarProminentActionButton(
+                    title: title,
+                    systemImage: systemImage,
+                    tint: tint,
+                    active: active,
+                    isBusy: isBusy,
+                    action: action
+                )
+            }
+        #else
+            legacySidebarProminentActionButton(
+                title: title,
+                systemImage: systemImage,
+                tint: tint,
+                active: active,
+                isBusy: isBusy,
+                action: action
+            )
+        #endif
+    }
+
+    private func sidebarProminentActionButtonBody(
+        title: String,
+        systemImage: String,
+        active: Bool,
+        isBusy: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            guard !isBusy else { return }
+            action()
+        } label: {
+            sidebarProminentActionButtonLabel(
+                title: title,
+                systemImage: systemImage,
+                active: active,
+                isBusy: isBusy
+            )
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func sidebarProminentActionButtonLabel(
+        title: String,
+        systemImage: String,
+        active: Bool,
+        isBusy: Bool
+    ) -> some View {
+        if isBusy {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(active ? Color.white : Color.accentColor)
+                Text(title)
+            }
+            .foregroundStyle(active ? Color.white : Color.primary)
+            .opacity(1)
+        } else {
+            Label(title, systemImage: systemImage)
+        }
+    }
+
+    @ViewBuilder
+    private func legacySidebarProminentActionButton(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        active: Bool,
+        isBusy: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        if active {
+            sidebarProminentActionButtonBody(
+                title: title,
+                systemImage: systemImage,
+                active: active,
+                isBusy: isBusy,
+                action: action
+            )
+            .buttonStyle(.borderedProminent)
+            .tint(tint)
+        } else {
+            sidebarProminentActionButtonBody(
+                title: title,
+                systemImage: systemImage,
+                active: active,
+                isBusy: isBusy,
+                action: action
+            )
+            .buttonStyle(.bordered)
+            .tint(tint)
+        }
+    }
+
     var boostHelp: String {
         "Pins all fans to 100% (or Overdrive target) while enabled."
+    }
+
+    var setupButton: some View {
+        Group {
+            if let (label, action) = setupAction {
+                let isBusy = installState.isRegisteringAgent || installState.isRegisteringHelper
+                sidebarProminentActionButton(
+                    title: setupButtonLabel(fallback: label),
+                    systemImage: setupButtonSystemImage,
+                    tint: Color.accentColor,
+                    active: true,
+                    isBusy: isBusy,
+                    action: action
+                )
+                .help(setupHelp)
+            } else if installState.step == .checking {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Checking setup")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var setupButtonSystemImage: String {
+        switch installState.step {
+        case .helperMissing:
+            return "fan.fill"
+        case .agentMissing:
+            return "arrow.triangle.2.circlepath.circle.fill"
+        case .agentAwaitingApproval, .helperAwaitingApproval:
+            return "arrow.up.forward.app.fill"
+        case .ready, .checking:
+            return "checkmark.circle.fill"
+        }
+    }
+
+    private var setupHelp: String {
+        switch installState.step {
+        case .helperMissing:
+            return "Install the helper so Fan Curve can apply fan speeds."
+        case .agentMissing:
+            return "Enable background control so Fan Curve can keep applying your curve after the app closes."
+        case .agentAwaitingApproval, .helperAwaitingApproval:
+            return "Open Login Items in System Settings and allow Fan Curve to run in the background."
+        case .ready, .checking:
+            return ""
+        }
+    }
+
+    private var setupAction: (String, () -> Void)? {
+        switch installState.step {
+        case .helperMissing:
+            return ("Set Up Fan Control", {
+                sensorDashboardSidebarLog.notice("sidebar.helper_setup.tapped")
+                installState.registerHelperDaemon()
+            })
+        case .agentMissing:
+            return ("Enable Background Control", {
+                sensorDashboardSidebarLog.notice("sidebar.agent_setup.tapped")
+                installState.registerAgent()
+            })
+        case .agentAwaitingApproval, .helperAwaitingApproval:
+            return ("Open System Settings", {
+                sensorDashboardSidebarLog.notice(
+                    "sidebar.login_items_settings.tapped step=\(String(describing: installState.step), privacy: .public)"
+                )
+                installState.openLoginItemsSettings()
+            })
+        case .ready, .checking:
+            return nil
+        }
+    }
+
+    private func setupButtonLabel(fallback: String) -> String {
+        if installState.isRegisteringHelper { return "Setting Up Fan Control" }
+        if installState.isRegisteringAgent { return "Enabling Background Control" }
+        return fallback
     }
 
     var systemStatus: SystemStatus {
@@ -183,17 +375,19 @@ extension SensorDashboardSidebar {
     }
 
     var statusLabel: String {
+        if presentation.controlState == .monitorOnly { return "Helper Needed" }
+        if !fanControlReady { return "Fan Control Not Set Up" }
         switch systemStatus {
         case .green: return "All systems go"
         case .orange:
             if installState.agentEnabled, installState.agentLive, !installState.agentSnapshotCompatible {
-                return "Agent update pending"
+                return "Update Required"
             }
             if installState.agentEnabled, !installState.agentLive {
-                return "Agent not responding"
+                return "Fan Control Paused"
             }
-            return "Helper offline"
-        case .red: return "Not connected"
+            return "Fan Control Offline"
+        case .red: return "Fan Control Unavailable"
         }
     }
 
@@ -219,19 +413,19 @@ extension SensorDashboardSidebar {
                 Spacer()
             }
             if !installState.agentLastError.isEmpty {
-                Text(installState.agentLastError)
+                Text("Fan Curve needs attention. Open settings or try setup again.")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .help(installState.agentLastError)
+                    .help("Fan Curve needs attention. Open settings or try setup again.")
             }
         }
     }
 
     var activeAssistStates: [ActiveAssistState] {
-        guard curveModel.isActive, !boost else { return [] }
+        guard fanControlReady, presentation.telemetryFresh, curveModel.isActive, !boost else { return [] }
         let curveReferenceTemp = runtime.rawPressureTemperature ?? runtime.governingTemperature
         let basePercent = curveModel.evaluate(at: curveReferenceTemp)
         var candidates: [ActiveAssistState] = []
@@ -350,10 +544,22 @@ extension SensorDashboardSidebar {
     }
 
     var tempColor: Color {
-        let temperature = runtime.governingTemperature
+        guard let temperature = liveTemperatureCelsius else { return .secondary }
         if temperature < 55 { return Color(nsColor: .systemGreen) }
         if temperature < 75 { return Color(nsColor: .systemYellow) }
         if temperature < 90 { return Color(nsColor: .systemOrange) }
         return Color(nsColor: .systemRed)
+    }
+
+    var displayedTemperature: Int? {
+        guard let temperature = liveTemperatureCelsius else { return nil }
+        return Int(unit.convert(fromCelsius: temperature).rounded())
+    }
+
+    var liveTemperatureCelsius: Double? {
+        guard presentation.telemetryFresh else { return nil }
+        let temperature = runtime.governingTemperature
+        guard temperature > 0 else { return nil }
+        return temperature
     }
 }

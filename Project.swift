@@ -1,8 +1,11 @@
 import ProjectDescription
 
 let appName = "FanCurve"
+let appDisplayName = "Fan Curve"
+let helperDisplayName = "Fan Curve Hardware Helper"
 let projectName = "FanCurveApp"
 let agentExecutableName = "FanCurveAgent"
+let agentDisplayName = "Fan Curve Background Control"
 let organizationName = "goodkind.io"
 let macOSDeploymentTarget = DeploymentTargets.macOS("13.0")
 
@@ -21,7 +24,10 @@ let generatedConfigScript = TargetScript.pre(
     name: "Generate Config from xcconfig",
     outputPaths: [
         "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/Config.generated.swift",
+        "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/App-Info.plist",
+        "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/Agent-Info.plist",
         "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/agent-launchd.plist",
+        "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/helper-daemon.plist",
     ]
 )
 
@@ -43,12 +49,28 @@ let signSparkleScript = TargetScript.post(
     ]
 )
 
+let embedHelperDaemonScript = TargetScript.post(
+    path: "Scripts/EmbedHelperDaemon.swift",
+    name: "Embed Helper Daemon",
+    inputPaths: [
+        "$(SMC_FAN_HELPER_APP)/Contents/MacOS/$(HELPER_BUNDLE_ID)",
+        "$(SRCROOT)/Derived/Generated/FanCurve/helper-daemon.plist",
+    ],
+    outputPaths: [
+        "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/MacOS/$(HELPER_BUNDLE_ID)",
+        "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Library/LaunchDaemons/$(HELPER_BUNDLE_ID).plist",
+    ]
+)
+
 let projectSettings = Settings.settings(
     base: [
         "SWIFT_VERSION": "6.0",
         "MACOSX_DEPLOYMENT_TARGET": "13.0",
         "MARKETING_VERSION": "0.1.0",
         "CURRENT_PROJECT_VERSION": "1",
+        "APP_DISPLAY_NAME": .string(appDisplayName),
+        "HELPER_DISPLAY_NAME": .string(helperDisplayName),
+        "AGENT_DISPLAY_NAME": .string(agentDisplayName),
         "AGENT_EXECUTABLE_NAME": .string(agentExecutableName),
         "SPARKLE_FEED_URL": "",
         "SPARKLE_PUBLIC_ED_KEY": "",
@@ -62,21 +84,6 @@ let signingSettings: SettingsDictionary = [
     "CODE_SIGN_STYLE": "Manual",
     "CODE_SIGN_IDENTITY": "$(CODE_SIGN_IDENTITY)",
     "DEVELOPMENT_TEAM": "$(DEVELOPMENT_TEAM)",
-]
-
-let appInfoPlist: [String: Plist.Value] = [
-    "CFBundleName": .string("Fan Curve"),
-    "CFBundleDisplayName": .string("Fan Curve"),
-    "LSApplicationCategoryType": .string("public.app-category.utilities"),
-    "LSMinimumSystemVersion": .string("13.0"),
-    "NSMainStoryboardFile": .string(""),
-    "NSPrincipalClass": .string("NSApplication"),
-    "SUEnableAutomaticChecks": .boolean(true),
-    "SUAllowsAutomaticUpdates": .boolean(true),
-    "SUScheduledCheckInterval": .integer(86_400),
-    "SUAutomaticallyUpdate": .boolean(false),
-    "SUFeedURL": .string("$(SPARKLE_FEED_URL)"),
-    "SUPublicEDKey": .string("$(SPARKLE_PUBLIC_ED_KEY)"),
 ]
 
 let externalDependencies: [TargetDependency] = [
@@ -126,7 +133,7 @@ let project = Project(
             product: .app,
             bundleId: "$(APP_BUNDLE_ID)",
             deploymentTargets: macOSDeploymentTarget,
-            infoPlist: .extendingDefault(with: appInfoPlist),
+            infoPlist: .file(path: "Derived/Generated/FanCurve/App-Info.plist"),
             sources: [
                 "Sources/App/**",
                 "Sources/Models/**",
@@ -156,6 +163,7 @@ let project = Project(
             ],
             scripts: [
                 generatedConfigScript,
+                embedHelperDaemonScript,
                 signSparkleScript,
             ],
             dependencies: externalDependencies + [
@@ -164,7 +172,8 @@ let project = Project(
             ],
             settings: .settings(
                 base: signingSettings.merging([
-                    "PRODUCT_NAME": .string(appName),
+                    "PRODUCT_NAME": .string(appDisplayName),
+                    "EXECUTABLE_NAME": .string(appName),
                     "PRODUCT_BUNDLE_IDENTIFIER": .string("$(APP_BUNDLE_ID)"),
                     "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
                     "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "",
@@ -177,7 +186,7 @@ let project = Project(
             product: .commandLineTool,
             bundleId: "$(AGENT_BUNDLE_ID)",
             deploymentTargets: macOSDeploymentTarget,
-            infoPlist: .default,
+            infoPlist: .file(path: "Derived/Generated/FanCurveAgent/Agent-Info.plist"),
             sources: [
                 "Sources/Agent/**",
                 "Sources/App/L10n.swift",
@@ -193,6 +202,7 @@ let project = Project(
             settings: .settings(
                 base: signingSettings.merging([
                     "PRODUCT_BUNDLE_IDENTIFIER": .string("$(AGENT_BUNDLE_ID)"),
+                    "CREATE_INFOPLIST_SECTION_IN_BINARY": "YES",
                     "SKIP_INSTALL": "YES",
                 ]) { _, new in new }
             )
