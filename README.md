@@ -14,9 +14,9 @@
   <a href="LICENSE">MIT License</a>
 </p>
 
-Apple Silicon Macs are quiet at idle but the firmware fan control is blunt. Under sustained load, fans spin up fast and stay loud well past the thermal peak, and macOS gives you no way to tune that behavior.
+FanCurve is a macOS app for editing and applying fan curves on Apple Silicon Macs. It uses [macos-smc-fan](https://github.com/agoodkind/macos-smc-fan) to read sensor data and send fan commands, then applies the selected curve from a background agent.
 
-FanCurve is a SwiftUI app powered by [macos-smc-fan](https://github.com/agoodkind/macos-smc-fan) that lets you draw a custom temperature-to-fan-speed curve and apply it continuously in the background.
+The app includes a curve editor, live fan and thermal status, curve presets, a sampling flow for learning from the current machine, boost control, and smoothing for fan speed changes. The default curve attempts to follow Apple’s quiet automatic behavior.
 
 ![FanCurve main window](Docs/Screenshots/fancurve-main.png)
 
