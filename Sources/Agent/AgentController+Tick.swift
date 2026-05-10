@@ -51,7 +51,9 @@ extension AgentController {
             fanCount: cachedFanCount,
             tempKeys: tempKeys
         )
-        cachedFanCount = UInt(result.fans.count)
+        if !result.fans.isEmpty {
+            cachedFanCount = UInt(result.fans.count)
+        }
 
         sharedConfig.writeAgentStatus(pid: ProcessInfo.processInfo.processIdentifier, lastTick: Date())
         sharedConfig.writeAgentLastError(nil)
@@ -90,8 +92,19 @@ extension AgentController {
             }
             return false
         }
-        guard !telemetry.result.fans.isEmpty else { return false }
-        guard telemetry.maxCPUTemp > 0 else { return false }
+        if telemetry.result.fans.isEmpty {
+            agentControllerTickLog.debug(
+                "agent.tick.fan_telemetry_unavailable recovery=publish-monitor-snapshot"
+            )
+        }
+        guard telemetry.maxCPUTemp > 0 else {
+            resetInactiveControllerState()
+            publishSnapshotIfNeeded(activeTemperatureUnavailableSnapshot(from: telemetry))
+            agentControllerTickLog.debug(
+                "agent.tick.temperature_unavailable fanCount=\(telemetry.result.fans.count, privacy: .public) recovery=publish-holding-snapshot"
+            )
+            return false
+        }
         return true
     }
 
@@ -111,10 +124,14 @@ extension AgentController {
         thermalDebt = 0
     }
 
+    func helperReachable(from telemetry: AgentControllerTickTypes.TickTelemetry) -> Bool {
+        !telemetry.result.fans.isEmpty || !telemetry.result.temps.isEmpty
+    }
+
     func inactiveSnapshot(from telemetry: AgentControllerTickTypes.TickTelemetry) -> AgentSnapshot {
         AgentSnapshot(
             timestamp: Date(),
-            helperReachable: true,
+            helperReachable: helperReachable(from: telemetry),
             curveActive: false,
             boostEnabled: false,
             governingTemperatureC: telemetry.maxCPUTemp,
@@ -128,6 +145,46 @@ extension AgentController {
             semanticDemandPercent: 0,
             thermalDemandSource: .curve,
             semanticDemandTemperatureC: telemetry.maxCPUTemp > 0 ? telemetry.maxCPUTemp : nil,
+            commandedTargetPercent: 0,
+            commandedTargetTemperatureC: nil,
+            committedPercent: 0,
+            controllerMode: .holding,
+            bandIndex: 0,
+            holdRemainingSeconds: 0,
+            assistFloorPercent: nil,
+            activeAssistKinds: [],
+            fans: telemetry.result.fans.enumerated().map { index, fan in
+                AgentFanSnapshot(
+                    index: index,
+                    actualRPM: fan.actualRPM,
+                    targetRPM: fan.targetRPM,
+                    minRPM: fan.minRPM,
+                    maxRPM: fan.maxRPM,
+                    manualMode: fan.manualMode
+                )
+            }
+        )
+    }
+
+    func activeTemperatureUnavailableSnapshot(
+        from telemetry: AgentControllerTickTypes.TickTelemetry
+    ) -> AgentSnapshot {
+        AgentSnapshot(
+            timestamp: Date(),
+            helperReachable: helperReachable(from: telemetry),
+            curveActive: true,
+            boostEnabled: sharedConfig.loadBoostEnabled(),
+            governingTemperatureC: 0,
+            committedTemperatureC: 0,
+            rawPressureTemperatureC: nil,
+            cpuLoadPercent: telemetry.cpuLoad,
+            gpuLoadPercent: telemetry.gpuLoad,
+            effectiveCurvePercent: 0,
+            baseCurvePercent: 0,
+            rawBaselinePercent: 0,
+            semanticDemandPercent: 0,
+            thermalDemandSource: .curve,
+            semanticDemandTemperatureC: nil,
             commandedTargetPercent: 0,
             commandedTargetTemperatureC: nil,
             committedPercent: 0,
@@ -371,7 +428,7 @@ extension AgentController {
         let fans = context.telemetry.result.fans
         return AgentSnapshot(
             timestamp: context.now,
-            helperReachable: true,
+            helperReachable: helperReachable(from: context.telemetry),
             curveActive: context.telemetry.active,
             boostEnabled: context.boost,
             governingTemperatureC: context.telemetry.maxCPUTemp,

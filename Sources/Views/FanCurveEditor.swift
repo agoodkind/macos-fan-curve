@@ -15,6 +15,7 @@ struct FanCurveEditor: View {
     @ObservedObject var model: FanCurveModel
     @ObservedObject var runtime: AgentSnapshotState
     let renderMode: AppRenderMode
+    let presentation: DashboardPresentationState
     @State private var hoveredIndexState: Int?
     @State private var draggedIndexState: Int?
     @State private var dragBaselinePercentsState: [Double] = []
@@ -79,6 +80,14 @@ struct FanCurveEditor: View {
     let temperatureAxisScale = CurveColumns.axisScale
     let curveColor = Color.accentColor
 
+    var effectiveActive: Bool {
+        presentation.usesActiveCurveStyling
+    }
+
+    var targetActivePhase: Double {
+        effectiveActive ? 1.0 : 0.0
+    }
+
     @AppStorage(SharedConfigKeys.overdriveEnabled, store: Self.suite)
     var overdriveEnabled: Bool = false
 
@@ -109,19 +118,23 @@ struct FanCurveEditor: View {
             let size = geometry.size
 
             ZStack {
-                Canvas { context, canvasSize in
-                    drawGrid(context: context, size: canvasSize)
-                    drawCurve(context: context, size: canvasSize)
-                    drawHoverLine(context: context, size: canvasSize)
-                    drawAxisTitles(context: context, size: canvasSize)
-                }
-                .contentShape(Rectangle())
+                if presentation.chartState == .degraded {
+                    degradedChartOverlay
+                } else {
+                    Canvas { context, canvasSize in
+                        drawGrid(context: context, size: canvasSize)
+                        drawCurve(context: context, size: canvasSize)
+                        drawHoverLine(context: context, size: canvasSize)
+                        drawAxisTitles(context: context, size: canvasSize)
+                    }
+                    .contentShape(Rectangle())
 
-                controlPointsOverlay(size: size)
-                currentPositionOverlay(size: size, values: markerPresenterTarget?.values)
-                hoverTooltipOverlay(size: size)
-                chartLegendOverlay
-                appleAutoLabelOverlay(size: size)
+                    controlPointsOverlay(size: size)
+                    currentPositionOverlay(size: size, values: markerPresenterTarget?.values)
+                    hoverTooltipOverlay(size: size)
+                    chartLegendOverlay
+                    appleAutoLabelOverlay(size: size)
+                }
             }
             .onContinuousHover { phase in
                 handleHoverPhase(phase, size: size)
@@ -130,11 +143,17 @@ struct FanCurveEditor: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .fancurveGlassCard(cornerRadius: 12)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .onAppear { activePhase = model.isActive ? 1.0 : 0.0 }
-        .onChange(of: model.isActive) { newActive in
+        .onAppear { activePhase = targetActivePhase }
+        .onChange(of: model.isActive) { _ in
             withAnimation(.easeInOut(duration: 0.35)) {
-                activePhase = newActive ? 1.0 : 0.0
+                activePhase = targetActivePhase
             }
+        }
+        .onChange(of: presentation) { _ in
+            withAnimation(.easeInOut(duration: 0.35)) {
+                activePhase = targetActivePhase
+            }
+            refreshRuntimeMarkerTarget()
         }
         .onAppear {
             refreshRuntimeMarkerTarget()
@@ -143,6 +162,24 @@ struct FanCurveEditor: View {
         .onChange(of: boostEnabled) { _ in
             refreshRuntimeMarkerTarget()
         }
+    }
+
+    private var degradedChartOverlay: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "waveform.path.ecg.rectangle")
+                .font(.system(size: 34, weight: .regular))
+                .foregroundStyle(.secondary)
+            Text("Runtime telemetry is unavailable")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text("Fan Curve is waiting for a fresh agent snapshot before drawing live fan demand.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(32)
     }
 
     func handleHoverPhase(_ phase: HoverPhase, size: CGSize) {

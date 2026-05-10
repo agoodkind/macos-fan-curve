@@ -5,6 +5,9 @@ TUIST := $(shell command -v tuist 2>/dev/null || printf '%s' "mise x tuist@4.192
 CONFIGURATION = Release
 BUILD_DIR = build
 PRODUCTS_DIR = Products
+CODE_SIGN_IDENTITY ?= Developer ID Application
+DEVELOPMENT_TEAM ?= H3BMXM4W7H
+BUNDLE_ID_PREFIX ?= io.goodkind
 SWIFT_FORMAT_FILES = Sources Tests Project.swift Tuist.swift Tuist/Package.swift $(wildcard Workspace.swift)
 SWIFTLINT_CONFIG = .swiftlint.yml
 PERIPHERY_CONFIG = .periphery.yml
@@ -13,19 +16,30 @@ SWIFTLINT_ANALYZE_DERIVED_DATA = $(ANALYZE_BUILD_DIR)/SwiftLintDerivedData
 SWIFTLINT_ANALYZE_LOG = $(ANALYZE_BUILD_DIR)/swiftlint-xcodebuild.log
 APP_NAME = FanCurve
 AGENT_EXECUTABLE_NAME = FanCurveAgent
+APP_DISPLAY_NAME = Fan Curve
+APP_BUNDLE_NAME = $(APP_DISPLAY_NAME)
+AGENT_DISPLAY_NAME = Fan Curve Background Control
+HELPER_DISPLAY_NAME = Fan Curve Hardware Helper
+HELPER_REPO ?= $(CURDIR)/../macos-smc-fan
+HELPER_APP_SOURCE ?= $(HELPER_REPO)/Products/SMCFanHelper.app
+HELPER_BUNDLE_ID ?= $(BUNDLE_ID_PREFIX).smcfanhelper
+APP_BUNDLE_ID ?= $(BUNDLE_ID_PREFIX).fancurve
+AGENT_BUNDLE_ID ?= $(BUNDLE_ID_PREFIX).fancurveagent
+SHARED_SUITE_ID ?= $(BUNDLE_ID_PREFIX).fancurve.shared
 DMG_NAME = $(APP_NAME)-$(CONFIGURATION)
 MARKETING_VERSION ?= 0.1.0
 CURRENT_PROJECT_VERSION ?= 1
-SPARKLE_FEED_URL ?=
+SPARKLE_FEED_URL ?= https://goodkind.io/fancurve/appcast.xml
 SPARKLE_PUBLIC_ED_KEY ?=
 RELEASE_TAG ?= $(CURRENT_PROJECT_VERSION)-$(shell git rev-parse --short HEAD)
-DMG_VOLUME_NAME = $(APP_NAME)
+DMG_VOLUME_NAME = $(APP_DISPLAY_NAME)
 DMG_STAGING_DIR = $(BUILD_DIR)/dmg
 XCODE_PRODUCTS_DIR = $(BUILD_DIR)/Build/Products/$(CONFIGURATION)
-APP_SOURCE = $(XCODE_PRODUCTS_DIR)/$(APP_NAME).app
-APP_DEST = $(PRODUCTS_DIR)/$(APP_NAME).app
-INSTALL_USER_APP_DEST ?= $(HOME)/Applications/$(APP_NAME).app
-INSTALL_APP_DEST ?= /Applications/$(APP_NAME).app
+APP_SOURCE = $(XCODE_PRODUCTS_DIR)/$(APP_BUNDLE_NAME).app
+APP_DEST = $(PRODUCTS_DIR)/$(APP_BUNDLE_NAME).app
+LEGACY_APP_DEST = $(PRODUCTS_DIR)/$(APP_NAME).app
+INSTALL_USER_APP_DEST ?= $(HOME)/Applications/$(APP_BUNDLE_NAME).app
+INSTALL_APP_DEST ?= /Applications/$(APP_BUNDLE_NAME).app
 AGENT_LABEL ?= io.goodkind.fancurveagent
 AGENT_PLIST_NAME ?= agent-launchd.plist
 AGENT_BUNDLED_PLIST ?= $(APP_DEST)/Contents/Library/LaunchAgents/$(AGENT_PLIST_NAME)
@@ -37,9 +51,11 @@ RELEASE_DMG_PATH = $(PRODUCTS_DIR)/$(RELEASE_DMG_NAME)
 SPARKLE_UPDATES_DIR = $(BUILD_DIR)/sparkle-updates
 SPARKLE_APPCAST_PATH = $(SPARKLE_UPDATES_DIR)/appcast.xml
 GITHUB_RELEASE_BASE_URL ?= https://github.com/agoodkind/macos-fan-curve/releases/download/$(RELEASE_TAG)/
-GENERATE_CONFIG_ENV = SRCROOT="$(CURDIR)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
+GENERATE_CONFIG_ENV = SRCROOT="$(CURDIR)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
+XCODE_BUILD_SETTINGS = CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
+HELPER_BUILD_SETTINGS = CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" OWNER_APP_BUNDLE_ID="$(APP_BUNDLE_ID)" HELPER_APP_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" HELPER_DAEMON_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)"
 
-.PHONY: all install-dependencies install-analysis-tools build app install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project generate-config-artifacts open-project test format format-check lint swiftlint-lint analyze xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit verify quality run log-audit icons
+.PHONY: all install-dependencies install-analysis-tools build app install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project generate-config-artifacts open-project test format format-check lint swiftlint-lint analyze xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit verify quality run log-audit icons helper-artifacts
 
 install-dependencies:
 	$(TUIST) install
@@ -68,23 +84,28 @@ open-project: generate-project
 
 all: app
 
+helper-artifacts:
+	@test -d "$(HELPER_REPO)" || { echo "Missing helper repo: $(HELPER_REPO)"; exit 1; }
+	$(MAKE) -C "$(HELPER_REPO)" all $(HELPER_BUILD_SETTINGS)
+	@test -x "$(HELPER_APP_SOURCE)/Contents/MacOS/$(HELPER_BUNDLE_ID)" || { echo "Missing helper executable in $(HELPER_APP_SOURCE)"; exit 1; }
+
 icons:
 	./Scripts/GenerateIcons.swift
 
-build: icons generate-project
+build: generate-config-artifacts helper-artifacts icons generate-project
 	xcodebuild -workspace FanCurveApp.xcworkspace \
 		-scheme FanCurve \
 		-configuration $(CONFIGURATION) \
 		-derivedDataPath $(BUILD_DIR) \
+		$(XCODE_BUILD_SETTINGS) \
 		MARKETING_VERSION="$(MARKETING_VERSION)" \
 		CURRENT_PROJECT_VERSION="$(CURRENT_PROJECT_VERSION)" \
-		SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" \
-		SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
+		SMC_FAN_HELPER_APP="$(HELPER_APP_SOURCE)"
 
 app: build
 	@mkdir -p $(PRODUCTS_DIR)
 	@./Scripts/RefreshIconCache.swift "$(APP_SOURCE)" "$(ICON_HASH_STAMP)"
-	@rm -rf "$(APP_DEST)"
+	@rm -rf "$(APP_DEST)" "$(LEGACY_APP_DEST)"
 	@cp -R "$(APP_SOURCE)" "$(PRODUCTS_DIR)/"
 	@./Scripts/RefreshIconCache.swift "$(APP_DEST)" "$(ICON_HASH_STAMP)"
 
@@ -102,7 +123,7 @@ run-installed: install-user
 
 dmg: app
 	@mkdir -p "$(PRODUCTS_DIR)" "$(DMG_STAGING_DIR)"
-	@rm -rf "$(DMG_STAGING_DIR)/$(APP_NAME).app" "$(DMG_STAGING_DIR)/Applications" "$(DMG_PATH)"
+	@rm -rf "$(DMG_STAGING_DIR)/$(APP_BUNDLE_NAME).app" "$(DMG_STAGING_DIR)/Applications" "$(DMG_PATH)"
 	@cp -R "$(APP_DEST)" "$(DMG_STAGING_DIR)/"
 	@ln -s /Applications "$(DMG_STAGING_DIR)/Applications"
 	hdiutil create -volname "$(DMG_VOLUME_NAME)" \
@@ -140,11 +161,13 @@ run: app
 	@pkill -x "$(APP_NAME)" 2>/dev/null || true
 	@open "$(APP_DEST)"
 
-test: generate-project
+test: generate-config-artifacts helper-artifacts generate-project
 	xcodebuild -workspace FanCurveApp.xcworkspace \
 		-scheme FanCurve \
 		-configuration Debug \
 		-derivedDataPath $(BUILD_DIR) \
+		$(XCODE_BUILD_SETTINGS) \
+		SMC_FAN_HELPER_APP="$(HELPER_APP_SOURCE)" \
 		test
 
 format:

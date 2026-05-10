@@ -69,6 +69,7 @@ struct GeneralSettingsView: View {
 
             Section {
                 helperRow
+                helperAction
                 DisclosureGroup(isExpanded: $showOwnership) {
                     ownershipContent
                 } label: {
@@ -183,11 +184,32 @@ struct GeneralSettingsView: View {
 
     private var helperRow: some View {
         statusRow(
-            title: "SMC Fan Helper",
+            title: generatedHelperDisplayName,
             subtitle: generatedHelperBundleID,
-            status: installState.helperReachable ? "Running" : "Stopped",
+            status: helperStatusText,
             state: helperRowState
         )
+    }
+
+    @ViewBuilder
+    private var helperAction: some View {
+        if !installState.helperEnabled || !installState.helperReachable {
+            Button {
+                generalSettingsLog.info("general_settings.helper.install.tapped")
+                installState.registerHelperDaemon()
+            } label: {
+                HStack(spacing: 6) {
+                    if installState.isRegisteringHelper {
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.7)
+                    }
+                    Text(installState.isRegisteringHelper ? "Installing" : "Install")
+                }
+            }
+            .disabled(installState.isRegisteringHelper)
+            .controlSize(.small)
+        }
     }
 
     private var agentRow: some View {
@@ -196,7 +218,7 @@ struct GeneralSettingsView: View {
                 .fill(agentRowState.color)
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Fan Curve Agent")
+                Text(generatedAgentDisplayName)
                     .font(.body)
                 Text(generatedAgentBundleID)
                     .font(.caption)
@@ -217,7 +239,16 @@ struct GeneralSettingsView: View {
     }
 
     private var helperRowState: ServiceRowState {
-        installState.helperReachable ? .healthy : .inactive
+        if installState.helperEnabled, installState.helperReachable { return .healthy }
+        if installState.helperReachable { return .degraded }
+        return .inactive
+    }
+
+    private var helperStatusText: String {
+        if installState.helperEnabled, installState.helperReachable { return "Running" }
+        if installState.helperEnabled { return "Installed" }
+        if installState.helperReachable { return "Needs Reinstall" }
+        return "Not Installed"
     }
 
     private var agentRowState: ServiceRowState {

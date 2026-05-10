@@ -22,6 +22,7 @@ enum FanCurveAgentMain {
         log.notice("agent.starting pid=\(ProcessInfo.processInfo.processIdentifier, privacy: .public)")
 
         let controller = AgentController()
+        let appXPCService = FanCurveAgentXPCService(controller: controller)
 
         installSignalHandler(SIGTERM, controller: controller)
         installSignalHandler(SIGINT, controller: controller)
@@ -31,6 +32,7 @@ enum FanCurveAgentMain {
             exitLog.info("agent.atexit fans may not have been reset")
         }
 
+        appXPCService.start()
         controller.start()
         RunLoop.main.run()
     }

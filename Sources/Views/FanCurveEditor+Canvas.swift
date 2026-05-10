@@ -92,7 +92,9 @@ extension FanCurveEditor {
     }
 
     func drawCurve(context: GraphicsContext, size: CGSize) {
-        drawGhostCurve(context: context, size: size, opacity: 1.0 - activePhase)
+        if !effectiveActive {
+            drawGhostCurve(context: context, size: size, opacity: 1.0 - activePhase)
+        }
 
         let pixelPoints = curvePixelPoints(
             points: model.controlPoints,
@@ -157,7 +159,7 @@ extension FanCurveEditor {
         let line = curvePath(through: pixelPoints)
         context.stroke(
             line,
-            with: .color(curveColor.opacity(0.75 * opacity)),
+            with: .color(Color.secondary.opacity(0.45 * opacity)),
             style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round, dash: [5, 4])
         )
     }
@@ -197,7 +199,7 @@ extension FanCurveEditor {
     }
 
     func appleAutoLabelOverlay(size: CGSize) -> some View {
-        let inverse = 1.0 - activePhase
+        let inverse = presentation.showsSystemDefault ? 1.0 - activePhase : 0.0
         return Group {
             if inverse > 0.01 {
                 let ghostAt = CurveInterpolation.evaluate(
@@ -208,7 +210,7 @@ extension FanCurveEditor {
                 let anchor = dataToPixel(temp: 92, percent: ghostAt, in: size)
                 let text = Text("System Default")
                     .font(.system(.caption2, design: .rounded).weight(.medium))
-                    .foregroundColor(curveColor)
+                    .foregroundColor(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
 
@@ -216,7 +218,7 @@ extension FanCurveEditor {
                     .fancurveGlassPill(
                         in: RoundedRectangle(cornerRadius: 4),
                         fallbackFill: Color(nsColor: .windowBackgroundColor),
-                        stroke: curveColor.opacity(0.35)
+                        stroke: Color.secondary.opacity(0.28)
                     )
                     .opacity(inverse)
                     .position(x: anchor.x - 34, y: anchor.y + 16)

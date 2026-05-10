@@ -36,6 +36,9 @@ func requiredEnv(_ key: String) throws -> String {
     guard let value = ProcessInfo.processInfo.environment[key] else {
         try fail("GenerateConfig failed: missing required environment variable \(key)")
     }
+    guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        try fail("GenerateConfig failed: required environment variable \(key) is empty")
+    }
     return value
 }
 
@@ -64,8 +67,11 @@ do {
 
     let replacements: [String: String] = [
         "@@HELPER_BUNDLE_ID@@": try requiredEnv("HELPER_BUNDLE_ID"),
+        "@@HELPER_DISPLAY_NAME@@": optionalEnv("HELPER_DISPLAY_NAME", default: "Fan Curve Hardware Helper"),
         "@@APP_BUNDLE_ID@@": try requiredEnv("APP_BUNDLE_ID"),
+        "@@APP_DISPLAY_NAME@@": optionalEnv("APP_DISPLAY_NAME", default: "Fan Curve"),
         "@@AGENT_BUNDLE_ID@@": try requiredEnv("AGENT_BUNDLE_ID"),
+        "@@AGENT_DISPLAY_NAME@@": optionalEnv("AGENT_DISPLAY_NAME", default: "Fan Curve Background Control"),
         "@@AGENT_EXECUTABLE_NAME@@": optionalEnv("AGENT_EXECUTABLE_NAME", default: "FanCurveAgent"),
         "@@SHARED_SUITE_ID@@": try requiredEnv("SHARED_SUITE_ID"),
         "@@DEVELOPMENT_TEAM@@": try requiredEnv("DEVELOPMENT_TEAM"),

@@ -38,7 +38,7 @@ do {
 
     guard let declaration = runBody.first, declaration.range(of: #"^run:\s+app(\s|$)"#, options: .regularExpression) != nil
     else {
-        try fail("run-audit failed: make run must depend on app and launch Products/FanCurve.app")
+        try fail("run-audit failed: make run must depend on app and launch Products/$(APP_BUNDLE_NAME).app")
     }
 
     let forbiddenTokens = ["install-app", "restart-agent", "sync-agent-plist", "launchctl", "/Applications"]

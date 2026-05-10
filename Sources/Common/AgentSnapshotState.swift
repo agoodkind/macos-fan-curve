@@ -92,6 +92,9 @@ final class AgentSnapshotState: ObservableObject {
     var helperReachable: Bool { snapshot?.helperReachable ?? false }
     var boostEnabled: Bool { snapshot?.boostEnabled ?? false }
     var curveActive: Bool { snapshot?.curveActive ?? false }
+    var runtimeState: RuntimeState {
+        RuntimeState.fromSharedDefaultsSnapshot(snapshot)
+    }
     var isFresh: Bool {
         guard let snapshot else { return false }
         return Date().timeIntervalSince(snapshot.timestamp) < 5

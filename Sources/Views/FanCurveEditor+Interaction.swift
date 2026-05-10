@@ -18,18 +18,19 @@ extension FanCurveEditor {
     func controlPointView(index: Int, point: CurvePoint, size: CGSize) -> some View {
         let position = dataToPixel(temp: point.temperature, percent: point.fanPercent, in: size)
         let isHighlighted = hoveredIndex == index || draggedIndex == index
-        let strokeColor: Color = model.isActive ? curveColor : Color.secondary
+        let strokeColor: Color = effectiveActive ? curveColor : Color.secondary.opacity(0.96)
+        let strokeWidth: CGFloat = isHighlighted ? 2.5 : effectiveActive ? 1.5 : 2.0
 
         return Circle()
-            .fill(Color(nsColor: .textBackgroundColor))
-            .frame(width: isHighlighted ? 14 : 10, height: isHighlighted ? 14 : 10)
-            .overlay(Circle().stroke(strokeColor, lineWidth: isHighlighted ? 2.5 : 1.5))
-            .shadow(color: strokeColor.opacity(0.25), radius: isHighlighted ? 6 : 2)
-            .padding(controlPointHitRadius - ((isHighlighted ? 14 : 10) / 2))
+            .fill(Color(nsColor: .windowBackgroundColor).opacity(0.98))
+            .frame(width: isHighlighted ? 14 : 11, height: isHighlighted ? 14 : 11)
+            .overlay(Circle().stroke(strokeColor, lineWidth: strokeWidth))
+            .shadow(color: strokeColor.opacity(effectiveActive ? 0.25 : 0.2), radius: isHighlighted ? 6 : 2)
+            .padding(controlPointHitRadius - ((isHighlighted ? 14 : 11) / 2))
             .contentShape(Circle())
             .position(position)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHighlighted)
-            .animation(.easeInOut(duration: 0.35), value: model.isActive)
+            .animation(.easeInOut(duration: 0.35), value: effectiveActive)
             .gesture(dragGesture(index: index, size: size))
     }
 

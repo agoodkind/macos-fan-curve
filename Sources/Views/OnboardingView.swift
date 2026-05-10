@@ -66,11 +66,11 @@ struct OnboardingView: View {
         if let (label, handler) = primaryAction {
             Button(action: handler) {
                 HStack(spacing: 8) {
-                    if state.isRegisteringAgent {
+                    if state.isRegisteringAgent || state.isRegisteringHelper {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    Text(state.isRegisteringAgent ? L10n.tr("Installing Background Agent") : label)
+                    Text(isRegistering ? installingLabel : label)
                 }
                 .font(.system(.body, weight: .semibold))
                 .frame(minWidth: 180)
@@ -78,7 +78,7 @@ struct OnboardingView: View {
             .controlSize(.large)
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
-            .disabled(state.isRegisteringAgent)
+            .disabled(isRegistering)
         } else if state.step == .checking {
             ProgressView()
                 .controlSize(.small)
@@ -126,7 +126,7 @@ struct OnboardingView: View {
         case .helperMissing:
             return L10n.tr(
                 "FanCurve needs a privileged helper to read temperatures and control fans. "
-                    + "Install it from the macos-smc-fan project, then return here."
+                    + "Install the helper from this app, then approve it in System Settings if macOS asks."
             )
         case .helperAwaitingApproval:
             return L10n.tr(
@@ -149,14 +149,23 @@ struct OnboardingView: View {
 
     private var primaryAction: (String, () -> Void)? {
         switch state.step {
+        case .helperMissing:
+            return (L10n.tr("Install System Helper"), { state.registerHelperDaemon() })
         case .agentMissing:
             return (L10n.tr("Install Background Agent"), { state.registerAgent() })
         case .agentAwaitingApproval, .helperAwaitingApproval:
             return (L10n.tr("Open Login Items"), { state.openLoginItemsSettings() })
-        case .helperMissing:
-            return nil
         case .ready, .checking:
             return nil
         }
+    }
+
+    private var isRegistering: Bool {
+        state.isRegisteringAgent || state.isRegisteringHelper
+    }
+
+    private var installingLabel: String {
+        if state.isRegisteringHelper { return L10n.tr("Installing System Helper") }
+        return L10n.tr("Installing Background Agent")
     }
 }
