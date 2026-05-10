@@ -165,7 +165,7 @@ extension SensorDashboardSidebar {
 
     private func sidebarProminentActionButton(
         title: String,
-        systemImage: String,
+        systemImage: String?,
         tint: Color,
         active: Bool,
         isBusy: Bool,
@@ -188,7 +188,7 @@ extension SensorDashboardSidebar {
     @ViewBuilder
     private func styledSidebarProminentActionButton(
         title: String,
-        systemImage: String,
+        systemImage: String?,
         tint: Color,
         active: Bool,
         isBusy: Bool,
@@ -215,7 +215,7 @@ extension SensorDashboardSidebar {
 
     private func sidebarProminentActionButtonBody(
         title: String,
-        systemImage: String,
+        systemImage: String?,
         tint: Color,
         active: Bool,
         isBusy: Bool,
@@ -239,7 +239,7 @@ extension SensorDashboardSidebar {
     @ViewBuilder
     private func sidebarProminentActionButtonLabel(
         title: String,
-        systemImage: String,
+        systemImage: String?,
         tint: Color,
         active: Bool,
         isBusy: Bool
@@ -256,12 +256,14 @@ extension SensorDashboardSidebar {
             } else {
                 Text(title)
                     .foregroundStyle(active ? Color.white : Color.primary)
-                HStack {
-                    Image(systemName: systemImage)
-                        .foregroundStyle(active ? Color.white : tint)
-                    Spacer()
+                if let systemImage {
+                    HStack {
+                        Image(systemName: systemImage)
+                            .foregroundStyle(active ? Color.white : tint)
+                        Spacer()
+                    }
+                    .padding(.leading, 14)
                 }
-                .padding(.leading, 14)
             }
         }
         .font(.callout.weight(.medium))
@@ -272,7 +274,7 @@ extension SensorDashboardSidebar {
     @ViewBuilder
     private func legacySidebarProminentActionButton(
         title: String,
-        systemImage: String,
+        systemImage: String?,
         tint: Color,
         active: Bool,
         isBusy: Bool,
@@ -333,10 +335,10 @@ extension SensorDashboardSidebar {
         }
     }
 
-    private var setupButtonSystemImage: String {
+    private var setupButtonSystemImage: String? {
         switch installState.step {
         case .helperMissing:
-            return "fan.fill"
+            return nil
         case .agentMissing:
             return "arrow.triangle.2.circlepath.circle.fill"
         case .agentAwaitingApproval, .helperAwaitingApproval:
