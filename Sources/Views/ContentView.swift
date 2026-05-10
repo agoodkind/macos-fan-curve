@@ -13,10 +13,9 @@ private let contentViewLog = AppLog.make(category: "ContentView")
 
 struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
-    @EnvironmentObject var xpcClient: XPCClient
+    @EnvironmentObject var agentClient: FanCurveAgentClient
     @EnvironmentObject var curveModel: FanCurveModel
     @StateObject private var installState = InstallationState()
-    @StateObject private var runtimeState = AgentSnapshotState()
     @StateObject private var renderActivity = AppRenderActivity()
 
     @AppStorage("sidebarWidth") private var sidebarWidth: Double = 240
@@ -68,8 +67,8 @@ struct ContentView: View {
             contentViewLog.notice(
                 "content_view.appeared installation_step=\(String(describing: installState.step), privacy: .public) ready=\(fanControlReady, privacy: .public) presentation=\(String(describing: presentation.layout), privacy: .public)"
             )
-            installState.startMonitoring(xpcClient: xpcClient)
-            runtimeState.start()
+            agentClient.start()
+            installState.startMonitoring(agentClient: agentClient)
         }
         .onChange(of: installState.step) { step in
             contentViewLog.notice(
@@ -87,8 +86,9 @@ struct ContentView: View {
             #endif
             renderActivity.stop()
             installState.stopMonitoring()
-            runtimeState.stop()
         }
+        .onChange(of: curveModel.controlPoints) { _ in pushCurveToAgent(reason: "points-changed") }
+        .onChange(of: curveModel.interpolationMode) { _ in pushCurveToAgent(reason: "mode-changed") }
     }
 
     private var settingsToolbarButton: some View {
@@ -107,8 +107,8 @@ struct ContentView: View {
     private var presentation: DashboardPresentationState {
         DashboardPresentationState.make(
             installationStep: installState.step,
-            telemetryFresh: runtimeState.isFresh,
-            runtimeTelemetryAvailable: runtimeState.governingTemperature > 0 && !runtimeState.fans.isEmpty,
+            telemetryFresh: agentClient.isFresh,
+            runtimeTelemetryAvailable: agentClient.governingTemperature > 0 && !agentClient.fans.isEmpty,
             curveActive: curveModel.isActive,
             boostEnabled: boostEnabled
         )
@@ -118,7 +118,7 @@ struct ContentView: View {
         HStack(spacing: 0) {
             FanCurveEditor(
                 model: curveModel,
-                runtime: runtimeState,
+                runtime: agentClient,
                 renderMode: renderActivity.mode,
                 presentation: presentation
             )
@@ -129,7 +129,7 @@ struct ContentView: View {
             sidebarSplitter
 
             SensorDashboard(
-                runtime: runtimeState,
+                runtime: agentClient,
                 curveModel: curveModel,
                 installState: installState,
                 renderMode: renderActivity.mode,
@@ -170,6 +170,22 @@ struct ContentView: View {
                 }
                 .onEnded { _ in dragStartWidth = nil }
         )
+    }
+
+    private func pushCurveToAgent(reason: String) {
+        contentViewLog.info("content_view.curve.push requested reason=\(reason, privacy: .public)")
+        Task {
+            do {
+                try await agentClient.setCurve(
+                    points: curveModel.controlPoints,
+                    interpolationMode: curveModel.interpolationMode
+                )
+            } catch {
+                contentViewLog.notice(
+                    "content_view.curve.push_failed reason=\(reason, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=agent-next-poll"
+                )
+            }
+        }
     }
 
 }

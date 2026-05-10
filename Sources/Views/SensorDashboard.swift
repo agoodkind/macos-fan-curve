@@ -12,7 +12,7 @@ import SwiftUI
 private let sensorDashboardLog = AppLog.make(category: "SensorDashboard")
 
 struct SensorDashboard: View {
-    @ObservedObject var runtime: AgentSnapshotState
+    @ObservedObject var runtime: FanCurveAgentClient
     @ObservedObject var curveModel: FanCurveModel
     @ObservedObject var installState: InstallationState
     let renderMode: AppRenderMode

@@ -191,7 +191,7 @@ let project = Project(
                 "Sources/Agent/**",
                 "Sources/App/L10n.swift",
                 "Sources/Models/**",
-                "Sources/Services/XPCClient.swift",
+                "Sources/Services/FanCurveAgentClient.swift",
                 "Sources/Common/**",
                 .generated("Derived/Generated/FanCurveAgent/Config.generated.swift"),
             ],

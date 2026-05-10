@@ -12,8 +12,6 @@ import Foundation
 import ServiceManagement
 
 private let log = AppLog.make(category: "InstallationState")
-private let helperProbeTimeoutNanoseconds: UInt64 = 1_500_000_000
-
 private struct AgentServiceMutationResult: Sendable {
     let statusBefore: String
     let statusAfterUnregister: String?
@@ -24,20 +22,6 @@ private struct AgentServiceMutationResult: Sendable {
 private struct ServiceRegistrationFingerprints {
     let agent: String
     let helper: String
-}
-
-private final class HelperProbeContinuationGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var resumed = false
-
-    func resume(_ continuation: CheckedContinuation<Bool, Never>, returning value: Bool) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !resumed else { return false }
-        resumed = true
-        continuation.resume(returning: value)
-        return true
-    }
 }
 
 /// Tracks whether the privileged helper and background agent are installed
@@ -113,13 +97,13 @@ final class InstallationState: ObservableObject {
         return agentSnapshotSchemaVersion == AgentSnapshot.currentSchemaVersion
     }
 
-    func startMonitoring(xpcClient: XPCClient) {
-        Task { await refresh(xpcClient: xpcClient) }
+    func startMonitoring(agentClient: FanCurveAgentClient) {
+        Task { await refresh(agentClient: agentClient) }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 if let self {
-                    await self.refresh(xpcClient: xpcClient)
+                    await self.refresh(agentClient: agentClient)
                 }
             }
         }
@@ -226,11 +210,11 @@ final class InstallationState: ObservableObject {
     }
 
     /// Probes current installation status.
-    private func refresh(xpcClient: XPCClient) async {
-        let helperOK = await helperResponding(xpcClient: xpcClient)
+    private func refresh(agentClient: FanCurveAgentClient) async {
         let helperStatus = await currentHelperDaemonStatus()
         let agentStatus = await currentAgentStatus()
         let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+        let helperOK = agentClient.helperReachable
 
         helperReachable = helperOK
         helperRawStatus = helperStatus.rawValue
@@ -289,32 +273,6 @@ final class InstallationState: ObservableObject {
         }
 
         step = .ready
-    }
-
-    private func helperResponding(xpcClient: XPCClient) async -> Bool {
-        await withCheckedContinuation { continuation in
-            let gate = HelperProbeContinuationGate()
-            let probeTask = Task {
-                do {
-                    _ = try await xpcClient.getFanCount()
-                    _ = gate.resume(continuation, returning: true)
-                } catch {
-                    if gate.resume(continuation, returning: false) {
-                        log.notice(
-                            "helper.probe.failed error=\(error.localizedDescription, privacy: .public) recovery=mark-helper-unreachable"
-                        )
-                    }
-                }
-            }
-
-            Task {
-                try? await Task.sleep(nanoseconds: helperProbeTimeoutNanoseconds)
-                if gate.resume(continuation, returning: false) {
-                    probeTask.cancel()
-                    log.notice("helper.probe.timeout recovery=mark-helper-unreachable")
-                }
-            }
-        }
     }
 
     private func currentAgentStatus() async -> SMAppService.Status {

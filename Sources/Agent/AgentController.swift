@@ -67,6 +67,7 @@ final class AgentController: @unchecked Sendable {
     var conditionedDemandTemperatureC: Double?
     var conditionedDemandTemperatureVelocityC: Double = 0
     var lastDemandConditioningTime: Date?
+    var runtimeStateDidChange: (@Sendable (RuntimeState) -> Void)?
     let acousticRampGovernor = AcousticRampGovernor()
 
     let pollInterval: TimeInterval = 1.0

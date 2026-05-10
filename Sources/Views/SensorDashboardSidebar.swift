@@ -14,7 +14,7 @@ private let sensorDashboardSidebarViewLog = AppLog.make(category: "SensorDashboa
 struct SensorDashboardSidebar: View {
     @State var pendingAction: SidebarPendingAction?
     @State var pendingActionStartDate: Date?
-    @ObservedObject var runtime: AgentSnapshotState
+    @ObservedObject var runtime: FanCurveAgentClient
     @ObservedObject var curveModel: FanCurveModel
     @ObservedObject var installState: InstallationState
     let renderMode: AppRenderMode

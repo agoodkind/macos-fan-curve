@@ -164,7 +164,22 @@ extension SensorDashboardSidebar {
                     "sidebar.boost.toggled next_enabled=\((!boost), privacy: .public)"
                 )
                 beginPendingAction(targetAction)
-                boost.toggle()
+                let enabled = !boost
+                Task {
+                    do {
+                        try await runtime.setBoostEnabled(enabled)
+                        await MainActor.run {
+                            boost = enabled
+                        }
+                    } catch {
+                        sensorDashboardSidebarLog.notice(
+                            "sidebar.boost.command_failed enabled=\(enabled, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=keep-current-state"
+                        )
+                        await MainActor.run {
+                            completePendingAction(targetAction, reason: "command-failed")
+                        }
+                    }
+                }
             }
         )
         .help(boostHelp)
@@ -380,7 +395,19 @@ extension SensorDashboardSidebar {
             return ("Set Up System Helper", {
                 sensorDashboardSidebarLog.notice("sidebar.helper_setup.tapped")
                 beginPendingAction(.helperSetup)
-                installState.registerHelperDaemon()
+                Task {
+                    do {
+                        try await runtime.registerHelperDaemon()
+                    } catch {
+                        sensorDashboardSidebarLog.notice(
+                            "sidebar.helper_setup.command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-error"
+                        )
+                        await MainActor.run {
+                            installState.lastError = error.localizedDescription
+                            completePendingAction(.helperSetup, reason: "command-failed")
+                        }
+                    }
+                }
             })
         case .agentMissing:
             return ("Enable Background Control", {
@@ -394,7 +421,18 @@ extension SensorDashboardSidebar {
                     "sidebar.login_items_settings.tapped step=\(String(describing: installState.step), privacy: .public)"
                 )
                 beginPendingAction(.openSystemSettings)
-                installState.openLoginItemsSettings()
+                Task {
+                    do {
+                        try await runtime.openSystemSettings()
+                    } catch {
+                        sensorDashboardSidebarLog.notice(
+                            "sidebar.login_items_settings.agent_command_failed error=\(error.localizedDescription, privacy: .public) recovery=open-from-app"
+                        )
+                        await MainActor.run {
+                            installState.openLoginItemsSettings()
+                        }
+                    }
+                }
             })
         case .ready, .checking:
             return nil
@@ -487,7 +525,21 @@ extension SensorDashboardSidebar {
                     "sidebar.fan_control.toggled next_enabled=\(enabled, privacy: .public)"
                 )
                 beginPendingAction(.setFanControl(enabled))
-                curveModel.isActive = enabled
+                Task {
+                    do {
+                        try await runtime.setFanControlEnabled(enabled)
+                        await MainActor.run {
+                            curveModel.isActive = enabled
+                        }
+                    } catch {
+                        sensorDashboardSidebarLog.notice(
+                            "sidebar.fan_control.command_failed enabled=\(enabled, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=keep-current-state"
+                        )
+                        await MainActor.run {
+                            completePendingAction(.setFanControl(enabled), reason: "command-failed")
+                        }
+                    }
+                }
             }
         )
     }

@@ -15,7 +15,7 @@ struct LearnSheet: View {
     @ObservedObject var curveModel: FanCurveModel
     @ObservedObject var sensorState: SensorState
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var xpcClient: XPCClient
+    @EnvironmentObject var agentClient: FanCurveAgentClient
 
     @StateObject private var learner = CurveLearner()
     @StateObject private var workload = WorkloadGenerator()
@@ -46,7 +46,7 @@ struct LearnSheet: View {
             // Restore fan 0 to auto in case the probe left it in manual mode.
             Task {
                 do {
-                    try await xpcClient.setFanAuto(0)
+                    try await agentClient.setFanAuto(0)
                 } catch {
                     learnSheetLog.notice(
                         "learn.dismiss.auto_restore_failed fan=0 error=\(error.localizedDescription, privacy: .public) recovery=next-agent-tick"
@@ -93,7 +93,7 @@ struct LearnSheet: View {
             fanIndex: 0,
             sensorState: sensorState
         ) { index, rpm in
-            try await xpcClient.setFanRPM(index, rpm: rpm)
+            try await agentClient.setFanRPM(index, rpm: rpm)
         }
         // Restore auto when the probe finishes. We don't know the exact
         // moment inside the learner, so schedule based on its total seconds.
@@ -106,7 +106,7 @@ struct LearnSheet: View {
                 return
             }
             do {
-                try await xpcClient.setFanAuto(0)
+                try await agentClient.setFanAuto(0)
             } catch {
                 learnSheetLog.notice(
                     "probe.auto_restore_failed fan=0 error=\(error.localizedDescription, privacy: .public) recovery=next-agent-tick"

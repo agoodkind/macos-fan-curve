@@ -13,12 +13,9 @@ private let log = AppLog.make(category: "AgentMain")
 
 @main
 struct FanCurveApp: App {
-    @StateObject private var xpcClient = XPCClient()
+    @StateObject private var agentClient = FanCurveAgentClient()
     @StateObject private var curveModel = FanCurveModel()
     @StateObject private var appUpdater = AppUpdater()
-
-    private let defaultsChangeObserver: NSObjectProtocol
-    private let terminationObserver: NSObjectProtocol
 
     init() {
         AppLog.bootstrap(subsystem: "io.goodkind.fan")
@@ -33,31 +30,6 @@ struct FanCurveApp: App {
         if suite.object(forKey: SharedConfigKeys.applyInBackground) == nil {
             suite.set(true, forKey: SharedConfigKeys.applyInBackground)
         }
-
-        // Every write to the shared suite in this process pings the Agent
-        // via Darwin notification so it can apply the change within a few
-        // milliseconds instead of waiting for its next 1 Hz tick.
-        self.defaultsChangeObserver = NotificationCenter.default.addObserver(
-            forName: UserDefaults.didChangeNotification,
-            object: suite,
-            queue: .main
-        ) { _ in
-            SharedConfigPush.post()
-        }
-
-        // When the user quits the app and background control is off, clear
-        // the active flag so the agent resets fans to auto on its next tick.
-        self.terminationObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            let store = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
-            if !store.bool(forKey: SharedConfigKeys.applyInBackground) {
-                store.set(false, forKey: SharedConfigKeys.curveActive)
-                SharedConfigPush.post()
-            }
-        }
     }
 
     @Environment(\.openWindow) private var openWindow
@@ -65,9 +37,14 @@ struct FanCurveApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(xpcClient)
+                .environmentObject(agentClient)
                 .environmentObject(curveModel)
                 .environmentObject(appUpdater)
+                .onReceive(
+                    NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
+                ) { _ in
+                    handleTermination()
+                }
         }
         .commands {
             CommandGroup(replacing: .appSettings) {
@@ -104,11 +81,26 @@ struct FanCurveApp: App {
 
         Window("Settings", id: "settings") {
             SettingsView()
-                .environmentObject(xpcClient)
+                .environmentObject(agentClient)
                 .environmentObject(curveModel)
                 .environmentObject(appUpdater)
         }
         .defaultSize(width: 720, height: 620)
         .windowResizability(.contentMinSize)
+    }
+
+    private func handleTermination() {
+        let store = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+        guard !store.bool(forKey: SharedConfigKeys.applyInBackground) else { return }
+        Task {
+            do {
+                try await agentClient.setFanControlEnabled(false)
+                store.set(false, forKey: SharedConfigKeys.curveActive)
+            } catch {
+                log.notice(
+                    "app.termination.fan_control_disable_failed error=\(error.localizedDescription, privacy: .public) recovery=leave-agent-state"
+                )
+            }
+        }
     }
 }

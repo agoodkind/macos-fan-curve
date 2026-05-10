@@ -511,6 +511,7 @@ extension AgentController {
         if lastPublishedSnapshot != snapshot {
             lastPublishedSnapshot = snapshot
             AgentSnapshotPush.post()
+            runtimeStateDidChange?(RuntimeState.fromSharedDefaultsSnapshot(snapshot))
         }
     }
 

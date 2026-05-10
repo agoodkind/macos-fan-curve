@@ -6,12 +6,16 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import SwiftUI
+
+private let onboardingViewLog = AppLog.make(category: "OnboardingView")
 
 /// Inline onboarding shown when the helper or agent is not installed.
 /// Replaces jarring popup alerts with a clean, reassuring flow.
 struct OnboardingView: View {
     @ObservedObject var state: InstallationState
+    @EnvironmentObject var agentClient: FanCurveAgentClient
 
     var body: some View {
         VStack(spacing: 0) {
@@ -150,13 +154,43 @@ struct OnboardingView: View {
     private var primaryAction: (String, () -> Void)? {
         switch state.step {
         case .helperMissing:
-            return (L10n.tr("Install System Helper"), { state.registerHelperDaemon() })
+            return (L10n.tr("Install System Helper"), { registerHelper() })
         case .agentMissing:
             return (L10n.tr("Install Background Agent"), { state.registerAgent() })
         case .agentAwaitingApproval, .helperAwaitingApproval:
-            return (L10n.tr("Open Login Items"), { state.openLoginItemsSettings() })
+            return (L10n.tr("Open Login Items"), { openLoginItems() })
         case .ready, .checking:
             return nil
+        }
+    }
+
+    private func registerHelper() {
+        Task {
+            do {
+                try await agentClient.registerHelperDaemon()
+            } catch {
+                onboardingViewLog.notice(
+                    "onboarding.helper_register.command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-error"
+                )
+                await MainActor.run {
+                    state.lastError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func openLoginItems() {
+        Task {
+            do {
+                try await agentClient.openSystemSettings()
+            } catch {
+                onboardingViewLog.notice(
+                    "onboarding.login_items_settings.agent_command_failed error=\(error.localizedDescription, privacy: .public) recovery=open-from-app"
+                )
+                await MainActor.run {
+                    state.openLoginItemsSettings()
+                }
+            }
         }
     }
 

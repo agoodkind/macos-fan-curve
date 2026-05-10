@@ -175,6 +175,28 @@ class XPCClient: ObservableObject, @unchecked Sendable {
         }
     }
 
+    func getOwnership() async throws -> [AgentOwnershipEntry] {
+        do {
+            let entries = try await client.getOwnership()
+            self.markConnected()
+            return entries.map { entry in
+                AgentOwnershipEntry(
+                    id: entry.fanIndex,
+                    fanIndex: entry.fanIndex,
+                    clientName: entry.clientName,
+                    priority: entry.priority,
+                    ageSeconds: entry.secondsSinceLastWrite
+                )
+            }
+        } catch {
+            self.markError(error)
+            log.notice(
+                "xpc.get_ownership.failed error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+            )
+            throw error
+        }
+    }
+
     // MARK: - Batched read + apply
 
     struct BatchReadResult: Sendable {

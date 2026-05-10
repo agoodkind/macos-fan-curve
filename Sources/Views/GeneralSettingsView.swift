@@ -21,7 +21,7 @@ struct GeneralSettingsView: View {
     @AppStorage(SharedConfigKeys.applyInBackground, store: suite)
     private var applyInBackground: Bool = true
 
-    @EnvironmentObject var xpcClient: XPCClient
+    @EnvironmentObject var agentClient: FanCurveAgentClient
     @StateObject private var installState = InstallationState()
     @StateObject private var ownershipStatus = FanOwnershipStatus()
     @State private var showOwnership = false
@@ -44,7 +44,7 @@ struct GeneralSettingsView: View {
             }
 
             Section {
-                Toggle("Apply curve in background", isOn: $applyInBackground)
+                Toggle("Apply curve in background", isOn: applyInBackgroundBinding)
             } header: {
                 Text("Background Control")
             } footer: {
@@ -88,13 +88,37 @@ struct GeneralSettingsView: View {
         }
         .formStyle(.grouped)
         .onAppear {
-            installState.startMonitoring(xpcClient: xpcClient)
-            ownershipStatus.startMonitoring(intervalSeconds: 1.5)
+            agentClient.start()
+            installState.startMonitoring(agentClient: agentClient)
+            ownershipStatus.startMonitoring(agentClient: agentClient, intervalSeconds: 1.5)
         }
         .onDisappear {
             installState.stopMonitoring()
             ownershipStatus.stopMonitoring()
         }
+    }
+
+    private var applyInBackgroundBinding: Binding<Bool> {
+        Binding(
+            get: { applyInBackground },
+            set: { enabled in
+                generalSettingsLog.info(
+                    "general_settings.apply_in_background.toggled enabled=\(enabled, privacy: .public)"
+                )
+                Task {
+                    do {
+                        try await agentClient.setApplyInBackground(enabled)
+                        await MainActor.run {
+                            applyInBackground = enabled
+                        }
+                    } catch {
+                        generalSettingsLog.notice(
+                            "general_settings.apply_in_background.command_failed enabled=\(enabled, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=keep-current-state"
+                        )
+                    }
+                }
+            }
+        )
     }
 
     private var ownershipSummary: some View {
@@ -135,7 +159,7 @@ struct GeneralSettingsView: View {
     }
 
     @ViewBuilder
-    private func ownershipRow(_ row: ArbiterRow) -> some View {
+    private func ownershipRow(_ row: AgentOwnershipEntry) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Fan \(row.fanIndex)")
@@ -196,7 +220,18 @@ struct GeneralSettingsView: View {
         if !installState.helperEnabled || !installState.helperReachable {
             Button {
                 generalSettingsLog.info("general_settings.helper.install.tapped")
-                installState.registerHelperDaemon()
+                Task {
+                    do {
+                        try await agentClient.registerHelperDaemon()
+                    } catch {
+                        generalSettingsLog.notice(
+                            "general_settings.helper.install.command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-error"
+                        )
+                        await MainActor.run {
+                            installState.lastError = error.localizedDescription
+                        }
+                    }
+                }
             } label: {
                 HStack(spacing: 6) {
                     if installState.isRegisteringHelper {

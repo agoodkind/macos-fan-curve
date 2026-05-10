@@ -13,7 +13,7 @@ let fanCurveEditorLog = AppLog.make(category: "FanCurveEditor")
 
 struct FanCurveEditor: View {
     @ObservedObject var model: FanCurveModel
-    @ObservedObject var runtime: AgentSnapshotState
+    @ObservedObject var runtime: FanCurveAgentClient
     let renderMode: AppRenderMode
     let presentation: DashboardPresentationState
     @State private var hoveredIndexState: Int?

@@ -15,11 +15,10 @@ private let settingsViewLog = AppLog.make(category: "SettingsView")
 /// reads the same values when evaluating the curve in the background.
 struct ProfilesSettingsView: View {
     @EnvironmentObject var curveModel: FanCurveModel
+    @EnvironmentObject var agentClient: FanCurveAgentClient
     @StateObject private var sensorState = SensorState()
-    @EnvironmentObject var xpcClient: XPCClient
 
     @State private var showLearnSheet = false
-    @State private var previewController: FanCurveController?
 
     private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
 
@@ -32,7 +31,11 @@ struct ProfilesSettingsView: View {
         }
         .sheet(isPresented: $showLearnSheet, onDismiss: stopPreviewPoller) {
             LearnSheet(curveModel: curveModel, sensorState: sensorState)
+                .environmentObject(agentClient)
                 .onAppear(perform: startPreviewPoller)
+        }
+        .onChange(of: agentClient.snapshot) { snapshot in
+            apply(snapshot: snapshot)
         }
     }
 
@@ -130,13 +133,27 @@ struct ProfilesSettingsView: View {
     }
 
     private func startPreviewPoller() {
-        let controller = FanCurveController(xpcClient: xpcClient, sensorState: sensorState)
-        previewController = controller
-        controller.start()
+        agentClient.start()
+        apply(snapshot: agentClient.snapshot)
     }
 
     private func stopPreviewPoller() {
-        previewController?.stop()
-        previewController = nil
+        settingsViewLog.debug("learn.preview.stop recovery=agent-client-remains-shared")
+    }
+
+    private func apply(snapshot: AgentSnapshot?) {
+        guard let snapshot else { return }
+        sensorState.governingTemperature = snapshot.governingTemperatureC
+        sensorState.fans = snapshot.fans.map { fan in
+            FanReading(
+                id: fan.index,
+                actualRPM: fan.actualRPM,
+                targetRPM: fan.targetRPM,
+                minRPM: fan.minRPM,
+                maxRPM: fan.maxRPM,
+                manualMode: fan.manualMode
+            )
+        }
+        sensorState.lastUpdate = snapshot.timestamp
     }
 }

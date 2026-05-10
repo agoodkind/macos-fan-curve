@@ -111,6 +111,8 @@ enum RuntimeHealthIssue: String, Codable, Sendable, Equatable {
 struct RuntimeTelemetry: Codable, Sendable, Equatable {
     let timestamp: Date
     let helperReachable: Bool
+    let curveActive: Bool
+    let boostEnabled: Bool
     let governingTemperatureC: Double
     let committedTemperatureC: Double
     let rawPressureTemperatureC: Double?
@@ -135,6 +137,8 @@ struct RuntimeTelemetry: Codable, Sendable, Equatable {
     init(snapshot: AgentSnapshot) {
         self.timestamp = snapshot.timestamp
         self.helperReachable = snapshot.helperReachable
+        self.curveActive = snapshot.curveActive
+        self.boostEnabled = snapshot.boostEnabled
         self.governingTemperatureC = snapshot.governingTemperatureC
         self.committedTemperatureC = snapshot.committedTemperatureC
         self.rawPressureTemperatureC = snapshot.rawPressureTemperatureC
@@ -155,6 +159,35 @@ struct RuntimeTelemetry: Codable, Sendable, Equatable {
         self.assistFloorPercent = snapshot.assistFloorPercent
         self.activeAssistKinds = snapshot.activeAssistKinds
         self.fans = snapshot.fans
+    }
+
+    func snapshot() -> AgentSnapshot {
+        AgentSnapshot(
+            timestamp: timestamp,
+            helperReachable: helperReachable,
+            curveActive: curveActive,
+            boostEnabled: boostEnabled,
+            governingTemperatureC: governingTemperatureC,
+            committedTemperatureC: committedTemperatureC,
+            rawPressureTemperatureC: rawPressureTemperatureC,
+            cpuLoadPercent: cpuLoadPercent,
+            gpuLoadPercent: gpuLoadPercent,
+            effectiveCurvePercent: effectiveCurvePercent,
+            baseCurvePercent: baseCurvePercent,
+            rawBaselinePercent: rawBaselinePercent,
+            semanticDemandPercent: semanticDemandPercent,
+            thermalDemandSource: thermalDemandSource,
+            semanticDemandTemperatureC: semanticDemandTemperatureC,
+            commandedTargetPercent: commandedTargetPercent,
+            commandedTargetTemperatureC: commandedTargetTemperatureC,
+            committedPercent: committedPercent,
+            controllerMode: controllerMode,
+            bandIndex: bandIndex,
+            holdRemainingSeconds: holdRemainingSeconds,
+            assistFloorPercent: assistFloorPercent,
+            activeAssistKinds: activeAssistKinds,
+            fans: fans
+        )
     }
 }
 
@@ -182,6 +215,19 @@ enum TelemetryState: Codable, Sendable, Equatable {
             return .stale(telemetry: telemetry)
         case .degraded:
             return .degraded(telemetry: telemetry, health: health)
+        }
+    }
+
+    var currentTelemetry: RuntimeTelemetry? {
+        switch self {
+        case .degraded(let telemetry, _):
+            telemetry
+        case .live(let telemetry):
+            telemetry
+        case .stale(let telemetry):
+            telemetry
+        case .unavailable:
+            nil
         }
     }
 }
@@ -223,6 +269,10 @@ struct RuntimeState: Codable, Sendable, Equatable {
     let control: ControlState
     let telemetry: TelemetryState
     let health: RuntimeHealth
+
+    var snapshot: AgentSnapshot? {
+        telemetry.currentTelemetry?.snapshot()
+    }
 
     static func resolve(_ inputs: RuntimeStateInputs) -> RuntimeState {
         let setupState = SetupState.resolve(

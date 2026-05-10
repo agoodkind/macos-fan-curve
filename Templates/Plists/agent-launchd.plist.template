@@ -6,6 +6,11 @@
 	<string>@@AGENT_BUNDLE_ID@@</string>
 	<key>BundleProgram</key>
 	<string>Contents/MacOS/@@AGENT_EXECUTABLE_NAME@@</string>
+	<key>MachServices</key>
+	<dict>
+		<key>@@AGENT_BUNDLE_ID@@</key>
+		<true/>
+	</dict>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
