@@ -70,10 +70,11 @@ struct DashboardPresentationState: Equatable {
         telemetryFresh: Bool,
         runtimeTelemetryAvailable: Bool,
         curveActive: Bool,
-        boostEnabled: Bool,
-        helperSetupPending: Bool = false
+        boostEnabled: Bool
     ) -> DashboardPresentationState {
-        if installationStep == .checking {
+        let backgroundControlNeedsSetup = installationStep == .agentMissing
+            || installationStep == .agentAwaitingApproval
+        if installationStep == .checking || backgroundControlNeedsSetup {
             return DashboardPresentationState(
                 layout: .setup,
                 chartState: .degraded,
@@ -84,25 +85,12 @@ struct DashboardPresentationState: Equatable {
             )
         }
 
-        if helperSetupPending {
-            return DashboardPresentationState(
-                layout: .dashboard,
-                chartState: telemetryFresh ? .preview : .degraded,
-                controlState: .monitorOnly,
-                installationStep: .helperMissing,
-                telemetryFresh: telemetryFresh,
-                helperActionVisible: true
-            )
-        }
-
         let helperNeedsSetup = installationStep == .helperMissing
             || installationStep == .helperAwaitingApproval
-        let backgroundControlNeedsSetup = installationStep == .agentMissing
-            || installationStep == .agentAwaitingApproval
-        if helperNeedsSetup || backgroundControlNeedsSetup {
+        if helperNeedsSetup {
             return DashboardPresentationState(
                 layout: .dashboard,
-                chartState: telemetryFresh ? .preview : .degraded,
+                chartState: telemetryFresh && runtimeTelemetryAvailable ? .preview : .degraded,
                 controlState: .monitorOnly,
                 installationStep: installationStep,
                 telemetryFresh: telemetryFresh,

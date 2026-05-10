@@ -165,14 +165,32 @@ struct FanCurveEditor: View {
     }
 
     private var degradedChartOverlay: some View {
-        VStack(spacing: 12) {
+        let title: String
+        let message: String
+
+        switch presentation.installationStep {
+        case .helperMissing:
+            title = "System Helper Required"
+            message =
+                "Fan Curve needs the System Helper before it can show live temperature and fan telemetry in this state."
+        case .helperAwaitingApproval:
+            title = "System Helper Needs Approval"
+            message =
+                "Approve the System Helper in System Settings before Fan Curve can resume live temperature and fan telemetry."
+        default:
+            title = "Runtime telemetry is unavailable"
+            message =
+                "Fan Curve is waiting for a fresh agent snapshot before drawing live fan demand."
+        }
+
+        return VStack(spacing: 12) {
             Image(systemName: "waveform.path.ecg.rectangle")
                 .font(.system(size: 34, weight: .regular))
                 .foregroundStyle(.secondary)
-            Text("Runtime telemetry is unavailable")
+            Text(title)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.primary)
-            Text("Fan Curve is waiting for a fresh agent snapshot before drawing live fan demand.")
+            Text(message)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

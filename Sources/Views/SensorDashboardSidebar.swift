@@ -20,7 +20,6 @@ struct SensorDashboardSidebar: View {
     let renderMode: AppRenderMode
     let unit: TemperatureUnit
     @Binding var boost: Bool
-    @Binding var helperSetupPresentationPending: Bool
     let cpuLoadAssistEnabled: Bool
     let gpuLoadAssistEnabled: Bool
     let overdriveEnabled: Bool
@@ -150,18 +149,20 @@ struct SensorDashboardSidebar: View {
 
     private var fansSection: some View {
         VStack(spacing: 10) {
-            ForEach(runtime.fans) { fan in
-                fanRow(fan)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.secondary.opacity(0.06))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                    )
+            if presentation.showsRuntimeStats {
+                ForEach(runtime.fans) { fan in
+                    fanRow(fan)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.secondary.opacity(0.06))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                        )
+                }
             }
         }
     }

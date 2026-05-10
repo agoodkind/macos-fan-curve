@@ -89,6 +89,10 @@ extension SensorDashboardSidebar {
     }
 
     var fanControlStateLabel: String {
+        if presentation.chartState == .degraded {
+            if presentation.installationStep == .helperMissing { return "System Helper Required" }
+            if presentation.installationStep == .helperAwaitingApproval { return "Approval Required" }
+        }
         if presentation.controlState == .monitorOnly { return "Monitor only" }
         if !fanControlReady { return "Not Set Up" }
         if boost { return "Boost active" }
@@ -491,9 +495,6 @@ extension SensorDashboardSidebar {
     func beginPendingAction(_ action: SidebarPendingAction) {
         pendingAction = action
         pendingActionStartDate = Date()
-        if action == .helperSetup {
-            helperSetupPresentationPending = true
-        }
         sensorDashboardSidebarLog.notice(
             "sidebar.pending.started action=\(action.logName, privacy: .public)"
         )
@@ -522,9 +523,6 @@ extension SensorDashboardSidebar {
         guard pendingAction == action else { return }
         pendingAction = nil
         pendingActionStartDate = nil
-        if action == .helperSetup {
-            helperSetupPresentationPending = false
-        }
         sensorDashboardSidebarLog.notice(
             "sidebar.pending.finished action=\(action.logName, privacy: .public) reason=\(reason, privacy: .public)"
         )
@@ -555,8 +553,6 @@ extension SensorDashboardSidebar {
         switch action {
         case .helperSetup:
             return installState.step == .helperAwaitingApproval
-                || installState.step == .agentMissing
-                || installState.step == .agentAwaitingApproval
                 || installState.step == .ready
         case .agentSetup:
             return installState.step != .agentMissing

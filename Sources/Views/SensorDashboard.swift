@@ -16,7 +16,6 @@ struct SensorDashboard: View {
     @ObservedObject var curveModel: FanCurveModel
     @ObservedObject var installState: InstallationState
     let renderMode: AppRenderMode
-    @Binding var helperSetupPresentationPending: Bool
     let presentation: DashboardPresentationState
 
     @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
@@ -52,7 +51,6 @@ struct SensorDashboard: View {
                     renderMode: renderMode,
                     unit: unit,
                     boost: $boost,
-                    helperSetupPresentationPending: $helperSetupPresentationPending,
                     cpuLoadAssistEnabled: cpuLoadAssistEnabled,
                     gpuLoadAssistEnabled: gpuLoadAssistEnabled,
                     overdriveEnabled: overdriveEnabled,
