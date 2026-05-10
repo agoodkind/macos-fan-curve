@@ -152,6 +152,24 @@ jobs:
           SPARKLE_PUBLIC_ED_KEY = ${SPARKLE_PUBLIC_ED_KEY}
           EOF
 
+      - name: Write helper CI xcconfig
+        env:
+          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+          CODE_SIGN_IDENTITY: ${{ env.DEVELOPER_ID_SIGN_IDENTITY_SHA1 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > .ci/macos-smc-fan/Config/local.xcconfig <<EOF
+          CODE_SIGN_IDENTITY = ${CODE_SIGN_IDENTITY}
+          DEVELOPMENT_TEAM = ${APPLE_TEAM_ID}
+          BUNDLE_ID_PREFIX = io.goodkind
+          HELPER_BUNDLE_ID = io.goodkind.smcfanhelper
+          APP_BUNDLE_ID = io.goodkind.fancurve
+          HELPER_APP_DISPLAY_NAME = Fan Curve Hardware Helper
+          HELPER_DAEMON_DISPLAY_NAME = Fan Curve Hardware Helper
+          EOF
+
       - name: Build release DMG
         env:
           MARKETING_VERSION: ${{ steps.meta.outputs.marketing_version }}
