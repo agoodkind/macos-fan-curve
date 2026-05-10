@@ -13,12 +13,14 @@ private let sensorDashboardSidebarViewLog = AppLog.make(category: "SensorDashboa
 
 struct SensorDashboardSidebar: View {
     @State var pendingAction: SidebarPendingAction?
+    @State var pendingActionStartDate: Date?
     @ObservedObject var runtime: AgentSnapshotState
     @ObservedObject var curveModel: FanCurveModel
     @ObservedObject var installState: InstallationState
     let renderMode: AppRenderMode
     let unit: TemperatureUnit
     @Binding var boost: Bool
+    @Binding var helperSetupPresentationPending: Bool
     let cpuLoadAssistEnabled: Bool
     let gpuLoadAssistEnabled: Bool
     let overdriveEnabled: Bool
@@ -65,6 +67,22 @@ struct SensorDashboardSidebar: View {
             } catch {
                 sensorDashboardSidebarViewLog.debug(
                     "sidebar.pending.timer.cancelled action=\(pendingAction.logName, privacy: .public) recovery=keep-current-pending-state"
+                )
+            }
+        }
+        .task(id: pendingActionStartDate) {
+            guard let pendingAction else { return }
+            let remainingNanoseconds = pendingActionMinimumRemainingNanoseconds()
+            guard remainingNanoseconds > 0 else { return }
+            do {
+                try await Task.sleep(nanoseconds: remainingNanoseconds)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    reconcilePendingAction(reason: "minimum-duration-elapsed")
+                }
+            } catch {
+                sensorDashboardSidebarViewLog.debug(
+                    "sidebar.pending.minimum_timer.cancelled action=\(pendingAction.logName, privacy: .public) recovery=keep-current-pending-state"
                 )
             }
         }

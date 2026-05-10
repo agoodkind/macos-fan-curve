@@ -70,7 +70,8 @@ struct DashboardPresentationState: Equatable {
         telemetryFresh: Bool,
         runtimeTelemetryAvailable: Bool,
         curveActive: Bool,
-        boostEnabled: Bool
+        boostEnabled: Bool,
+        helperSetupPending: Bool = false
     ) -> DashboardPresentationState {
         if installationStep == .checking {
             return DashboardPresentationState(
@@ -80,6 +81,17 @@ struct DashboardPresentationState: Equatable {
                 installationStep: installationStep,
                 telemetryFresh: telemetryFresh,
                 helperActionVisible: false
+            )
+        }
+
+        if helperSetupPending {
+            return DashboardPresentationState(
+                layout: .dashboard,
+                chartState: telemetryFresh ? .preview : .degraded,
+                controlState: .monitorOnly,
+                installationStep: .helperMissing,
+                telemetryFresh: telemetryFresh,
+                helperActionVisible: true
             )
         }
 

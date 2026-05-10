@@ -43,6 +43,15 @@ extension SensorDashboardSidebar {
                 return 12_000_000_000
             }
         }
+
+        var minimumVisibleDuration: TimeInterval {
+            switch self {
+            case .helperSetup:
+                return 0.75
+            case .agentSetup, .openSystemSettings, .enableBoost, .disableBoost, .setFanControl:
+                return 0
+            }
+        }
     }
 
     struct ActiveAssistState: Identifiable {
@@ -481,6 +490,10 @@ extension SensorDashboardSidebar {
 
     func beginPendingAction(_ action: SidebarPendingAction) {
         pendingAction = action
+        pendingActionStartDate = Date()
+        if action == .helperSetup {
+            helperSetupPresentationPending = true
+        }
         sensorDashboardSidebarLog.notice(
             "sidebar.pending.started action=\(action.logName, privacy: .public)"
         )
@@ -489,10 +502,18 @@ extension SensorDashboardSidebar {
     func reconcilePendingAction(reason: String) {
         guard let pendingAction else { return }
         if pendingActionFailed(pendingAction) {
+            guard pendingActionMinimumVisibleDurationElapsed() else {
+                logPendingActionMinimumDelay(pendingAction, reason: "\(reason)-failed")
+                return
+            }
             completePendingAction(pendingAction, reason: "\(reason)-failed")
             return
         }
         if pendingActionObserved(pendingAction) {
+            guard pendingActionMinimumVisibleDurationElapsed() else {
+                logPendingActionMinimumDelay(pendingAction, reason: "\(reason)-observed")
+                return
+            }
             completePendingAction(pendingAction, reason: "\(reason)-observed")
         }
     }
@@ -500,15 +521,43 @@ extension SensorDashboardSidebar {
     func completePendingAction(_ action: SidebarPendingAction, reason: String) {
         guard pendingAction == action else { return }
         pendingAction = nil
+        pendingActionStartDate = nil
+        if action == .helperSetup {
+            helperSetupPresentationPending = false
+        }
         sensorDashboardSidebarLog.notice(
             "sidebar.pending.finished action=\(action.logName, privacy: .public) reason=\(reason, privacy: .public)"
+        )
+    }
+
+    func pendingActionMinimumVisibleDurationElapsed() -> Bool {
+        pendingActionMinimumRemainingNanoseconds() == 0
+    }
+
+    func pendingActionMinimumRemainingNanoseconds() -> UInt64 {
+        guard let pendingAction else { return 0 }
+        let minimumDuration = pendingAction.minimumVisibleDuration
+        guard minimumDuration > 0 else { return 0 }
+        guard let pendingActionStartDate else { return 0 }
+        let elapsedDuration = Date().timeIntervalSince(pendingActionStartDate)
+        let remainingDuration = minimumDuration - elapsedDuration
+        guard remainingDuration > 0 else { return 0 }
+        return UInt64(remainingDuration * 1_000_000_000)
+    }
+
+    private func logPendingActionMinimumDelay(_ action: SidebarPendingAction, reason: String) {
+        sensorDashboardSidebarLog.debug(
+            "sidebar.pending.minimum_duration.waiting action=\(action.logName, privacy: .public) reason=\(reason, privacy: .public)"
         )
     }
 
     private func pendingActionObserved(_ action: SidebarPendingAction) -> Bool {
         switch action {
         case .helperSetup:
-            return installState.step != .helperMissing
+            return installState.step == .helperAwaitingApproval
+                || installState.step == .agentMissing
+                || installState.step == .agentAwaitingApproval
+                || installState.step == .ready
         case .agentSetup:
             return installState.step != .agentMissing
         case .openSystemSettings:

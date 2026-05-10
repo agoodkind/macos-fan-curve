@@ -18,6 +18,7 @@ struct ContentView: View {
     @StateObject private var installState = InstallationState()
     @StateObject private var runtimeState = AgentSnapshotState()
     @StateObject private var renderActivity = AppRenderActivity()
+    @State private var helperSetupPresentationPending = false
 
     @AppStorage("sidebarWidth") private var sidebarWidth: Double = 240
     @State private var dragStartWidth: Double?
@@ -110,7 +111,8 @@ struct ContentView: View {
             telemetryFresh: runtimeState.isFresh,
             runtimeTelemetryAvailable: runtimeState.governingTemperature > 0,
             curveActive: curveModel.isActive,
-            boostEnabled: boostEnabled
+            boostEnabled: boostEnabled,
+            helperSetupPending: helperSetupPresentationPending
         )
     }
 
@@ -133,6 +135,7 @@ struct ContentView: View {
                 curveModel: curveModel,
                 installState: installState,
                 renderMode: renderActivity.mode,
+                helperSetupPresentationPending: $helperSetupPresentationPending,
                 presentation: presentation
             )
             .frame(width: sidebarWidth)
