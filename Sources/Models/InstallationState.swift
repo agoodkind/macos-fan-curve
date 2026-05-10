@@ -260,6 +260,16 @@ final class InstallationState: ObservableObject {
                 defaults: suite)
         }
 
+        if agentStatus == .requiresApproval {
+            step = .agentAwaitingApproval
+            return
+        }
+
+        if agentStatus != .enabled {
+            step = .agentMissing
+            return
+        }
+
         if helperStatus == .requiresApproval {
             step = .helperAwaitingApproval
             return
@@ -278,14 +288,7 @@ final class InstallationState: ObservableObject {
             return
         }
 
-        switch agentStatus {
-        case .enabled:
-            step = .ready
-        case .requiresApproval:
-            step = .agentAwaitingApproval
-        default:
-            step = .agentMissing
-        }
+        step = .ready
     }
 
     private func helperResponding(xpcClient: XPCClient) async -> Bool {

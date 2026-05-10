@@ -108,6 +108,7 @@ struct ContentView: View {
         DashboardPresentationState.make(
             installationStep: installState.step,
             telemetryFresh: runtimeState.isFresh,
+            runtimeTelemetryAvailable: runtimeState.governingTemperature > 0,
             curveActive: curveModel.isActive,
             boostEnabled: boostEnabled
         )

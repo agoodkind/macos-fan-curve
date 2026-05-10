@@ -92,7 +92,7 @@ extension FanCurveEditor {
     }
 
     func drawCurve(context: GraphicsContext, size: CGSize) {
-        if !effectiveActive {
+        if presentation.showsSystemDefault {
             drawGhostCurve(context: context, size: size, opacity: 1.0 - activePhase)
         }
 
@@ -138,8 +138,8 @@ extension FanCurveEditor {
         if inversePhase > 0.01 {
             context.stroke(
                 line,
-                with: .color(Color.secondary.opacity(0.3 * inversePhase)),
-                style: StrokeStyle(lineWidth: 1.25, lineCap: .round, lineJoin: .round, dash: [4, 5])
+                with: .color(Color.secondary.opacity(0.56 * inversePhase)),
+                style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round)
             )
         }
     }
@@ -159,7 +159,7 @@ extension FanCurveEditor {
         let line = curvePath(through: pixelPoints)
         context.stroke(
             line,
-            with: .color(Color.secondary.opacity(0.45 * opacity)),
+            with: .color(curveColor.opacity(0.72 * opacity)),
             style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round, dash: [5, 4])
         )
     }

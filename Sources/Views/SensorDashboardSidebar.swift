@@ -6,9 +6,13 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import SwiftUI
 
+private let sensorDashboardSidebarViewLog = AppLog.make(category: "SensorDashboardSidebar")
+
 struct SensorDashboardSidebar: View {
+    @State var pendingAction: SidebarPendingAction?
     @ObservedObject var runtime: AgentSnapshotState
     @ObservedObject var curveModel: FanCurveModel
     @ObservedObject var installState: InstallationState
@@ -38,6 +42,32 @@ struct SensorDashboardSidebar: View {
         .padding(.horizontal, 20)
         .padding(.top, 24)
         .padding(.bottom, 20)
+        .onChange(of: installState.step) { _ in
+            reconcilePendingAction(reason: "installation-step-changed")
+        }
+        .onChange(of: installState.lastError) { _ in
+            reconcilePendingAction(reason: "installation-error-changed")
+        }
+        .onChange(of: runtime.snapshot) { _ in
+            reconcilePendingAction(reason: "runtime-snapshot-changed")
+        }
+        .task(id: pendingAction) {
+            guard let pendingAction else { return }
+            do {
+                try await Task.sleep(nanoseconds: pendingAction.timeoutNanoseconds)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    completePendingAction(
+                        pendingAction,
+                        reason: "timeout"
+                    )
+                }
+            } catch {
+                sensorDashboardSidebarViewLog.debug(
+                    "sidebar.pending.timer.cancelled action=\(pendingAction.logName, privacy: .public) recovery=keep-current-pending-state"
+                )
+            }
+        }
     }
 
     private var heroSection: some View {
@@ -54,8 +84,8 @@ struct SensorDashboardSidebar: View {
                     .frame(width: 6, height: 6)
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                if let displayedTemperature {
+            if let displayedTemperature {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text("\(displayedTemperature)")
                         .font(.system(.largeTitle, design: .rounded).weight(.regular))
                         .foregroundStyle(.primary)
@@ -65,13 +95,15 @@ struct SensorDashboardSidebar: View {
                     Text(unit.symbol)
                         .font(.title3)
                         .foregroundStyle(.secondary)
-                } else {
+                }
+            } else {
+                HStack(alignment: .center, spacing: 6) {
                     Text("--")
                         .font(.system(.largeTitle, design: .rounded).weight(.regular))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                     Text("unavailable")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -84,14 +116,14 @@ struct SensorDashboardSidebar: View {
             usageBlock(
                 label: "CPU",
                 icon: "cpu",
-                value: runtime.cpuLoadPercent,
+                value: runtimeLoadValue(runtime.cpuLoadPercent),
                 tint: Color.accentColor,
                 assist: assistStates.first { $0.kind == .cpu }
             )
             usageBlock(
                 label: "GPU",
                 icon: "memorychip",
-                value: runtime.gpuLoadPercent,
+                value: runtimeLoadValue(runtime.gpuLoadPercent),
                 tint: Color.accentColor.opacity(0.55),
                 assist: assistStates.first { $0.kind == .gpu }
             )
@@ -133,13 +165,19 @@ struct SensorDashboardSidebar: View {
                 }
                 Spacer()
                 if presentation.showsFanControlToggle {
-                    Toggle("", isOn: $curveModel.isActive)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .controlSize(.regular)
-                        .tint(Color.accentColor)
-                        .disabled(boost)
-                        .help(boost ? "Turn Boost off first to change this." : "")
+                    HStack(spacing: 6) {
+                        if fanControlToggleBusy {
+                            ProgressView()
+                                .controlSize(.mini)
+                        }
+                        Toggle("", isOn: fanControlBinding)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .controlSize(.regular)
+                            .tint(Color.accentColor)
+                            .disabled(boost || pendingAction != nil)
+                            .help(fanControlToggleHelp)
+                    }
                 }
             }
 

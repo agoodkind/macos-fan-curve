@@ -14,6 +14,37 @@ private let sensorDashboardSidebarLog = AppLog.make(category: "SensorDashboardSi
 extension SensorDashboardSidebar {
     enum SystemStatus { case green, orange, red }
 
+    enum SidebarPendingAction: Hashable {
+        case helperSetup
+        case agentSetup
+        case openSystemSettings
+        case enableBoost
+        case disableBoost
+        case setFanControl(Bool)
+
+        var logName: String {
+            switch self {
+            case .helperSetup: return "helper_setup"
+            case .agentSetup: return "agent_setup"
+            case .openSystemSettings: return "open_system_settings"
+            case .enableBoost: return "enable_boost"
+            case .disableBoost: return "disable_boost"
+            case .setFanControl(let enabled): return enabled ? "enable_fan_control" : "disable_fan_control"
+            }
+        }
+
+        var timeoutNanoseconds: UInt64 {
+            switch self {
+            case .helperSetup, .agentSetup:
+                return 30_000_000_000
+            case .openSystemSettings:
+                return 8_000_000_000
+            case .enableBoost, .disableBoost, .setFanControl:
+                return 12_000_000_000
+            }
+        }
+    }
+
     struct ActiveAssistState: Identifiable {
         let kind: LoadAssistKind
         let loadPercent: Double
@@ -25,7 +56,7 @@ extension SensorDashboardSidebar {
     func usageBlock(
         label: String,
         icon: String,
-        value: Double,
+        value: Double?,
         tint: Color,
         assist: ActiveAssistState?
     ) -> some View {
@@ -108,20 +139,28 @@ extension SensorDashboardSidebar {
     }
 
     var boostButton: some View {
-        sidebarProminentActionButton(
-            title: boost ? "Stop Boost" : "Boost Fans",
+        let targetAction: SidebarPendingAction = boost ? .disableBoost : .enableBoost
+        return sidebarProminentActionButton(
+            title: boostButtonLabel,
             systemImage: "bolt.fill",
             tint: Color(nsColor: .systemOrange),
             active: boost,
-            isBusy: false,
+            isBusy: pendingAction == targetAction,
             action: {
                 sensorDashboardSidebarLog.notice(
                     "sidebar.boost.toggled next_enabled=\((!boost), privacy: .public)"
                 )
+                beginPendingAction(targetAction)
                 boost.toggle()
             }
         )
         .help(boostHelp)
+    }
+
+    private var boostButtonLabel: String {
+        if pendingAction == .enableBoost { return "Boosting Fans" }
+        if pendingAction == .disableBoost { return "Stopping Boost" }
+        return boost ? "Stop Boost" : "Boost Fans"
     }
 
     private func sidebarProminentActionButton(
@@ -281,7 +320,7 @@ extension SensorDashboardSidebar {
     var setupButton: some View {
         Group {
             if let (label, action) = setupAction {
-                let isBusy = installState.isRegisteringAgent || installState.isRegisteringHelper
+                let isBusy = setupButtonBusy
                 sidebarProminentActionButton(
                     title: setupButtonLabel(fallback: label),
                     systemImage: setupButtonSystemImage,
@@ -333,13 +372,15 @@ extension SensorDashboardSidebar {
     private var setupAction: (String, () -> Void)? {
         switch installState.step {
         case .helperMissing:
-            return ("Set Up Fan Control", {
+            return ("Set Up System Helper", {
                 sensorDashboardSidebarLog.notice("sidebar.helper_setup.tapped")
+                beginPendingAction(.helperSetup)
                 installState.registerHelperDaemon()
             })
         case .agentMissing:
             return ("Enable Background Control", {
                 sensorDashboardSidebarLog.notice("sidebar.agent_setup.tapped")
+                beginPendingAction(.agentSetup)
                 installState.registerAgent()
             })
         case .agentAwaitingApproval, .helperAwaitingApproval:
@@ -347,6 +388,7 @@ extension SensorDashboardSidebar {
                 sensorDashboardSidebarLog.notice(
                     "sidebar.login_items_settings.tapped step=\(String(describing: installState.step), privacy: .public)"
                 )
+                beginPendingAction(.openSystemSettings)
                 installState.openLoginItemsSettings()
             })
         case .ready, .checking:
@@ -354,8 +396,19 @@ extension SensorDashboardSidebar {
         }
     }
 
+    private var setupButtonBusy: Bool {
+        installState.isRegisteringAgent
+            || installState.isRegisteringHelper
+            || pendingAction == .helperSetup
+            || pendingAction == .agentSetup
+            || pendingAction == .openSystemSettings
+    }
+
     private func setupButtonLabel(fallback: String) -> String {
-        if installState.isRegisteringHelper { return "Setting Up Fan Control" }
+        if pendingAction == .helperSetup { return "Setting Up System Helper" }
+        if pendingAction == .agentSetup { return "Enabling Background Control" }
+        if pendingAction == .openSystemSettings { return "Opening System Settings" }
+        if installState.isRegisteringHelper { return "Setting Up System Helper" }
         if installState.isRegisteringAgent { return "Enabling Background Control" }
         return fallback
     }
@@ -375,7 +428,16 @@ extension SensorDashboardSidebar {
     }
 
     var statusLabel: String {
-        if presentation.controlState == .monitorOnly { return "Helper Needed" }
+        if presentation.installationStep == .helperMissing { return "System Helper Required" }
+        if presentation.installationStep == .agentMissing { return "Background Control Required" }
+        if presentation.installationStep == .agentAwaitingApproval
+            || presentation.installationStep == .helperAwaitingApproval
+        {
+            return "Approval Required"
+        }
+        if presentation.chartState == .degraded {
+            return presentation.telemetryFresh ? "Telemetry Unavailable" : "Agent Not Responding"
+        }
         if !fanControlReady { return "Fan Control Not Set Up" }
         switch systemStatus {
         case .green: return "All systems go"
@@ -392,10 +454,89 @@ extension SensorDashboardSidebar {
     }
 
     var statusColor: Color {
+        if presentation.chartState == .degraded { return Color(nsColor: .systemRed) }
         switch systemStatus {
         case .green: return Color(nsColor: .systemGreen)
         case .orange: return Color(nsColor: .systemOrange)
         case .red: return Color(nsColor: .systemRed)
+        }
+    }
+
+    var fanControlToggleBusy: Bool {
+        if case .setFanControl = pendingAction { return true }
+        return false
+    }
+
+    var fanControlToggleHelp: String {
+        if boost { return "Turn Boost off first to change this." }
+        if fanControlToggleBusy { return "Waiting for background control to observe this fan-control change." }
+        return ""
+    }
+
+    var fanControlBinding: Binding<Bool> {
+        Binding(
+            get: { curveModel.isActive },
+            set: { enabled in
+                guard pendingAction == nil else { return }
+                sensorDashboardSidebarLog.notice(
+                    "sidebar.fan_control.toggled next_enabled=\(enabled, privacy: .public)"
+                )
+                beginPendingAction(.setFanControl(enabled))
+                curveModel.isActive = enabled
+            }
+        )
+    }
+
+    func beginPendingAction(_ action: SidebarPendingAction) {
+        pendingAction = action
+        sensorDashboardSidebarLog.notice(
+            "sidebar.pending.started action=\(action.logName, privacy: .public)"
+        )
+    }
+
+    func reconcilePendingAction(reason: String) {
+        guard let pendingAction else { return }
+        if pendingActionFailed(pendingAction) {
+            completePendingAction(pendingAction, reason: "\(reason)-failed")
+            return
+        }
+        if pendingActionObserved(pendingAction) {
+            completePendingAction(pendingAction, reason: "\(reason)-observed")
+        }
+    }
+
+    func completePendingAction(_ action: SidebarPendingAction, reason: String) {
+        guard pendingAction == action else { return }
+        pendingAction = nil
+        sensorDashboardSidebarLog.notice(
+            "sidebar.pending.finished action=\(action.logName, privacy: .public) reason=\(reason, privacy: .public)"
+        )
+    }
+
+    private func pendingActionObserved(_ action: SidebarPendingAction) -> Bool {
+        switch action {
+        case .helperSetup:
+            return installState.step != .helperMissing
+        case .agentSetup:
+            return installState.step != .agentMissing
+        case .openSystemSettings:
+            return installState.step != .agentAwaitingApproval
+                && installState.step != .helperAwaitingApproval
+        case .enableBoost:
+            return runtime.boostEnabled
+        case .disableBoost:
+            return !runtime.boostEnabled
+        case .setFanControl(let enabled):
+            return runtime.curveActive == enabled
+        }
+    }
+
+    private func pendingActionFailed(_ action: SidebarPendingAction) -> Bool {
+        switch action {
+        case .helperSetup, .agentSetup, .openSystemSettings:
+            return installState.lastError != nil
+        case .enableBoost, .disableBoost, .setFanControl:
+            return false
         }
     }
 
@@ -425,7 +566,7 @@ extension SensorDashboardSidebar {
     }
 
     var activeAssistStates: [ActiveAssistState] {
-        guard fanControlReady, presentation.telemetryFresh, curveModel.isActive, !boost else { return [] }
+        guard fanControlReady, presentation.showsRuntimeStats, curveModel.isActive, !boost else { return [] }
         let curveReferenceTemp = runtime.rawPressureTemperature ?? runtime.governingTemperature
         let basePercent = curveModel.evaluate(at: curveReferenceTemp)
         var candidates: [ActiveAssistState] = []
@@ -465,8 +606,13 @@ extension SensorDashboardSidebar {
         )
     }
 
-    func usageRow(label: String, icon: String, value: Double, tint: Color) -> some View {
-        let roundedValue = Int(value.rounded())
+    func runtimeLoadValue(_ value: Double) -> Double? {
+        guard presentation.showsRuntimeStats else { return nil }
+        return value
+    }
+
+    func usageRow(label: String, icon: String, value: Double?, tint: Color) -> some View {
+        let roundedValue = value.map { Int($0.rounded()) }
         return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Image(systemName: icon)
@@ -476,20 +622,29 @@ extension SensorDashboardSidebar {
                     .font(.callout)
                     .foregroundColor(.secondary)
                 Spacer()
-                Text("\(roundedValue)%")
-                    .font(.system(.callout, design: .rounded).weight(.medium))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .animation(.easeOut(duration: 0.32), value: roundedValue)
+                if let roundedValue {
+                    Text("\(roundedValue)%")
+                        .font(.system(.callout, design: .rounded).weight(.medium))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .animation(.easeOut(duration: 0.32), value: roundedValue)
+                } else {
+                    Text("--")
+                        .font(.system(.callout, design: .rounded).weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
             }
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(Color.secondary.opacity(0.15))
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(tint)
-                        .frame(width: geometry.size.width * CGFloat(value / 100))
-                        .animation(.easeOut(duration: 0.32), value: value)
+                    if let value {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(tint)
+                            .frame(width: geometry.size.width * CGFloat(value / 100))
+                            .animation(.easeOut(duration: 0.32), value: value)
+                    }
                 }
             }
             .frame(height: 4)
@@ -557,7 +712,7 @@ extension SensorDashboardSidebar {
     }
 
     var liveTemperatureCelsius: Double? {
-        guard presentation.telemetryFresh else { return nil }
+        guard presentation.showsRuntimeStats else { return nil }
         let temperature = runtime.governingTemperature
         guard temperature > 0 else { return nil }
         return temperature

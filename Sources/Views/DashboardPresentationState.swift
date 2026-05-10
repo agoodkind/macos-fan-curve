@@ -57,6 +57,10 @@ struct DashboardPresentationState: Equatable {
         telemetryFresh && chartState != .degraded
     }
 
+    var showsRuntimeStats: Bool {
+        telemetryFresh && chartState != .degraded
+    }
+
     var usesActiveMarkerStyling: Bool {
         chartState == .active
     }
@@ -64,13 +68,11 @@ struct DashboardPresentationState: Equatable {
     static func make(
         installationStep: InstallationState.Step,
         telemetryFresh: Bool,
+        runtimeTelemetryAvailable: Bool,
         curveActive: Bool,
         boostEnabled: Bool
     ) -> DashboardPresentationState {
-        if installationStep == .checking
-            || installationStep == .agentMissing
-            || installationStep == .agentAwaitingApproval
-        {
+        if installationStep == .checking {
             return DashboardPresentationState(
                 layout: .setup,
                 chartState: .degraded,
@@ -83,7 +85,9 @@ struct DashboardPresentationState: Equatable {
 
         let helperNeedsSetup = installationStep == .helperMissing
             || installationStep == .helperAwaitingApproval
-        if helperNeedsSetup {
+        let backgroundControlNeedsSetup = installationStep == .agentMissing
+            || installationStep == .agentAwaitingApproval
+        if helperNeedsSetup || backgroundControlNeedsSetup {
             return DashboardPresentationState(
                 layout: .dashboard,
                 chartState: telemetryFresh ? .preview : .degraded,
@@ -94,7 +98,7 @@ struct DashboardPresentationState: Equatable {
             )
         }
 
-        if !telemetryFresh {
+        if !telemetryFresh || !runtimeTelemetryAvailable {
             return DashboardPresentationState(
                 layout: .dashboard,
                 chartState: .degraded,
@@ -116,4 +120,3 @@ struct DashboardPresentationState: Equatable {
         )
     }
 }
-

@@ -40,7 +40,7 @@ func readGPULoadPercent() -> Double {
     return 0
 }
 
-/// Lightweight CPU load sampler shared between the GUI and the Agent.
+/// Lightweight CPU load sampler for the Agent-owned runtime snapshot.
 /// Each instance keeps its own baseline and returns a smoothed percent
 /// (0 to 100) based on the diff between successive ticks. Callers are
 /// expected to call sample() on a steady cadence (once per second or so).
