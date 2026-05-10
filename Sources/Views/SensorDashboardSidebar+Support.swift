@@ -181,8 +181,6 @@ extension SensorDashboardSidebar {
                 action: action
             )
         }
-        .controlSize(.large)
-        .tint(tint)
         .frame(maxWidth: .infinity)
         .allowsHitTesting(!isBusy)
     }
@@ -196,52 +194,29 @@ extension SensorDashboardSidebar {
         isBusy: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        #if compiler(>=6.2)
-            if #available(macOS 26.0, *) {
-                if active {
-                    sidebarProminentActionButtonBody(
-                        title: title,
-                        systemImage: systemImage,
-                        active: active,
-                        isBusy: isBusy,
-                        action: action
-                    )
-                    .buttonStyle(.glassProminent)
-                } else {
-                    sidebarProminentActionButtonBody(
-                        title: title,
-                        systemImage: systemImage,
-                        active: active,
-                        isBusy: isBusy,
-                        action: action
-                    )
-                    .buttonStyle(.glass)
-                }
-            } else {
-                legacySidebarProminentActionButton(
-                    title: title,
-                    systemImage: systemImage,
-                    tint: tint,
-                    active: active,
-                    isBusy: isBusy,
-                    action: action
-                )
-            }
-        #else
-            legacySidebarProminentActionButton(
-                title: title,
-                systemImage: systemImage,
-                tint: tint,
-                active: active,
-                isBusy: isBusy,
-                action: action
-            )
-        #endif
+        sidebarProminentActionButtonBody(
+            title: title,
+            systemImage: systemImage,
+            tint: tint,
+            active: active,
+            isBusy: isBusy,
+            action: action
+        )
+        .buttonStyle(.plain)
+        .background {
+            Capsule()
+                .fill(active ? tint : tint.opacity(0.12))
+        }
+        .overlay(
+            Capsule()
+                .stroke(tint.opacity(active ? 0 : 0.45), lineWidth: 0.8)
+        )
     }
 
     private func sidebarProminentActionButtonBody(
         title: String,
         systemImage: String,
+        tint: Color,
         active: Bool,
         isBusy: Bool,
         action: @escaping () -> Void
@@ -253,6 +228,7 @@ extension SensorDashboardSidebar {
             sidebarProminentActionButtonLabel(
                 title: title,
                 systemImage: systemImage,
+                tint: tint,
                 active: active,
                 isBusy: isBusy
             )
@@ -264,21 +240,33 @@ extension SensorDashboardSidebar {
     private func sidebarProminentActionButtonLabel(
         title: String,
         systemImage: String,
+        tint: Color,
         active: Bool,
         isBusy: Bool
     ) -> some View {
-        if isBusy {
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(active ? Color.white : Color.accentColor)
+        ZStack {
+            if isBusy {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(active ? Color.white : tint)
+                    Text(title)
+                }
+                .foregroundStyle(active ? Color.white : Color.primary)
+            } else {
                 Text(title)
+                    .foregroundStyle(active ? Color.white : Color.primary)
+                HStack {
+                    Image(systemName: systemImage)
+                        .foregroundStyle(active ? Color.white : tint)
+                    Spacer()
+                }
+                .padding(.leading, 14)
             }
-            .foregroundStyle(active ? Color.white : Color.primary)
-            .opacity(1)
-        } else {
-            Label(title, systemImage: systemImage)
         }
+        .font(.callout.weight(.medium))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 7)
     }
 
     @ViewBuilder
@@ -294,6 +282,7 @@ extension SensorDashboardSidebar {
             sidebarProminentActionButtonBody(
                 title: title,
                 systemImage: systemImage,
+                tint: tint,
                 active: active,
                 isBusy: isBusy,
                 action: action
@@ -304,6 +293,7 @@ extension SensorDashboardSidebar {
             sidebarProminentActionButtonBody(
                 title: title,
                 systemImage: systemImage,
+                tint: tint,
                 active: active,
                 isBusy: isBusy,
                 action: action

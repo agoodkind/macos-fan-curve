@@ -110,14 +110,11 @@ extension FanCurveEditor {
         fill.addLine(to: CGPoint(x: firstPoint.x, y: zeroY))
         fill.closeSubpath()
 
-        let phase = activePhase
-        let inversePhase = 1.0 - activePhase
-
-        if phase > 0.01 {
+        if effectiveActive {
             context.fill(
                 fill,
                 with: .linearGradient(
-                    Gradient(colors: [curveColor.opacity(0.18 * phase), curveColor.opacity(0.0)]),
+                    Gradient(colors: [curveColor.opacity(0.18), curveColor.opacity(0.0)]),
                     startPoint: CGPoint(x: 0, y: topPad),
                     endPoint: CGPoint(x: 0, y: size.height - bottomPad)
                 )
@@ -125,20 +122,18 @@ extension FanCurveEditor {
 
             context.stroke(
                 line,
-                with: .color(curveColor.opacity(0.15 * phase)),
+                with: .color(curveColor.opacity(0.15)),
                 style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round)
             )
             context.stroke(
                 line,
-                with: .color(curveColor.opacity(phase)),
+                with: .color(curveColor),
                 style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
             )
-        }
-
-        if inversePhase > 0.01 {
+        } else {
             context.stroke(
                 line,
-                with: .color(Color.secondary.opacity(0.56 * inversePhase)),
+                with: .color(Color.secondary.opacity(0.56)),
                 style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round)
             )
         }
@@ -159,7 +154,7 @@ extension FanCurveEditor {
         let line = curvePath(through: pixelPoints)
         context.stroke(
             line,
-            with: .color(curveColor.opacity(0.72 * opacity)),
+            with: .color(curveColor.opacity(0.75 * opacity)),
             style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round, dash: [5, 4])
         )
     }
