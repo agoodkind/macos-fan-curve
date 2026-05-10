@@ -1,5 +1,5 @@
 name: Setup Build Env
-description: Set up Xcode, mise, and shared macOS build caches
+description: Set up Xcode, XcodeGen, mise, and shared macOS build caches
 
 inputs:
   xcode-version:
@@ -53,3 +53,14 @@ runs:
         export PATH="$HOME/.local/share/mise/bin:$HOME/.local/share/mise/shims:$PATH"
         mise install
         tuist version
+
+    - name: Install XcodeGen
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+        fi
+
+        xcodegen --version
