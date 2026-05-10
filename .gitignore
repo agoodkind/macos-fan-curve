@@ -1,4 +1,5 @@
 # Build artifacts
+.ci/
 Products/
 build/
 

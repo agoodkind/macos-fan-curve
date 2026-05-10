@@ -45,6 +45,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check out helper repo
+        uses: actions/checkout@v6
+        with:
+          repository: agoodkind/macos-smc-fan
+          ref: 4f942a36f6b63c5b0951a3937f8bf2dcbc85446d
+          path: .ci/macos-smc-fan
+
       - uses: ./.github/actions/setup-build-env
         with:
           xcode-version: ${{ env.XCODE_VERSION }}
@@ -155,7 +162,8 @@ jobs:
             MARKETING_VERSION="$MARKETING_VERSION" \
             CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
             SPARKLE_FEED_URL="https://goodkind.io/fancurve/appcast.xml" \
-            SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY"
+            SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
+            HELPER_REPO="${{ github.workspace }}/.ci/macos-smc-fan"
 
       - uses: actions/upload-artifact@v7
         with:

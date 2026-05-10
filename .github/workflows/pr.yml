@@ -24,6 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Check out helper repo
+        uses: actions/checkout@v6
+        with:
+          repository: agoodkind/macos-smc-fan
+          ref: 4f942a36f6b63c5b0951a3937f8bf2dcbc85446d
+          path: .ci/macos-smc-fan
+
       - uses: ./.github/actions/setup-build-env
         with:
           xcode-version: ${{ env.XCODE_VERSION }}
@@ -33,10 +40,10 @@ jobs:
         run: make install-dependencies
 
       - name: Verify project
-        run: make verify
+        run: make verify HELPER_REPO="${{ github.workspace }}/.ci/macos-smc-fan"
 
       - name: Lint project
         run: make lint
 
       - name: Build project
-        run: make build
+        run: make build HELPER_REPO="${{ github.workspace }}/.ci/macos-smc-fan"
