@@ -26,6 +26,12 @@ struct AdvancedSettingsView: View {
     @AppStorage(SharedConfigKeys.userBoostPriority, store: suite)
     private var userBoostPriority: Double = 50
 
+    @AppStorage(SharedConfigKeys.fanResponseValue, store: suite)
+    private var fanResponseValue: Double = FanResponse.defaultValue
+
+    @AppStorage(SharedConfigKeys.inferFanResponseFromGraph, store: suite)
+    private var inferFanResponseFromGraph: Bool = FanResponse.defaultInferFromGraph
+
     @State private var confirmOverdrive = false
     @State private var confirmUnderdrive = false
 
@@ -48,14 +54,11 @@ struct AdvancedSettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            Form {
-                loadAssistSection
-                prioritySection
-                expandedRangeSection
-            }
-            .formStyle(.grouped)
-            .padding()
+        SettingsFormContainer {
+            fanResponseSection
+            loadAssistSection
+            prioritySection
+            dangerZoneSection
         }
         .alert("Enable Overdrive?", isPresented: $confirmOverdrive) {
             Button("Enable", role: .destructive) { overdrive = true }
@@ -82,98 +85,100 @@ struct AdvancedSettingsView: View {
         } header: {
             Text("Load Assist")
         } footer: {
-            Text(loadAssistFooterText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            SettingsDescription(text: loadAssistFooterText)
+        }
+    }
+
+    private var fanResponseSection: some View {
+        Section {
+            SettingsToggleDescriptionRow(
+                title: "Infer from graph",
+                description: inferFanResponseDescription,
+                isOn: $inferFanResponseFromGraph
+            )
+            SettingsSliderRow(
+                title: inferFanResponseFromGraph ? "Response Bias" : "Response",
+                description: fanResponseDescription,
+                displayValue: responseDisplayText,
+                value: fanResponseBinding,
+                range: 0...1,
+                scaleLabels: SettingsSliderScaleLabels(
+                    minimum: "Smoother",
+                    midpoint: "Balanced",
+                    maximum: "Faster"
+                )
+            )
+        } header: {
+            Text("Fan Response")
+        } footer: {
+            SettingsDescription(text: fanResponseFooterText)
         }
     }
 
     private var prioritySection: some View {
         Section {
-            prioritySliderRow(
+            SettingsSliderRow(
                 title: "Normal curve",
-                value: $curveNormalPriority,
-                help:
-                    "Priority used for normal curve writes. Higher values preempt lower-priority fan clients."
+                description: "Priority used for regular curve writes when Boost is off.",
+                displayValue: "\(Int(curveNormalPriority.rounded()))",
+                value: priorityBinding($curveNormalPriority),
+                range: 1...100,
+                step: 1,
+                scaleLabels: SettingsSliderScaleLabels(minimum: "Low", maximum: "High"),
+                help: "Priority used for normal curve writes. Higher values preempt lower-priority fan clients."
             )
-            prioritySliderRow(
+            SettingsSliderRow(
                 title: "When boost is on",
-                value: $userBoostPriority,
-                help:
-                    "Priority used while Boost is active. Raise it above competing fan apps if Boost should win."
+                description: "Priority used while Boost is active.",
+                displayValue: "\(Int(userBoostPriority.rounded()))",
+                value: priorityBinding($userBoostPriority),
+                range: 1...100,
+                step: 1,
+                scaleLabels: SettingsSliderScaleLabels(minimum: "Low", maximum: "High"),
+                help: "Priority used while Boost is active. Raise it above competing fan apps if Boost should win."
             )
         } header: {
             Text("Client Priority")
         } footer: {
-            Text(priorityFooterText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            SettingsDescription(text: priorityFooterText)
         }
     }
 
-    private var expandedRangeSection: some View {
+    private var dangerZoneSection: some View {
         Section {
-            Toggle(isOn: overdriveBinding) {
-                rangeToggleContent(
+            SettingsDangerDisclosure(
+                title: "Expanded Range",
+                description: expandedRangeDisclosureText
+            ) {
+                SettingsToggleDescriptionRow(
                     title: "Overdrive",
-                    detail: "100% on the curve requests \(Int(overdriveTargetRPM)) RPM. Fans can wear faster."
+                    description: "Allows curve points to request up to \(Int(overdriveTargetRPM)) RPM.",
+                    isOn: overdriveBinding
                 )
-            }
 
-            Toggle(isOn: underdriveBinding) {
-                rangeToggleContent(
+                SettingsToggleDescriptionRow(
                     title: "Underdrive",
-                    detail: "0% writes 0 RPM in manual mode. Fans can stop completely and the machine can overheat."
+                    description: "Allows 0% curve points to stop fans in manual mode.",
+                    isOn: underdriveBinding
                 )
             }
         } header: {
-            Label {
-                Text("Expanded Range")
-            } icon: {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(Color(nsColor: .systemOrange))
-            }
-        } footer: {
-            Text(expandedRangeFooterText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text("Fan Range Limits")
         }
     }
 
-    private func rangeToggleContent(title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-            Text(detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
+    private var fanResponseBinding: Binding<Double> {
+        Binding(
+            get: { FanResponse(value: fanResponseValue).value },
+            set: { fanResponseValue = FanResponse(value: $0).value }
+        )
     }
 
-    @ViewBuilder
-    private func prioritySliderRow(title: String, value: Binding<Double>, help: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center) {
-                Text(title)
-                Spacer()
-                Text("\(Int(value.wrappedValue.rounded()))")
-                    .font(.system(.body, design: .rounded).weight(.semibold))
-                    .monospacedDigit()
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(Color.primary.opacity(0.07))
-                    )
-            }
-            Slider(
-                value: Binding(
-                    get: { value.wrappedValue },
-                    set: { value.wrappedValue = $0.rounded() }
-                ),
-                in: 1...100
-            )
-            .help(help)
-        }
+    private func priorityBinding(_ value: Binding<Double>) -> Binding<Double> {
+        Binding(
+            get: { value.wrappedValue },
+            set: { value.wrappedValue = $0.rounded() }
+        )
     }
 
     private var loadAssistFooterText: String {
@@ -182,15 +187,31 @@ struct AdvancedSettingsView: View {
             + "then applies whichever result is highest."
     }
 
+    private var inferFanResponseDescription: String {
+        "Uses curve steepness near the current temperature to choose a gentler or faster fan response."
+    }
+
+    private var fanResponseDescription: String {
+        if inferFanResponseFromGraph {
+            return "Biases graph inference toward smoother or faster response."
+        }
+
+        return "Sets how quickly acoustic damping lets fan commands change."
+    }
+
+    private var fanResponseFooterText: String {
+        "Controls how quickly acoustic damping lets fan commands change. "
+            + "Lower values favor quieter transitions; higher values follow curve changes more directly."
+    }
+
     private var priorityFooterText: String {
         "Priority the agent uses when writing fans. Higher values preempt lower. "
             + "Defaults match other fan aware apps: normal curve at 10, boost at 50. "
             + "Raise boost above 50 if boost should preempt an active lmd LLM run."
     }
 
-    private var expandedRangeFooterText: String {
-        "These modes bypass the firmware reported safe range. "
-            + "Enable them only if you understand the risks."
+    private var expandedRangeDisclosureText: String {
+        "Allows fan targets outside the firmware reported safe range."
     }
 
     private var overdriveWarningText: String {
@@ -203,5 +224,9 @@ struct AdvancedSettingsView: View {
         "Underdrive lets the curve force fans to 0 RPM in manual mode. "
             + "Without airflow your machine can overheat under load and throttle or shut down. "
             + "Only enable if you know your thermal limits."
+    }
+
+    private var responseDisplayText: String {
+        "\(Int(FanResponse(value: fanResponseValue).value * 100))%"
     }
 }

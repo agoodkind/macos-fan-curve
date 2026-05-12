@@ -55,7 +55,7 @@ GENERATE_CONFIG_ENV = SRCROOT="$(CURDIR)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)"
 XCODE_BUILD_SETTINGS = CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
 HELPER_BUILD_SETTINGS = CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" OWNER_APP_BUNDLE_ID="$(APP_BUNDLE_ID)" HELPER_APP_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" HELPER_DAEMON_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)"
 
-.PHONY: all install-dependencies install-analysis-tools build app install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project generate-config-artifacts open-project test format format-check lint swiftlint-lint analyze xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit verify quality run log-audit icons helper-artifacts
+.PHONY: all install-dependencies install-analysis-tools build app install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project generate-config-artifacts open-project test format format-check lint swiftlint-lint analyze xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality run log-audit icons helper-artifacts
 
 install-dependencies:
 	$(TUIST) install
@@ -169,7 +169,7 @@ prepare-sparkle-updates:
 sparkle-appcast: release-assets prepare-sparkle-updates
 
 run: app
-	@pkill -x "$(APP_NAME)" 2>/dev/null || true
+	@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
 	@open "$(APP_DEST)"
 
 test: generate-config-artifacts helper-artifacts generate-project
@@ -226,7 +226,10 @@ launch-agent-audit: app
 run-audit:
 	@Scripts/AuditMakeRun.swift Makefile
 
-verify: launch-agent-audit run-audit log-audit test
+settings-layout-audit:
+	@Scripts/SettingsLayoutAudit.swift Sources/Views
+
+verify: launch-agent-audit run-audit settings-layout-audit log-audit test
 
 quality: lint analyze verify
 

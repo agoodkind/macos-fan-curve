@@ -46,10 +46,9 @@ struct AboutContentView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-
-                Spacer()
             }
             .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -76,7 +75,7 @@ struct AboutContentView: View {
     @ViewBuilder
     private var updateStatusContent: some View {
         if appUpdater.isConfigured {
-            HStack {
+            SettingsAccessoryRow(accessoryWidth: 112) {
                 VStack(alignment: .leading, spacing: 2) {
                     Label(updateStatusLabel, systemImage: updateStatusIcon)
                         .foregroundColor(statusColor)
@@ -85,9 +84,7 @@ struct AboutContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-
-                Spacer()
-
+            } accessory: {
                 Button("Check Now") { appUpdater.checkForUpdates() }
                     .disabled(!appUpdater.canCheckForUpdates)
             }
@@ -100,7 +97,7 @@ struct AboutContentView: View {
 
     private var contactSection: some View {
         Section {
-            HStack(alignment: .center, spacing: 12) {
+            SettingsAccessoryRow(accessoryWidth: 124) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Alex Goodkind")
                         .font(.body.weight(.semibold))
@@ -108,25 +105,27 @@ struct AboutContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Spacer()
-                iconButton(
-                    systemImage: "envelope.fill",
-                    helpText: "Email alex@goodkind.io",
-                    accessibilityLabel: "Email",
-                    urlString: "mailto:alex@goodkind.io"
-                )
-                iconButton(
-                    systemImage: "globe",
-                    helpText: "Open goodkind.io",
-                    accessibilityLabel: "Website",
-                    urlString: "https://goodkind.io"
-                )
-                iconButton(
-                    systemImage: "chevron.left.forwardslash.chevron.right",
-                    helpText: "Open GitHub profile",
-                    accessibilityLabel: "Source",
-                    urlString: "https://github.com/agoodkind"
-                )
+            } accessory: {
+                HStack(alignment: .center, spacing: 8) {
+                    iconButton(
+                        systemImage: "envelope.fill",
+                        helpText: "Email alex@goodkind.io",
+                        accessibilityLabel: "Email",
+                        urlString: "mailto:alex@goodkind.io"
+                    )
+                    iconButton(
+                        systemImage: "globe",
+                        helpText: "Open goodkind.io",
+                        accessibilityLabel: "Website",
+                        urlString: "https://goodkind.io"
+                    )
+                    iconButton(
+                        systemImage: "chevron.left.forwardslash.chevron.right",
+                        helpText: "Open GitHub profile",
+                        accessibilityLabel: "Source",
+                        urlString: "https://github.com/agoodkind"
+                    )
+                }
             }
         } header: {
             Text("Contact")
@@ -188,17 +187,7 @@ struct AboutContentView: View {
 
     @ViewBuilder
     private func buildInfoRow(label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
+        SettingsKeyValueRow(label: label, value: value)
     }
 
     private var updateStatusIcon: String {

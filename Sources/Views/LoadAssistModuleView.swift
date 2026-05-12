@@ -22,42 +22,19 @@ struct LoadAssistModuleView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Toggle(isOn: enabledBinding) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(kind.title)
-                    Text(
-                        "\(kind.shortTitle) load can raise the curve to a minimum fan floor without changing the main temperature graph."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-            }
+            SettingsToggleDescriptionRow(
+                title: kind.title,
+                description: loadAssistDescription,
+                isOn: enabledBinding
+            )
 
             if enabled {
                 LoadAssistCurveEditor(points: $points, minimumPointSpacing: minimumPointSpacing)
                     .frame(height: 168)
 
-                HStack {
-                    Text("Load %")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("Minimum Fan %")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                SettingsKeyValueRow(label: "Load %", value: "Minimum Fan %")
 
-                HStack {
-                    let floorPercent = Int((points.last?.fanPercent ?? 0) * 100)
-                    let activation = Int(points.dropLast().last?.temperature ?? 0)
-                    Text("Starts ramping near \(activation)% load")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("Current floor \(floorPercent)%")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
+                SettingsKeyValueRow(label: activationSummary, value: floorSummary)
 
                 Button("Reset \(kind.shortTitle) Assist Curve") {
                     points = LoadAssistStore.defaultPoints()
@@ -76,6 +53,20 @@ struct LoadAssistModuleView: View {
                 enabled = newValue
                 LoadAssistStore.saveEnabled(newValue, kind: kind, defaults: Self.suite)
             })
+    }
+
+    private var loadAssistDescription: String {
+        "\(kind.shortTitle) load can raise the curve to a minimum fan floor without changing the main temperature graph."
+    }
+
+    private var activationSummary: String {
+        let activation = Int(points.dropLast().last?.temperature ?? 0)
+        return "Starts ramping near \(activation)% load"
+    }
+
+    private var floorSummary: String {
+        let floorPercent = Int((points.last?.fanPercent ?? 0) * 100)
+        return "Current floor \(floorPercent)%"
     }
 
     private func load() {

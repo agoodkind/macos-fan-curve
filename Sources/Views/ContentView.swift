@@ -23,6 +23,7 @@ struct ContentView: View {
 
     private let minSidebarWidth: Double = 200
     private let maxSidebarWidth: Double = 400
+    private let mainWindowHeight: CGFloat = 540
     private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
 
     @AppStorage(SharedConfigKeys.boostEnabled, store: suite)
@@ -36,7 +37,14 @@ struct ContentView: View {
                 OnboardingView(state: installState)
             }
         }
-        .frame(minWidth: 820, idealWidth: 980, minHeight: 620, idealHeight: 680)
+        .frame(
+            minWidth: 820,
+            idealWidth: 980,
+            maxWidth: .infinity,
+            minHeight: mainWindowHeight,
+            idealHeight: mainWindowHeight,
+            maxHeight: .infinity
+        )
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .topTrailing) {
             #if DEBUG

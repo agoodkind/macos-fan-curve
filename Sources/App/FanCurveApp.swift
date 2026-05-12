@@ -46,6 +46,8 @@ struct FanCurveApp: App {
                     handleTermination()
                 }
         }
+        .defaultSize(width: 980, height: 540)
+        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings...") {

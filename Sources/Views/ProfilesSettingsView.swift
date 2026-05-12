@@ -26,7 +26,7 @@ struct ProfilesSettingsView: View {
     private var interpolationRaw: String = "catmullRom"
 
     var body: some View {
-        ScrollView {
+        SettingsFormContainer {
             formBody
         }
         .sheet(isPresented: $showLearnSheet, onDismiss: stopPreviewPoller) {
@@ -44,7 +44,7 @@ struct ProfilesSettingsView: View {
         Button {
             curveModel.replaceCurve(preset.curvePoints())
         } label: {
-            HStack(alignment: .center, spacing: 8) {
+            SettingsAccessoryRow(accessoryWidth: 18) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(preset.name)
                         .font(.body)
@@ -53,7 +53,7 @@ struct ProfilesSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Spacer()
+            } accessory: {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
@@ -63,73 +63,65 @@ struct ProfilesSettingsView: View {
         .buttonStyle(.plain)
     }
 
+    @ViewBuilder
     private var formBody: some View {
-        Form {
-            Section {
-                Picker("Interpolation", selection: $interpolationRaw) {
-                    Text("Linear").tag("linear")
-                    Text("Smooth").tag("catmullRom")
-                }
-                .pickerStyle(.segmented)
-            } header: {
-                Text("Smoothing")
-            } footer: {
-                Text("Linear draws straight segments between points. Smooth uses monotone cubic.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        Section {
+            Picker("Interpolation", selection: $interpolationRaw) {
+                Text("Linear").tag("linear")
+                Text("Smooth").tag("catmullRom")
             }
-
-            Section {
-                ForEach(CurvePresets.all) { preset in
-                    presetRow(preset)
-                }
-            } header: {
-                Text("Presets")
-            } footer: {
-                Text(
-                    "Applying a preset replaces your current curve. You can edit the points again afterward."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Button {
-                    settingsViewLog.info(
-                        "curve.reset.tapped pointsBefore=\(curveModel.controlPoints.count, privacy: .public)"
-                    )
-                    curveModel.resetToDefault()
-                    settingsViewLog.info(
-                        "curve.reset.done pointsAfter=\(curveModel.controlPoints.count, privacy: .public)"
-                    )
-                } label: {
-                    Label("Reset to Default Curve", systemImage: "arrow.counterclockwise")
-                }
-            } header: {
-                Text("Reset")
-            } footer: {
-                Text("Replaces the current curve with the built-in starting curve.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Button {
-                    showLearnSheet = true
-                } label: {
-                    Label("Learn from Current System", systemImage: "brain.head.profile")
-                }
-            } header: {
-                Text("Learn")
-            } footer: {
-                Text(
-                    "Samples your machine under load and fits a curve that mirrors how macOS runs it in Auto mode."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
+            .pickerStyle(.segmented)
+        } header: {
+            Text("Smoothing")
+        } footer: {
+            SettingsDescription(
+                text: "Linear draws straight segments between points. Smooth uses monotone cubic."
+            )
         }
-        .formStyle(.grouped)
+
+        Section {
+            ForEach(CurvePresets.all) { preset in
+                presetRow(preset)
+            }
+        } header: {
+            Text("Presets")
+        } footer: {
+            SettingsDescription(
+                text: "Applying a preset replaces your current curve. You can edit the points again afterward."
+            )
+        }
+
+        Section {
+            Button {
+                settingsViewLog.info(
+                    "curve.reset.tapped pointsBefore=\(curveModel.controlPoints.count, privacy: .public)"
+                )
+                curveModel.resetToDefault()
+                settingsViewLog.info(
+                    "curve.reset.done pointsAfter=\(curveModel.controlPoints.count, privacy: .public)"
+                )
+            } label: {
+                Label("Reset to Default Curve", systemImage: "arrow.counterclockwise")
+            }
+        } header: {
+            Text("Reset")
+        } footer: {
+            SettingsDescription(text: "Replaces the current curve with the built-in starting curve.")
+        }
+
+        Section {
+            Button {
+                showLearnSheet = true
+            } label: {
+                Label("Learn from Current System", systemImage: "brain.head.profile")
+            }
+        } header: {
+            Text("Learn")
+        } footer: {
+            SettingsDescription(
+                text: "Samples your machine under load and fits a curve that mirrors how macOS runs it in Auto mode."
+            )
+        }
     }
 
     private func startPreviewPoller() {

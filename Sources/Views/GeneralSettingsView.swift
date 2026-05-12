@@ -27,7 +27,7 @@ struct GeneralSettingsView: View {
     @State private var showOwnership = false
 
     var body: some View {
-        Form {
+        SettingsFormContainer {
             Section {
                 Picker("Temperature Unit", selection: $unitRaw) {
                     ForEach(TemperatureUnit.allCases) { unit in
@@ -38,9 +38,7 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("Display")
             } footer: {
-                Text("Only affects how temperatures are displayed.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                SettingsDescription(text: "Only affects how temperatures are displayed.")
             }
 
             Section {
@@ -48,12 +46,10 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("Background Control")
             } footer: {
-                Text(
-                    "When on, the curve keeps controlling fans after you quit the app and resumes on next login. "
+                SettingsDescription(
+                    text: "When on, the curve keeps controlling fans after you quit the app and resumes on next login. "
                         + "When off, quitting returns fans to system auto."
                 )
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
 
             Section {
@@ -62,9 +58,9 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("Background Agent")
             } footer: {
-                Text("Applies the curve when the app is closed. Resets fans to auto when disabled.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                SettingsDescription(
+                    text: "Applies the curve when the app is closed. Resets fans to auto when disabled."
+                )
             }
 
             Section {
@@ -78,15 +74,11 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("Privileged Helper")
             } footer: {
-                Text(
-                    "Reads and writes SMC keys as root. Required for fan control. "
-                        + "The helper arbitrates between fan writers by priority; current owners show above."
+                SettingsDescription(
+                    text: "Runs as root to read and write SMC fan keys."
                 )
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
         .onAppear {
             agentClient.start()
             installState.startMonitoring(agentClient: agentClient)
@@ -122,23 +114,31 @@ struct GeneralSettingsView: View {
     }
 
     private var ownershipSummary: some View {
-        HStack(spacing: 8) {
-            Text(ownershipSummaryText)
-                .font(.caption)
-            if ownershipStatus.isMonitoring, !ownershipStatus.hasLoaded {
-                ProgressView()
-                    .controlSize(.small)
-                    .scaleEffect(0.7)
+        SettingsAccessoryRow(accessoryWidth: 132) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Current Owners")
+                SettingsDescription(text: "Active fan writers by priority.")
+            }
+        } accessory: {
+            HStack(spacing: 6) {
+                if ownershipStatus.isMonitoring, !ownershipStatus.hasLoaded {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.7)
+                }
+                Text(ownershipStatusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
 
-    private var ownershipSummaryText: String {
+    private var ownershipStatusText: String {
         let count = ownershipStatus.rows.count
-        if ownershipStatus.isMonitoring, !ownershipStatus.hasLoaded { return "Current Owners" }
-        if !ownershipStatus.reachable { return "Current Owners (helper unreachable)" }
-        if count == 0 { return "Current Owners (no fans claimed)" }
-        return "Current Owners (\(count) claimed)"
+        if ownershipStatus.isMonitoring, !ownershipStatus.hasLoaded { return "Checking" }
+        if !ownershipStatus.reachable { return "Helper unreachable" }
+        if count == 0 { return "No fans claimed" }
+        return "\(count) claimed"
     }
 
     @ViewBuilder
@@ -160,7 +160,7 @@ struct GeneralSettingsView: View {
 
     @ViewBuilder
     private func ownershipRow(_ row: AgentOwnershipEntry) -> some View {
-        HStack {
+        SettingsAccessoryRow(accessoryWidth: 132) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Fan \(row.fanIndex)")
                     .font(.caption)
@@ -168,7 +168,7 @@ struct GeneralSettingsView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
+        } accessory: {
             VStack(alignment: .trailing, spacing: 2) {
                 Text("priority \(row.priority)")
                     .font(.caption2.monospacedDigit())
@@ -188,18 +188,20 @@ struct GeneralSettingsView: View {
     }
 
     private func statusRow(title: String, subtitle: String, status: String, state: ServiceRowState) -> some View {
-        HStack {
-            Circle()
-                .fill(state.color)
-                .frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.body)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        SettingsAccessoryRow(accessoryWidth: 112) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Circle()
+                    .fill(state.color)
+                    .frame(width: 8, height: 8)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.body)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            Spacer()
+        } accessory: {
             Text(status)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -237,18 +239,20 @@ struct GeneralSettingsView: View {
     }
 
     private var agentRow: some View {
-        HStack {
-            Circle()
-                .fill(agentRowState.color)
-                .frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(generatedAgentDisplayName)
-                    .font(.body)
-                Text(generatedAgentBundleID)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        SettingsAccessoryRow(accessoryWidth: 112) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Circle()
+                    .fill(agentRowState.color)
+                    .frame(width: 8, height: 8)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(generatedAgentDisplayName)
+                        .font(.body)
+                    Text(generatedAgentBundleID)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            Spacer()
+        } accessory: {
             HStack(spacing: 6) {
                 if installState.isRegisteringAgent {
                     ProgressView()

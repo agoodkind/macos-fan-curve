@@ -41,14 +41,14 @@ do {
         try fail("run-audit failed: make run must depend on app and launch Products/$(APP_BUNDLE_NAME).app")
     }
 
-    let forbiddenTokens = ["install-app", "restart-agent", "sync-agent-plist", "launchctl", "/Applications"]
+    let forbiddenTokens = ["install-app", "restart-agent", "sync-agent-plist", "launchctl", "/Applications", "pkill"]
     let body = runBody.joined(separator: "\n")
     for token in forbiddenTokens where body.contains(token) {
         try fail("run-audit failed: make run must not reference '\(token)'")
     }
 
-    guard body.contains(#"pkill -x "$(APP_NAME)""#) else {
-        try fail("run-audit failed: make run must stop existing app UI processes before opening the staged app")
+    guard body.contains(#"Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)""#) else {
+        try fail("run-audit failed: make run must terminate existing app UI processes by bundle identifier")
     }
 
     guard body.contains(#"open "$(APP_DEST)""#) else {
