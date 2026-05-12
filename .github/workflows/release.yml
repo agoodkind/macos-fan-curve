@@ -183,6 +183,22 @@ jobs:
             SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
             HELPER_REPO="${{ github.workspace }}/.ci/macos-smc-fan"
 
+      - name: Generate app SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          path: Products/Fan Curve.app
+          syft-version: v1.44.0
+          format: spdx-json
+          output-file: Products/FanCurve-${{ steps.meta.outputs.build_version }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-sbom-${{ steps.meta.outputs.tag }}
+          path: Products/FanCurve-${{ steps.meta.outputs.build_version }}.spdx.json
+          if-no-files-found: error
+
       - uses: actions/upload-artifact@v7
         with:
           name: release-dmg-${{ steps.meta.outputs.tag }}
@@ -194,6 +210,9 @@ jobs:
     needs: build
     permissions:
       contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
 
     steps:
       - uses: actions/checkout@v6
@@ -211,6 +230,11 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: release-dmg-${{ needs.build.outputs.tag }}
+          path: Products
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-sbom-${{ needs.build.outputs.tag }}
           path: Products
 
       - name: Notarize and staple DMG
@@ -262,6 +286,17 @@ jobs:
 
           xcrun stapler staple "Products/FanCurve-${BUILD_VERSION}.dmg"
 
+      - name: Attest stapled DMG provenance
+        uses: actions/attest@v4.1.0
+        with:
+          subject-path: Products/FanCurve-${{ needs.build.outputs.build_version }}.dmg
+
+      - name: Attest stapled DMG SBOM
+        uses: actions/attest@v4.1.0
+        with:
+          subject-path: Products/FanCurve-${{ needs.build.outputs.build_version }}.dmg
+          sbom-path: Products/FanCurve-${{ needs.build.outputs.build_version }}.spdx.json
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -295,6 +330,11 @@ jobs:
           name: release-dmg-stapled-${{ needs.build.outputs.tag }}
           path: release-assets
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-sbom-${{ needs.build.outputs.tag }}
+          path: release-assets
+
       - name: Push release tag
         shell: bash
         run: |
@@ -313,6 +353,7 @@ jobs:
         run: |
           gh release create "$TAG" \
             "release-assets/FanCurve-${BUILD_VERSION}.dmg" \
+            "release-assets/FanCurve-${BUILD_VERSION}.spdx.json" \
             --target "$GITHUB_SHA" \
             --title "$TAG" \
             --notes "Automated release for $GITHUB_SHA"
