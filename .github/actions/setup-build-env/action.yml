@@ -17,7 +17,7 @@ runs:
         xcode-version: ${{ inputs.xcode-version }}
 
     - name: Restore Tuist and SwiftPM caches
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/.cache/tuist
@@ -30,7 +30,7 @@ runs:
           ${{ runner.os }}-tuist-
 
     - name: Restore build cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: build
         key: ${{ runner.os }}-build-${{ hashFiles('Sources/**', 'Tests/**', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/Package.swift', 'Tuist/Package.resolved', 'Config/**', 'Scripts/**', 'Templates/**', 'Makefile') }}
