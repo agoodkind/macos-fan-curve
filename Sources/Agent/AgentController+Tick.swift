@@ -240,6 +240,18 @@ extension AgentController {
             points: points,
             mode: mode
         )
+        let manualFanResponse = sharedConfig.loadFanResponse()
+        let inferFanResponseFromGraph = sharedConfig.loadInferFanResponseFromGraph()
+        let inferredFanResponse = CurveInterpolation.localResponse(
+            at: pressureTemperature,
+            points: points,
+            mode: mode
+        )
+        let fanResponseMultiplier = FanResponse.finalMultiplier(
+            manualResponse: manualFanResponse,
+            inferredResponse: inferredFanResponse,
+            inferFromGraph: inferFanResponseFromGraph
+        )
         let curvePercent = boost ? 1.0 : baseCurvePercent
 
         let assistState = resolveAssistState(
@@ -264,6 +276,8 @@ extension AgentController {
             boost: boost,
             pressureTemperature: pressureTemperature,
             baseCurvePercent: baseCurvePercent,
+            fanResponseMultiplier: fanResponseMultiplier,
+            fanResponseInferred: inferFanResponseFromGraph,
             rawBaselinePercent: assistState.rawBaselinePercent,
             assistFloorPercent: assistState.assistFloorPercent,
             assistAppliedKinds: assistState.assistAppliedKinds,
@@ -355,7 +369,7 @@ extension AgentController {
     ) -> AgentControllerTickTypes.FanActions {
         let assistSummary = context.assistAppliedKinds.map(\.rawValue).joined(separator: ",")
         agentControllerTickLog.debug(
-            "agent.tick cpuTemp=\(Int(context.telemetry.maxCPUTemp), privacy: .public)C cpuLoad=\(Int(context.telemetry.cpuLoad), privacy: .public)% gpuLoad=\(Int(context.telemetry.gpuLoad), privacy: .public)% raw=\(Int(runtimeState.rawBaselinePercent * 100), privacy: .public)% semantic=\(Int(runtimeState.semanticDemandPercent * 100), privacy: .public)% commanded=\(Int(runtimeState.committedPercent * 100), privacy: .public)% demandSource=\(runtimeState.thermalDemandSource.rawValue, privacy: .public) mode=\(runtimeState.mode.rawValue, privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% boost=\(context.boost, privacy: .public) assist=\(assistSummary, privacy: .public)"
+            "agent.tick cpuTemp=\(Int(context.telemetry.maxCPUTemp), privacy: .public)C cpuLoad=\(Int(context.telemetry.cpuLoad), privacy: .public)% gpuLoad=\(Int(context.telemetry.gpuLoad), privacy: .public)% raw=\(Int(runtimeState.rawBaselinePercent * 100), privacy: .public)% semantic=\(Int(runtimeState.semanticDemandPercent * 100), privacy: .public)% commanded=\(Int(runtimeState.committedPercent * 100), privacy: .public)% demandSource=\(runtimeState.thermalDemandSource.rawValue, privacy: .public) mode=\(runtimeState.mode.rawValue, privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% responseMultiplier=\(Int(context.fanResponseMultiplier.rawValue * 100), privacy: .public)% responseInferred=\(context.fanResponseInferred, privacy: .public) boost=\(context.boost, privacy: .public) assist=\(assistSummary, privacy: .public)"
         )
 
         var setFans: [(index: UInt, rpm: Float)] = []
@@ -374,6 +388,7 @@ extension AgentController {
                     currentTemperatureC: context.telemetry.maxCPUTemp,
                     fastTrendCPerTick: context.fastTrend,
                     slowTrendCPerTick: context.slowTrend,
+                    fanResponseMultiplier: context.fanResponseMultiplier,
                     now: context.now
                 )
             )

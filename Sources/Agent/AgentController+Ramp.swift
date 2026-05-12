@@ -20,6 +20,7 @@ struct RampCommandInput {
     let currentTemperatureC: Double
     let fastTrendCPerTick: Double
     let slowTrendCPerTick: Double
+    let fanResponseMultiplier: FanResponseMultiplier
     let now: Date
 }
 
@@ -45,6 +46,9 @@ extension AgentController {
                     fastTrendCPerTick: input.fastTrendCPerTick,
                     slowTrendCPerTick: input.slowTrendCPerTick,
                     thermalDebt: thermalDebt
+                ),
+                policy: acousticRampGovernor.policy.scalingRPMRates(
+                    by: input.fanResponseMultiplier
                 )
             )
             rampStateByFan[input.index] = RampCommandState(rpm: decision.commandedRPM, timestamp: input.now)
@@ -52,7 +56,8 @@ extension AgentController {
                 fanIndex: input.index,
                 decision: decision,
                 currentFan: input.currentFan,
-                currentTemperatureC: input.currentTemperatureC
+                currentTemperatureC: input.currentTemperatureC,
+                fanResponseMultiplier: input.fanResponseMultiplier
             )
             logCommandChangeIfNeeded(
                 fanIndex: input.index,
@@ -106,11 +111,12 @@ extension AgentController {
         fanIndex: UInt,
         decision: AcousticRampGovernor.Decision,
         currentFan: FanInfo,
-        currentTemperatureC: Double
+        currentTemperatureC: Double,
+        fanResponseMultiplier: FanResponseMultiplier
     ) {
         guard decision.limited else { return }
         agentControllerLog.info(
-            "agent.fan.ramp_governor fan=\(fanIndex, privacy: .public) requestedRPM=\(Int(decision.requestedRPM), privacy: .public) commandedRPM=\(Int(decision.commandedRPM), privacy: .public) baselineRPM=\(Int(decision.baselineRPM), privacy: .public) actualRPM=\(Int(currentFan.actualRPM), privacy: .public) elapsedMs=\(Int(decision.elapsedSeconds * 1_000), privacy: .public) rateRPMPerSecond=\(Int(decision.rateRPMPerSecond), privacy: .public) tempC=\(Int(currentTemperatureC), privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% mode=\(controllerMode.rawValue, privacy: .public)"
+            "agent.fan.ramp_governor fan=\(fanIndex, privacy: .public) requestedRPM=\(Int(decision.requestedRPM), privacy: .public) commandedRPM=\(Int(decision.commandedRPM), privacy: .public) baselineRPM=\(Int(decision.baselineRPM), privacy: .public) actualRPM=\(Int(currentFan.actualRPM), privacy: .public) elapsedMs=\(Int(decision.elapsedSeconds * 1_000), privacy: .public) rateRPMPerSecond=\(Int(decision.rateRPMPerSecond), privacy: .public) responseMultiplier=\(Int(fanResponseMultiplier.rawValue * 100), privacy: .public)% tempC=\(Int(currentTemperatureC), privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% mode=\(controllerMode.rawValue, privacy: .public)"
         )
     }
 }

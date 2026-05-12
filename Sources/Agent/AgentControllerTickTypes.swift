@@ -35,6 +35,8 @@ enum AgentControllerTickTypes {
         let boost: Bool
         let pressureTemperature: Double
         let baseCurvePercent: Double
+        let fanResponseMultiplier: FanResponseMultiplier
+        let fanResponseInferred: Bool
         let rawBaselinePercent: Double
         let assistFloorPercent: Double?
         let assistAppliedKinds: [LoadAssistKind]

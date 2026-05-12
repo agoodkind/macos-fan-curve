@@ -49,6 +49,14 @@ struct SharedConfig {
         return mode
     }
 
+    func loadFanResponse() -> FanResponse {
+        FanResponse.loadValue(defaults: defaults)
+    }
+
+    func loadInferFanResponseFromGraph() -> Bool {
+        FanResponse.loadInferFromGraph(defaults: defaults)
+    }
+
     func loadIsActive() -> Bool {
         defaults.bool(forKey: SharedConfigKeys.curveActive)
     }

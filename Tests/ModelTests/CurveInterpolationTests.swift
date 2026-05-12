@@ -160,6 +160,42 @@ final class CurveInterpolationTests: XCTestCase {
         expect(catmull) <= 1.0
     }
 
+    func testLocalResponseDetectsFlatCurveRegion() {
+        let points = [
+            CurvePoint(temperature: 40, fanPercent: 0.2),
+            CurvePoint(temperature: 60, fanPercent: 0.2),
+            CurvePoint(temperature: 80, fanPercent: 0.2),
+        ]
+
+        let response = CurveInterpolation.localResponse(at: 60, points: points, mode: .linear)
+
+        expect(response.value).to(beCloseTo(0.0, within: 0.001))
+    }
+
+    func testLocalResponseDetectsModerateCurveRegion() {
+        let points = [
+            CurvePoint(temperature: 40, fanPercent: 0.2),
+            CurvePoint(temperature: 60, fanPercent: 0.48),
+            CurvePoint(temperature: 80, fanPercent: 0.76),
+        ]
+
+        let response = CurveInterpolation.localResponse(at: 60, points: points, mode: .linear)
+
+        expect(response.value).to(beCloseTo(0.43, within: 0.02))
+    }
+
+    func testLocalResponseDetectsSteepCurveRegion() {
+        let points = [
+            CurvePoint(temperature: 40, fanPercent: 0.2),
+            CurvePoint(temperature: 60, fanPercent: 0.8),
+            CurvePoint(temperature: 80, fanPercent: 1.0),
+        ]
+
+        let response = CurveInterpolation.localResponse(at: 50, points: points, mode: .linear)
+
+        expect(response.value).to(beCloseTo(1.0, within: 0.001))
+    }
+
     func testPathPoints_GeneratesCorrectCount() {
         let points = CurveInterpolation.pathPoints(
             points: testPoints, mode: .linear, tempRange: 20...110, steps: 50)

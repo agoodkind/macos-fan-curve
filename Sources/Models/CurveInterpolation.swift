@@ -30,6 +30,49 @@ enum CurveInterpolation {
         }
     }
 
+    static func localResponse(
+        at temperature: Double,
+        points: [CurvePoint],
+        mode: InterpolationMode
+    ) -> FanResponse {
+        FanResponse.responseValue(
+            forSlopePercentPerC: localSlopePercentPerC(
+                at: temperature,
+                points: points,
+                mode: mode
+            )
+        )
+    }
+
+    static func localSlopePercentPerC(
+        at temperature: Double,
+        points: [CurvePoint],
+        mode: InterpolationMode
+    ) -> Double {
+        let sorted = points.sorted { $0.temperature < $1.temperature }
+        guard
+            let firstPoint = sorted.first,
+            let lastPoint = sorted.last,
+            firstPoint.temperature != lastPoint.temperature
+        else { return 0 }
+
+        let sampleRadiusC = 1.0
+        var lowTemperature = max(firstPoint.temperature, temperature - sampleRadiusC)
+        var highTemperature = min(lastPoint.temperature, temperature + sampleRadiusC)
+
+        if abs(highTemperature - lowTemperature) <= 0.000001 {
+            lowTemperature = max(firstPoint.temperature, temperature - sampleRadiusC * 2)
+            highTemperature = min(lastPoint.temperature, temperature + sampleRadiusC * 2)
+        }
+
+        let temperatureDelta = highTemperature - lowTemperature
+        guard abs(temperatureDelta) > 0.000001 else { return 0 }
+
+        let lowPercent = evaluate(at: lowTemperature, points: sorted, mode: mode)
+        let highPercent = evaluate(at: highTemperature, points: sorted, mode: mode)
+        return abs(highPercent - lowPercent) / temperatureDelta
+    }
+
     static func linear(at temperature: Double, points: [CurvePoint]) -> Double {
         guard !points.isEmpty else { return 0 }
         let sorted = points.sorted { $0.temperature < $1.temperature }

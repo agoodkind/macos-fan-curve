@@ -32,6 +32,21 @@ struct AcousticRampGovernor: Sendable {
             risingFastTrendCPerTick: 0.14,
             risingSlowTrendCPerTick: 0.06,
             minimumSnapRPMDelta: 35)
+
+        func scalingRPMRates(by responseMultiplier: FanResponseMultiplier) -> Policy {
+            let multiplier = Float(responseMultiplier.rawValue)
+            return Policy(
+                quietRiseRPMPerSecond: quietRiseRPMPerSecond * multiplier,
+                warmRiseRPMPerSecond: warmRiseRPMPerSecond * multiplier,
+                hotRiseRPMPerSecond: hotRiseRPMPerSecond * multiplier,
+                quietFallRPMPerSecond: quietFallRPMPerSecond * multiplier,
+                thermalDebtMinimumFallRPMPerSecond: thermalDebtMinimumFallRPMPerSecond * multiplier,
+                warmTemperatureC: warmTemperatureC,
+                hotTemperatureC: hotTemperatureC,
+                risingFastTrendCPerTick: risingFastTrendCPerTick,
+                risingSlowTrendCPerTick: risingSlowTrendCPerTick,
+                minimumSnapRPMDelta: minimumSnapRPMDelta)
+        }
     }
 
     struct Input: Sendable {
@@ -59,7 +74,8 @@ struct AcousticRampGovernor: Sendable {
         self.policy = policy
     }
 
-    func decision(for input: Input) -> Decision {
+    func decision(for input: Input, policy effectivePolicy: Policy? = nil) -> Decision {
+        let activePolicy = effectivePolicy ?? policy
         let delta = input.requestedRPM - input.baselineRPM
         guard delta != 0 else {
             return Decision(
@@ -72,7 +88,7 @@ struct AcousticRampGovernor: Sendable {
         }
 
         let elapsedSeconds = normalizedElapsedSeconds(input.elapsedSeconds)
-        let rateRPMPerSecond = selectedRateRPMPerSecond(input: input, delta: delta)
+        let rateRPMPerSecond = selectedRateRPMPerSecond(input: input, delta: delta, policy: activePolicy)
         let allowedDelta = rateRPMPerSecond * Float(elapsedSeconds)
         let candidateRPM: Float
         if delta > 0 {
@@ -94,9 +110,9 @@ struct AcousticRampGovernor: Sendable {
             limited: commandedRPM != input.requestedRPM)
     }
 
-    private func selectedRateRPMPerSecond(input: Input, delta: Float) -> Float {
+    private func selectedRateRPMPerSecond(input: Input, delta: Float, policy: Policy) -> Float {
         if delta > 0 {
-            return selectedRiseRateRPMPerSecond(input: input)
+            return selectedRiseRateRPMPerSecond(input: input, policy: policy)
         }
 
         let thermalDebt = max(0, min(1, input.thermalDebt))
@@ -104,7 +120,7 @@ struct AcousticRampGovernor: Sendable {
             - Float(thermalDebt) * (policy.quietFallRPMPerSecond - policy.thermalDebtMinimumFallRPMPerSecond)
     }
 
-    private func selectedRiseRateRPMPerSecond(input: Input) -> Float {
+    private func selectedRiseRateRPMPerSecond(input: Input, policy: Policy) -> Float {
         let thermalDebt = max(0, min(1, input.thermalDebt))
         let thermalDebtRate =
             policy.quietRiseRPMPerSecond

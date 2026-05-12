@@ -116,6 +116,7 @@ let modelTestSources: SourceFilesList = [
     "Sources/Models/WorkloadGenerator.swift",
     "Sources/Models/CPULoadSampler.swift",
     "Sources/Models/AcousticRampGovernor.swift",
+    "Sources/Models/FanResponse.swift",
     "Sources/Models/CurvePresets.swift",
     "Sources/Models/EventArtifactWriter.swift",
     "Sources/Models/CurveInterpolation.swift",

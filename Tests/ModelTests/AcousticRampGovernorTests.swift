@@ -29,6 +29,26 @@ final class AcousticRampGovernorTests: XCTestCase {
         expect(decision.limited) == true
     }
 
+    func testBalancedResponsePreservesCurrentRampDecision() {
+        let input = AcousticRampGovernor.Input(
+            requestedRPM: 6_000,
+            baselineRPM: 4_000,
+            elapsedSeconds: 1,
+            currentTemperatureC: 65,
+            fastTrendCPerTick: 0,
+            slowTrendCPerTick: 0,
+            thermalDebt: 0)
+        let defaultDecision = governor.decision(for: input)
+        let balancedPolicy = governor.policy.scalingRPMRates(
+            by: FanResponse(value: 0.5).manualMultiplier
+        )
+        let balancedDecision = governor.decision(for: input, policy: balancedPolicy)
+
+        expect(balancedDecision.commandedRPM).to(beCloseTo(defaultDecision.commandedRPM, within: 0.1))
+        expect(balancedDecision.rateRPMPerSecond)
+            .to(beCloseTo(defaultDecision.rateRPMPerSecond, within: 0.1))
+    }
+
     func testDecisionUsesElapsedTimeForLongerRiseBudget() {
         let decision = governor.decision(
             for: AcousticRampGovernor.Input(
