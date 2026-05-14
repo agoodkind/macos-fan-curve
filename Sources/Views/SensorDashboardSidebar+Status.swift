@@ -149,7 +149,10 @@ extension SensorDashboardSidebar {
                         .font(.system(.callout, design: .rounded).weight(.medium))
                         .monospacedDigit()
                         .contentTransition(.numericText())
-                        .animation(.easeOut(duration: 0.32), value: roundedValue)
+                        .animation(
+                            renderMode.allowsLiveAnimation ? .easeOut(duration: 0.32) : nil,
+                            value: roundedValue
+                        )
                 } else {
                     Text("--")
                         .font(.system(.callout, design: .rounded).weight(.medium))
@@ -165,7 +168,10 @@ extension SensorDashboardSidebar {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(tint)
                             .frame(width: geometry.size.width * CGFloat(value / 100))
-                            .animation(.easeOut(duration: 0.32), value: value)
+                            .animation(
+                                renderMode.allowsLiveAnimation ? .easeOut(duration: 0.32) : nil,
+                                value: value
+                            )
                     }
                 }
             }
@@ -193,11 +199,14 @@ extension SensorDashboardSidebar {
                         .font(.system(.title3, design: .rounded))
                         .monospacedDigit()
                         .contentTransition(.numericText())
-                        .animation(.easeOut(duration: 0.38), value: displayedRPM)
+                        .animation(
+                            renderMode.allowsLiveAnimation ? .easeOut(duration: 0.38) : nil,
+                            value: displayedRPM
+                        )
                     Text("RPM")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    if isRamping(fan) {
+                    if renderMode.allowsLiveAnimation, isRamping(fan) {
                         ProgressView()
                             .controlSize(.mini)
                             .scaleEffect(0.7)

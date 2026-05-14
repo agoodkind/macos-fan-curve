@@ -23,7 +23,7 @@ struct RPMFanIcon: View {
     }
 
     var body: some View {
-        if renderMode.isVisible, isSpinning {
+        if renderMode.allowsLiveAnimation, isSpinning {
             TimelineView(renderMode.frameProfilerSchedule) { context in
                 Image(systemName: "fan.fill")
                     .font(.caption)

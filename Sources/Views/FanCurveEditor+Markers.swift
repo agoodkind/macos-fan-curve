@@ -16,7 +16,10 @@ extension FanCurveEditor {
         ZStack(alignment: .topLeading) {
             if let geometry = runtimeMarkerGeometry(size: size, values: values) {
                 runtimeMarkerOverlay(geometry: geometry)
-                    .animation(runtimeMarkerAnimation, value: geometry)
+                    .animation(
+                        renderMode.allowsLiveAnimation ? runtimeMarkerAnimation : nil,
+                        value: geometry
+                    )
             }
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)

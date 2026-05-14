@@ -21,6 +21,10 @@ enum AppRenderMode: Equatable, Hashable {
         self != .occluded
     }
 
+    var allowsLiveAnimation: Bool {
+        self != .occluded
+    }
+
     var preferredFramesPerSecond: Int {
         switch self {
         case .interactive, .backgroundVisible: return Self.maximumDisplayFramesPerSecond

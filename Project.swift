@@ -99,6 +99,7 @@ let modelTestSources: SourceFilesList = [
     "Sources/Common/AgentFanSnapshot.swift",
     "Sources/Common/AgentControllerMode.swift",
     "Sources/Common/AgentSnapshot.swift",
+    "Sources/Common/AppVisibilityState.swift",
     "Sources/Common/RuntimeState.swift",
     "Sources/Common/SetupActionAffordance+Codable.swift",
     "Sources/Models/TemperatureUnit.swift",
@@ -121,6 +122,7 @@ let modelTestSources: SourceFilesList = [
     "Sources/Models/EventArtifactWriter.swift",
     "Sources/Models/CurveInterpolation.swift",
     "Sources/Models/LiveMarkerPresentation.swift",
+    "Sources/Services/AppRenderActivity.swift",
 ]
 
 let strictConcurrencySettings: SettingsDictionary = [
