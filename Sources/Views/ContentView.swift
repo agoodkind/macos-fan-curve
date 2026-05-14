@@ -19,11 +19,9 @@ struct ContentView: View {
     @StateObject private var renderActivity = AppRenderActivity()
 
     @AppStorage("sidebarWidth") private var sidebarWidth: Double = 240
-    @State private var dragStartWidth: Double?
 
-    private let minSidebarWidth: Double = 200
-    private let maxSidebarWidth: Double = 400
     private let mainWindowHeight: CGFloat = 540
+    private let dashboardTransitionAnimation = Animation.easeInOut(duration: 0.18)
     private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
 
     @AppStorage(SharedConfigKeys.boostEnabled, store: suite)
@@ -31,8 +29,8 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if presentation.showsDashboardSidebar {
-                mainLayout
+            if showsDashboardArea {
+                dashboardContent
             } else {
                 OnboardingView(state: installState)
             }
@@ -49,7 +47,7 @@ struct ContentView: View {
         .overlay(alignment: .topTrailing) {
             #if DEBUG
                 if FrameProfiler.isEnabledByLaunchConfiguration {
-                    if renderActivity.mode.isVisible {
+                    if renderActivity.mode.showsLiveDashboard {
                         ZStack(alignment: .topTrailing) {
                             FrameProfilerMetalProbe(renderMode: renderActivity.mode)
                                 .frame(width: 1, height: 1)
@@ -73,14 +71,14 @@ struct ContentView: View {
                 FrameProfiler.shared.setSamplingActive(renderActivity.mode == .interactive)
             #endif
             contentViewLog.notice(
-                "content_view.appeared installation_step=\(String(describing: installState.step), privacy: .public) ready=\(fanControlReady, privacy: .public) presentation=\(String(describing: presentation.layout), privacy: .public)"
+                "content_view.appeared installation_step=\(String(describing: installState.step), privacy: .public) ready=\(fanControlReady, privacy: .public) dashboard_area=\(showsDashboardArea, privacy: .public)"
             )
             agentClient.start()
             installState.startMonitoring(agentClient: agentClient)
         }
         .onChange(of: installState.step) { step in
             contentViewLog.notice(
-                "content_view.installation_step.changed step=\(String(describing: step), privacy: .public) ready=\(fanControlReady, privacy: .public) presentation=\(String(describing: presentation.layout), privacy: .public)"
+                "content_view.installation_step.changed step=\(String(describing: step), privacy: .public) ready=\(fanControlReady, privacy: .public) dashboard_area=\(showsDashboardArea, privacy: .public)"
             )
         }
         .onChange(of: renderActivity.mode) { mode in
@@ -108,26 +106,86 @@ struct ContentView: View {
         .help("Settings")
     }
 
+    private var dashboardContent: some View {
+        ZStack {
+            if renderActivity.mode.showsLiveDashboard {
+                LiveDashboardContent(
+                    agentClient: agentClient,
+                    curveModel: curveModel,
+                    installState: installState,
+                    renderMode: renderActivity.mode,
+                    sidebarWidth: $sidebarWidth,
+                    boostEnabled: boostEnabled
+                )
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity,
+                        removal: .opacity.combined(with: .scale(scale: 0.985))
+                    )
+                )
+            } else {
+                PausedDashboardView()
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.985)),
+                            removal: .opacity
+                        )
+                    )
+            }
+        }
+        .animation(dashboardTransitionAnimation, value: renderActivity.mode.showsLiveDashboard)
+    }
+
     private var fanControlReady: Bool {
         installState.step == .ready
     }
 
-    private var presentation: DashboardPresentationState {
-        DashboardPresentationState.make(
-            installationStep: installState.step,
-            telemetryFresh: agentClient.isFresh,
-            runtimeTelemetryAvailable: agentClient.governingTemperature > 0 && !agentClient.fans.isEmpty,
-            curveActive: curveModel.isActive,
-            boostEnabled: boostEnabled
-        )
+    private var showsDashboardArea: Bool {
+        switch installState.step {
+        case .checking, .agentMissing, .agentAwaitingApproval:
+            return false
+        case .helperMissing, .helperAwaitingApproval, .ready:
+            return true
+        }
     }
 
-    private var mainLayout: some View {
+    private func pushCurveToAgent(reason: String) {
+        contentViewLog.info("content_view.curve.push requested reason=\(reason, privacy: .public)")
+        Task {
+            do {
+                try await agentClient.setCurve(
+                    points: curveModel.controlPoints,
+                    interpolationMode: curveModel.interpolationMode
+                )
+            } catch {
+                contentViewLog.notice(
+                    "content_view.curve.push_failed reason=\(reason, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=agent-next-poll"
+                )
+            }
+        }
+    }
+}
+
+private struct LiveDashboardContent: View {
+    @ObservedObject var agentClient: FanCurveAgentClient
+    @ObservedObject var curveModel: FanCurveModel
+    @ObservedObject var installState: InstallationState
+
+    let renderMode: AppRenderMode
+    @Binding var sidebarWidth: Double
+    let boostEnabled: Bool
+
+    @State private var dragStartWidth: Double?
+
+    private let minSidebarWidth: Double = 200
+    private let maxSidebarWidth: Double = 400
+
+    var body: some View {
         HStack(spacing: 0) {
             FanCurveEditor(
                 model: curveModel,
                 runtime: agentClient,
-                renderMode: renderActivity.mode,
+                renderMode: renderMode,
                 presentation: presentation
             )
             .padding(16)
@@ -140,12 +198,22 @@ struct ContentView: View {
                 runtime: agentClient,
                 curveModel: curveModel,
                 installState: installState,
-                renderMode: renderActivity.mode,
+                renderMode: renderMode,
                 presentation: presentation
             )
             .frame(width: sidebarWidth)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    private var presentation: DashboardPresentationState {
+        DashboardPresentationState.make(
+            installationStep: installState.step,
+            telemetryFresh: agentClient.isFresh,
+            runtimeTelemetryAvailable: agentClient.governingTemperature > 0 && !agentClient.fans.isEmpty,
+            curveActive: curveModel.isActive,
+            boostEnabled: boostEnabled
+        )
     }
 
     /// Vertical splitter: a thin hairline with a wider invisible hit area.
@@ -179,21 +247,23 @@ struct ContentView: View {
                 .onEnded { _ in dragStartWidth = nil }
         )
     }
+}
 
-    private func pushCurveToAgent(reason: String) {
-        contentViewLog.info("content_view.curve.push requested reason=\(reason, privacy: .public)")
-        Task {
-            do {
-                try await agentClient.setCurve(
-                    points: curveModel.controlPoints,
-                    interpolationMode: curveModel.interpolationMode
-                )
-            } catch {
-                contentViewLog.notice(
-                    "content_view.curve.push_failed reason=\(reason, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=agent-next-poll"
-                )
-            }
+private struct PausedDashboardView: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "pause.circle")
+                .font(.system(size: 36, weight: .regular))
+                .foregroundStyle(.secondary)
+
+            Text("Dashboard Paused")
+                .font(.headline)
+
+            Text("Live rendering resumes when the window becomes active.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-
 }

@@ -25,6 +25,14 @@ enum AppRenderMode: Equatable, Hashable {
         self != .occluded
     }
 
+    var showsLiveDashboard: Bool {
+        self == .interactive
+    }
+
+    var showsPausedDashboard: Bool {
+        !showsLiveDashboard
+    }
+
     var preferredFramesPerSecond: Int {
         switch self {
         case .interactive, .backgroundVisible: return Self.maximumDisplayFramesPerSecond
