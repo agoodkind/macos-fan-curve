@@ -6,7 +6,16 @@
 //  Copyright © 2026
 //
 
+import AppKit
 import SwiftUI
+
+private let settingsSliderControlHeight: CGFloat = 22
+private let settingsSwitchAccessoryWidth: CGFloat = 56
+private let settingsDisclosureChevronWidth: CGFloat = 12
+private let settingsDisclosureTitleSpacing: CGFloat = 8
+private let settingsDisclosureContentLeadingPadding = settingsDisclosureChevronWidth + settingsDisclosureTitleSpacing
+private let settingsDisclosureAnimationDuration: TimeInterval = 0.18
+private let settingsDisclosureAnimation = Animation.easeInOut(duration: settingsDisclosureAnimationDuration)
 
 struct SettingsFormContainer<Content: View>: View {
     @ViewBuilder let content: () -> Content
@@ -138,28 +147,199 @@ struct SettingsKeyValueRow: View {
 
 struct SettingsDangerDisclosure<Content: View>: View {
     let title: String
-    let description: String
+    let status: String?
     @ViewBuilder let content: () -> Content
 
     @State private var isExpanded = false
 
+    init(
+        title: String,
+        status: String? = nil,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.status = status
+        self.content = content
+    }
+
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: 8) {
-                content()
+        SettingsAnimatedDisclosure(isExpanded: $isExpanded) {
+            HStack(alignment: .center, spacing: 12) {
+                Text(title)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let status {
+                    SettingsDangerStatusBadge(status: status)
+                }
             }
-            .padding(.top, 6)
-        } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(nsColor: .systemOrange))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                    SettingsDescription(text: description)
+        } content: {
+            content()
+        }
+    }
+}
+
+struct SettingsAnimatedDisclosure<Label: View, Content: View>: View {
+    @Binding var isExpanded: Bool
+    let contentSpacing: CGFloat
+    @ViewBuilder let label: () -> Label
+    @ViewBuilder let content: () -> Content
+
+    @State private var rendersContent = false
+    @State private var contentIsVisible = false
+    @State private var contentHeight: CGFloat = 0
+
+    init(
+        isExpanded: Binding<Bool>,
+        contentSpacing: CGFloat = 8,
+        @ViewBuilder label: @escaping () -> Label,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self._isExpanded = isExpanded
+        self.contentSpacing = contentSpacing
+        self.label = label
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                setExpanded(!isExpanded)
+            } label: {
+                HStack(alignment: .center, spacing: settingsDisclosureTitleSpacing) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: settingsDisclosureChevronWidth)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .animation(settingsDisclosureAnimation, value: isExpanded)
+                        .accessibilityHidden(true)
+
+                    label()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+
+            if rendersContent {
+                VStack(alignment: .leading, spacing: contentSpacing) {
+                    content()
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
+                .padding(.leading, settingsDisclosureContentLeadingPadding)
+                .readSettingsDisclosureContentHeight { height in
+                    contentHeight = height
+                }
+                .frame(height: contentIsVisible ? contentHeight : 0, alignment: .top)
+                .clipped()
+                .opacity(contentIsVisible ? 1 : 0)
+                .offset(y: contentIsVisible ? 0 : -4)
+                .animation(settingsDisclosureAnimation, value: contentIsVisible)
+            }
+        }
+        .onAppear {
+            rendersContent = isExpanded
+            contentIsVisible = isExpanded
+        }
+        .onChange(of: isExpanded) { newValue in
+            updateContentVisibility(isExpanded: newValue)
+        }
+    }
+
+    private func setExpanded(_ newValue: Bool) {
+        isExpanded = newValue
+    }
+
+    private func updateContentVisibility(isExpanded: Bool) {
+        if isExpanded {
+            rendersContent = true
+            contentIsVisible = false
+
+            DispatchQueue.main.async {
+                withAnimation(settingsDisclosureAnimation) {
+                    contentIsVisible = true
+                }
+            }
+        } else {
+            withAnimation(settingsDisclosureAnimation) {
+                contentIsVisible = false
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + settingsDisclosureAnimationDuration) {
+                if !self.isExpanded {
+                    rendersContent = false
                 }
             }
         }
+    }
+}
+
+private struct SettingsDisclosureContentHeightPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+extension View {
+    fileprivate func readSettingsDisclosureContentHeight(_ onChange: @escaping (CGFloat) -> Void) -> some View {
+        background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: SettingsDisclosureContentHeightPreferenceKey.self,
+                    value: proxy.size.height
+                )
+            }
+        }
+        .onPreferenceChange(SettingsDisclosureContentHeightPreferenceKey.self, perform: onChange)
+    }
+}
+
+private struct SettingsDangerStatusBadge: View {
+    let status: String
+
+    var body: some View {
+        Label {
+            Text(status)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill")
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(Color(nsColor: .systemOrange))
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+struct SettingsDangerToggleRow: View {
+    let title: String
+    let description: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        SettingsAccessoryRow(
+            minimumLabelWidth: 220,
+            accessoryWidth: settingsSwitchAccessoryWidth,
+            spacing: 16
+        ) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                SettingsDescription(text: description)
+            }
+        } accessory: {
+            Toggle(title, isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .help(description)
+        }
+        .padding(.vertical, 2)
     }
 }
 
@@ -226,15 +406,21 @@ struct SettingsSliderRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 4) {
-                Slider(value: sliderBinding, in: range)
-                    .help(help ?? description)
+                sliderControl
 
                 if let scaleLabels {
                     scaleLabelRow(scaleLabels)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var sliderControl: some View {
+        SettingsFullWidthSlider(value: sliderBinding, range: range, help: help ?? description)
+            .frame(height: settingsSliderControlHeight)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var sliderBinding: Binding<Double> {
@@ -266,6 +452,56 @@ struct SettingsSliderRow: View {
         }
         .font(.caption)
         .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct SettingsFullWidthSlider: NSViewRepresentable {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let help: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(value: $value)
+    }
+
+    func makeNSView(context: Context) -> NSSlider {
+        let slider = NSSlider(
+            value: value,
+            minValue: range.lowerBound,
+            maxValue: range.upperBound,
+            target: context.coordinator,
+            action: #selector(Coordinator.valueChanged(_:))
+        )
+        slider.isContinuous = true
+        slider.toolTip = help
+        slider.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        slider.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return slider
+    }
+
+    func updateNSView(_ slider: NSSlider, context: Context) {
+        context.coordinator.value = $value
+        slider.minValue = range.lowerBound
+        slider.maxValue = range.upperBound
+        slider.toolTip = help
+
+        if slider.doubleValue != value {
+            slider.doubleValue = value
+        }
+    }
+
+    final class Coordinator: NSObject {
+        var value: Binding<Double>
+
+        init(value: Binding<Double>) {
+            self.value = value
+        }
+
+        @objc
+        func valueChanged(_ sender: NSSlider) {
+            value.wrappedValue = sender.doubleValue
+        }
     }
 }
 

@@ -66,17 +66,15 @@ struct GeneralSettingsView: View {
             Section {
                 helperRow
                 helperAction
-                DisclosureGroup(isExpanded: $showOwnership) {
-                    ownershipContent
-                } label: {
-                    ownershipSummary
+                SettingsAnimatedDisclosure(isExpanded: $showOwnership) {
+                    activeControllersSummary
+                } content: {
+                    activeControllersContent
                 }
             } header: {
                 Text("Privileged Helper")
             } footer: {
-                SettingsDescription(
-                    text: "Runs as root to read and write SMC fan keys."
-                )
+                SettingsDescription(text: activeControllersFooterText)
             }
         }
         .onAppear {
@@ -113,12 +111,11 @@ struct GeneralSettingsView: View {
         )
     }
 
-    private var ownershipSummary: some View {
-        SettingsAccessoryRow(accessoryWidth: 132) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Current Owners")
-                SettingsDescription(text: "Active fan writers by priority.")
-            }
+    private var activeControllersSummary: some View {
+        SettingsAccessoryRow(accessoryWidth: 144) {
+            Text("Active Controllers")
+                .fontWeight(.semibold)
+                .lineLimit(1)
         } accessory: {
             HStack(spacing: 6) {
                 if ownershipStatus.isMonitoring, !ownershipStatus.hasLoaded {
@@ -126,58 +123,74 @@ struct GeneralSettingsView: View {
                         .controlSize(.small)
                         .scaleEffect(0.7)
                 }
-                Text(ownershipStatusText)
+                Text(activeControllersStatusText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
     }
 
-    private var ownershipStatusText: String {
+    private var activeControllersStatusText: String {
         let count = ownershipStatus.rows.count
         if ownershipStatus.isMonitoring, !ownershipStatus.hasLoaded { return "Checking" }
         if !ownershipStatus.reachable { return "Helper unreachable" }
-        if count == 0 { return "No fans claimed" }
-        return "\(count) claimed"
+        if count == 0 { return "No controllers" }
+        if count == 1 { return "1 fan active" }
+        return "\(count) fans active"
     }
 
     @ViewBuilder
-    private var ownershipContent: some View {
+    private var activeControllersContent: some View {
         if ownershipStatus.isMonitoring, !ownershipStatus.hasLoaded {
             Text("Checking helper...")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else if ownershipStatus.rows.isEmpty {
-            Text(ownershipStatus.reachable ? "No fans currently claimed." : "Waiting for helper.")
+            Text(ownershipStatus.reachable ? "No fan controllers are active." : "Waiting for helper.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else {
             ForEach(ownershipStatus.rows) { row in
-                ownershipRow(row)
+                activeControllerRow(row)
             }
         }
     }
 
     @ViewBuilder
-    private func ownershipRow(_ row: AgentOwnershipEntry) -> some View {
-        SettingsAccessoryRow(accessoryWidth: 132) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Fan \(row.fanIndex)")
-                    .font(.caption)
-                Text("owned by \(row.clientName)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+    private func activeControllerRow(_ row: AgentOwnershipEntry) -> some View {
+        SettingsAccessoryRow(minimumLabelWidth: 72, accessoryWidth: 260) {
+            Text("Fan \(row.fanIndex)")
+                .font(.caption)
+                .foregroundStyle(.primary)
         } accessory: {
             VStack(alignment: .trailing, spacing: 2) {
-                Text("priority \(row.priority)")
+                Text(controllerDisplayName(row.clientName))
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(row.clientName)
+                Text("priority \(row.priority), \(formatAge(row.ageSeconds))")
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
-                Text(formatAge(row.ageSeconds))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
+        .padding(.vertical, 2)
+    }
+
+    private var activeControllersFooterText: String {
+        "Shows which app or service is currently controlling each fan. "
+            + "If another controller has higher priority, Fan Curve may wait before applying changes."
+    }
+
+    private func controllerDisplayName(_ clientName: String) -> String {
+        if clientName == generatedAgentBundleID {
+            return generatedAgentDisplayName
+        }
+
+        return clientName
     }
 
     private func formatAge(_ seconds: TimeInterval) -> String {

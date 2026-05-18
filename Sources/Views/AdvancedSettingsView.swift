@@ -148,15 +148,15 @@ struct AdvancedSettingsView: View {
         Section {
             SettingsDangerDisclosure(
                 title: "Expanded Range",
-                description: expandedRangeDisclosureText
+                status: expandedRangeStatus
             ) {
-                SettingsToggleDescriptionRow(
+                SettingsDangerToggleRow(
                     title: "Overdrive",
                     description: "Allows curve points to request up to \(Int(overdriveTargetRPM)) RPM.",
                     isOn: overdriveBinding
                 )
 
-                SettingsToggleDescriptionRow(
+                SettingsDangerToggleRow(
                     title: "Underdrive",
                     description: "Allows 0% curve points to stop fans in manual mode.",
                     isOn: underdriveBinding
@@ -164,6 +164,8 @@ struct AdvancedSettingsView: View {
             }
         } header: {
             Text("Fan Range Limits")
+        } footer: {
+            SettingsDescription(text: expandedRangeDisclosureText)
         }
     }
 
@@ -211,7 +213,21 @@ struct AdvancedSettingsView: View {
     }
 
     private var expandedRangeDisclosureText: String {
-        "Allows fan targets outside the firmware reported safe range."
+        "Allows fan targets outside the firmware reported safe range. "
+            + "Overdrive can increase noise and wear; underdrive can reduce cooling under load."
+    }
+
+    private var expandedRangeStatus: String? {
+        switch (overdrive, underdrive) {
+        case (true, true):
+            return "Both On"
+        case (true, false):
+            return "Overdrive On"
+        case (false, true):
+            return "Underdrive On"
+        case (false, false):
+            return nil
+        }
     }
 
     private var overdriveWarningText: String {

@@ -49,6 +49,16 @@ func swiftFiles(at root: String) -> [String] {
     }.sorted()
 }
 
+func sourceBlock(in contents: String, from startMarker: String, to endMarker: String) -> String? {
+    guard let startRange = contents.range(of: startMarker),
+        let endRange = contents[startRange.upperBound...].range(of: endMarker)
+    else {
+        return nil
+    }
+
+    return String(contents[startRange.lowerBound..<endRange.lowerBound])
+}
+
 func scanBlock(lines: [String], startIndex: Int) -> (endIndex: Int, hasSpacer: Bool, isAllowed: Bool) {
     var cursor = startIndex
     var depth = 0
@@ -112,19 +122,262 @@ for file in swiftFiles(at: root) {
                 )
             )
         }
+
+        if !sliderBlock.contains("private var sliderControl: some View")
+            || !sliderBlock.contains("SettingsFullWidthSlider(")
+            || !sliderBlock.contains(".frame(height: settingsSliderControlHeight)")
+        {
+            violations.append(
+                Violation(
+                    file: file,
+                    line: 1,
+                    message: "SettingsSliderRow slider control must use the full-width slider bridge"
+                )
+            )
+        }
+
+        if !contents.contains("struct SettingsFullWidthSlider: NSViewRepresentable") {
+            violations.append(
+                Violation(
+                    file: file,
+                    line: 1,
+                    message: "SettingsSliderRow requires the full-width AppKit slider bridge"
+                )
+            )
+        }
     }
 
-    if fileName == "AdvancedSettingsView.swift",
-        contents.contains(#""Expanded Range""#),
-        (!contents.contains(#"Text("Fan Range Limits")"#) || !contents.contains("SettingsDangerDisclosure"))
-    {
-        violations.append(
-            Violation(
-                file: file,
-                line: 1,
-                message: "Expanded Range must live under the Fan Range Limits disclosure"
+    if isSettingsComponents {
+        if !contents.contains("struct SettingsAnimatedDisclosure<Label: View, Content: View>: View")
+            || !contents.contains("settingsDisclosureChevronWidth")
+            || !contents.contains("settingsDisclosureTitleSpacing")
+            || !contents.contains("settingsDisclosureContentLeadingPadding")
+            || !contents.contains("withAnimation(settingsDisclosureAnimation)")
+            || !contents.contains(".contentShape(Rectangle())")
+            || !contents.contains("transaction.animation = nil")
+            || !contents.contains(".opacity(contentIsVisible ? 1 : 0)")
+            || !contents.contains(".offset(y: contentIsVisible ? 0 : -4)")
+            || !contents.contains("readSettingsDisclosureContentHeight")
+            || !contents.contains("struct SettingsDisclosureContentHeightPreferenceKey: PreferenceKey")
+            || !contents.contains(".frame(height: contentIsVisible ? contentHeight : 0, alignment: .top)")
+            || !contents.contains(".clipped()")
+        {
+            violations.append(
+                Violation(
+                    file: file,
+                    line: 1,
+                    message: "settings disclosures must share the animated tappable disclosure primitive"
+                )
             )
-        )
+        }
+
+        if let dangerDisclosureBlock = sourceBlock(
+            in: contents,
+            from: "struct SettingsDangerDisclosure",
+            to: "private struct SettingsDangerStatusBadge"
+        ) {
+            if dangerDisclosureBlock.contains("let description")
+                || dangerDisclosureBlock.contains("SettingsDescription")
+            {
+                violations.append(
+                    Violation(
+                        file: file,
+                        line: 1,
+                        message: "SettingsDangerDisclosure label must not render multiline explanatory text"
+                    )
+                )
+            }
+
+            if !dangerDisclosureBlock.contains("SettingsAnimatedDisclosure(isExpanded: $isExpanded)") {
+                violations.append(
+                    Violation(
+                        file: file,
+                        line: 1,
+                        message: "SettingsDangerDisclosure must use the animated settings disclosure primitive"
+                    )
+                )
+            }
+
+            if !dangerDisclosureBlock.contains("SettingsDangerStatusBadge(status: status)") {
+                violations.append(
+                    Violation(
+                        file: file,
+                        line: 1,
+                        message: "SettingsDangerDisclosure status must render through the compact status badge"
+                    )
+                )
+            }
+        } else {
+            violations.append(
+                Violation(
+                    file: file,
+                    line: 1,
+                    message: "SettingsDangerDisclosure must appear before SettingsDangerStatusBadge"
+                )
+            )
+        }
+
+        if let dangerToggleBlock = sourceBlock(
+            in: contents,
+            from: "struct SettingsDangerToggleRow",
+            to: "struct SettingsSliderScaleLabels"
+        ) {
+            if !dangerToggleBlock.contains("SettingsAccessoryRow(")
+                || !dangerToggleBlock.contains("accessoryWidth: settingsSwitchAccessoryWidth")
+                || !dangerToggleBlock.contains(".labelsHidden()")
+            {
+                violations.append(
+                    Violation(
+                        file: file,
+                        line: 1,
+                        message: "SettingsDangerToggleRow must use a row-owned switch accessory layout"
+                    )
+                )
+            }
+        } else {
+            violations.append(
+                Violation(
+                    file: file,
+                    line: 1,
+                    message: "SettingsDangerToggleRow must exist before SettingsSliderScaleLabels"
+                )
+            )
+        }
+    }
+
+    if fileName == "GeneralSettingsView.swift" {
+        if let activeControllersBlock = sourceBlock(
+            in: contents,
+            from: "SettingsAnimatedDisclosure(isExpanded: $showOwnership)",
+            to: "} header: {"
+        ) {
+            if !activeControllersBlock.contains("activeControllersSummary")
+                || !activeControllersBlock.contains("activeControllersContent")
+            {
+                violations.append(
+                    Violation(
+                        file: file,
+                        line: 1,
+                        message: "Active Controllers must use the animated settings disclosure primitive"
+                    )
+                )
+            }
+        } else {
+            violations.append(
+                Violation(
+                    file: file,
+                    line: 1,
+                    message: "GeneralSettingsView must keep Active Controllers in an animated disclosure"
+                )
+            )
+        }
+
+        if contents.contains("Current Owners")
+            || contents.contains("Active fan writers by priority.")
+            || contents.contains("Runs as root to read and write SMC fan keys.")
+        {
+            violations.append(
+                Violation(
+                    file: file,
+                    line: 1,
+                    message: "GeneralSettingsView must use Active Controllers terminology and footer copy"
+                )
+            )
+        }
+
+        if !contents.contains("Text(\"Active Controllers\")")
+            || !contents.contains("SettingsDescription(text: activeControllersFooterText)")
+            || !contents.contains(
+                "\"Shows which app or service is currently controlling each fan. \""
+            )
+            || !contents.contains(
+                "\"If another controller has higher priority, Fan Curve may wait before applying changes.\""
+            )
+        {
+            violations.append(
+                Violation(
+                    file: file,
+                    line: 1,
+                    message: "GeneralSettingsView must explain Active Controllers with the approved footer"
+                )
+            )
+        }
+    }
+
+    if fileName == "AdvancedSettingsView.swift" {
+        if let dangerZoneBlock = sourceBlock(
+            in: contents,
+            from: "private var dangerZoneSection: some View",
+            to: "private var fanResponseBinding: Binding<Double>"
+        ) {
+            if !matches(
+                dangerZoneBlock,
+                #"SettingsDangerDisclosure\s*\(\s*title:\s*"Expanded Range""#
+            ) {
+                violations.append(
+                    Violation(
+                        file: file,
+                        line: 1,
+                        message: "Expanded Range must live inside SettingsDangerDisclosure"
+                    )
+                )
+            }
+
+            if dangerZoneBlock.contains("SettingsToggleDescriptionRow(")
+                || !dangerZoneBlock.contains("SettingsDangerToggleRow(")
+            {
+                violations.append(
+                    Violation(
+                        file: file,
+                        line: 1,
+                        message: "Fan Range Limits toggles must use row-owned danger toggle rows"
+                    )
+                )
+            }
+
+            if dangerZoneBlock.contains("description: expandedRangeDisclosureText") {
+                violations.append(
+                    Violation(
+                        file: file,
+                        line: 1,
+                        message: "Expanded range explanatory text must not live in the disclosure label"
+                    )
+                )
+            }
+
+            if !matches(
+                dangerZoneBlock,
+                #"\}\s*header:\s*\{\s*Text\("Fan Range Limits"\)\s*\}\s*footer:\s*\{\s*SettingsDescription\(text:\s*expandedRangeDisclosureText\)"#
+            ) {
+                violations.append(
+                    Violation(
+                        file: file,
+                        line: 1,
+                        message: "Fan Range Limits must render expandedRangeDisclosureText in the section footer"
+                    )
+                )
+            }
+        } else {
+            violations.append(
+                Violation(
+                    file: file,
+                    line: 1,
+                    message: "AdvancedSettingsView must define dangerZoneSection before fanResponseBinding"
+                )
+            )
+        }
+
+        if !contents.contains("Overdrive can increase noise and wear")
+            || !contents.contains("underdrive can reduce cooling under load")
+        {
+            violations.append(
+                Violation(
+                    file: file,
+                    line: 1,
+                    message: "Fan Range Limits footer must include compact risk context"
+                )
+            )
+        }
     }
 
     var index = 0
