@@ -159,7 +159,9 @@ for file in swiftFiles(at: root) {
             || !contents.contains(".offset(y: contentIsVisible ? 0 : -4)")
             || !contents.contains("readSettingsDisclosureContentHeight")
             || !contents.contains("struct SettingsDisclosureContentHeightPreferenceKey: PreferenceKey")
-            || !contents.contains(".frame(height: contentIsVisible ? contentHeight : 0, alignment: .top)")
+            || !contents.contains(".frame(height: disclosureContentFrameHeight, alignment: .top)")
+            || !contents.contains("private var disclosureContentFrameHeight: CGFloat?")
+            || !contents.contains("private func updateMeasuredContentHeight(_ height: CGFloat)")
             || !contents.contains(".clipped()")
         {
             violations.append(

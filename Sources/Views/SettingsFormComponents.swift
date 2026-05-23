@@ -234,9 +234,9 @@ struct SettingsAnimatedDisclosure<Label: View, Content: View>: View {
                 .padding(.top, 10)
                 .padding(.leading, settingsDisclosureContentLeadingPadding)
                 .readSettingsDisclosureContentHeight { height in
-                    contentHeight = height
+                    updateMeasuredContentHeight(height)
                 }
-                .frame(height: contentIsVisible ? contentHeight : 0, alignment: .top)
+                .frame(height: disclosureContentFrameHeight, alignment: .top)
                 .clipped()
                 .opacity(contentIsVisible ? 1 : 0)
                 .offset(y: contentIsVisible ? 0 : -4)
@@ -254,6 +254,26 @@ struct SettingsAnimatedDisclosure<Label: View, Content: View>: View {
 
     private func setExpanded(_ newValue: Bool) {
         isExpanded = newValue
+    }
+
+    private var disclosureContentFrameHeight: CGFloat? {
+        if !contentIsVisible {
+            return 0
+        }
+
+        if contentHeight > 0 {
+            return contentHeight
+        }
+
+        return nil
+    }
+
+    private func updateMeasuredContentHeight(_ height: CGFloat) {
+        guard height > 0 else {
+            return
+        }
+
+        contentHeight = height
     }
 
     private func updateContentVisibility(isExpanded: Bool) {
