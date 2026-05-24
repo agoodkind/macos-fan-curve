@@ -1,6 +1,6 @@
 -include Config/local.xcconfig
 
-TUIST := $(shell command -v tuist 2>/dev/null || printf '%s' "mise x tuist@4.192.3 -- tuist")
+TUIST := $(shell command -v tuist || printf '%s' "mise x tuist@4.192.3 -- tuist")
 
 CONFIGURATION = Release
 BUILD_DIR = build
@@ -9,8 +9,6 @@ CODE_SIGN_IDENTITY ?= Developer ID Application
 DEVELOPMENT_TEAM ?= H3BMXM4W7H
 BUNDLE_ID_PREFIX ?= io.goodkind
 SWIFT_FORMAT_FILES = Sources Tests Project.swift Tuist.swift Tuist/Package.swift $(wildcard Workspace.swift)
-SWIFTLINT_CONFIG = .swiftlint.yml
-PERIPHERY_CONFIG = .periphery.yml
 ANALYZE_BUILD_DIR = $(BUILD_DIR)/Analyze
 SWIFTLINT_ANALYZE_DERIVED_DATA = $(ANALYZE_BUILD_DIR)/SwiftLintDerivedData
 SWIFTLINT_ANALYZE_LOG = $(ANALYZE_BUILD_DIR)/swiftlint-xcodebuild.log
@@ -55,22 +53,29 @@ GENERATE_CONFIG_ENV = SRCROOT="$(CURDIR)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)"
 XCODE_BUILD_SETTINGS = CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
 HELPER_BUILD_SETTINGS = CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" OWNER_APP_BUNDLE_ID="$(APP_BUNDLE_ID)" HELPER_APP_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" HELPER_DAEMON_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)"
 
-.PHONY: all install-dependencies install-analysis-tools build app install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast clean generate-project generate-config-artifacts open-project test format format-check lint swiftlint-lint analyze xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality run log-audit icons helper-artifacts
+SWIFT_MK_MODULES := swift-build.mk
+SWIFT_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 app-local
+SWIFT_TEST_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 test-local
+SWIFT_GENERATE_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 generate-project
+SWIFT_CLEAN_CMD := rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) FanCurveApp.xcworkspace FanCurveApp.xcodeproj
+SWIFT_ANALYZE_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 xcode-analyze swiftlint-analyze
+SWIFT_LOG_AUDIT_CMD := Scripts/AuditLogging.swift Sources
+SWIFT_RUN_CMD := Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)" && open "$(APP_DEST)"
+SWIFT_FORMAT_TARGETS := $(SWIFT_FORMAT_FILES)
+SWIFTLINT_TARGETS := $(SWIFT_FORMAT_FILES)
+SWIFTCHECK_EXTRA_TARGETS := $(SWIFT_FORMAT_FILES)
+PERIPHERY_ARGS = scan --config "$(SWIFT_MK_PERIPHERY_CONFIG)" --project FanCurveApp.xcworkspace --schemes FanCurve --schemes FanCurveAgent --exclude-targets FanCurveModels --exclude-targets ModelTests --retain-public --retain-objc-accessible --retain-codable-properties --clean-build --disable-update-check --format xcode --strict -- SMC_FAN_HELPER_APP="$(HELPER_APP_SOURCE)"
+
+include bootstrap.mk
+
+.PHONY: all install-dependencies install-analysis-tools app app-local project-build install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons helper-artifacts
+
+all: app
 
 install-dependencies:
 	$(TUIST) install
 
-install-analysis-tools:
-	@if ! command -v swift-format >/dev/null 2>&1; then \
-		echo "swift-format not found. Install the Swift toolchain or swift-format before running analysis."; \
-		exit 127; \
-	fi
-	@if ! command -v swiftlint >/dev/null 2>&1; then \
-		brew install swiftlint; \
-	fi
-	@if ! command -v periphery >/dev/null 2>&1; then \
-		brew install periphery; \
-	fi
+install-analysis-tools: lint-tools
 
 generate-config-artifacts:
 	@TARGET_NAME="$(APP_NAME)" $(GENERATE_CONFIG_ENV) ./Scripts/GenerateConfig.swift
@@ -79,10 +84,10 @@ generate-config-artifacts:
 generate-project: generate-config-artifacts
 	$(TUIST) generate --no-open
 
+lint-deadcode: generate-project
+
 open-project: generate-project
 	open FanCurveApp.xcworkspace
-
-all: app
 
 helper-artifacts:
 	@test -d "$(HELPER_REPO)" || { echo "Missing helper repo: $(HELPER_REPO)"; exit 1; }
@@ -94,6 +99,7 @@ helper-artifacts:
 		$(HELPER_BUILD_SETTINGS) \
 		APP_BUNDLE_ID="$(APP_BUNDLE_ID)" \
 		ONLY_ACTIVE_ARCH=YES \
+		$(SWIFT_MK_XCODEBUILD_ARGS) \
 		build
 	@mkdir -p "$(dir $(HELPER_APP_SOURCE))"
 	@rm -rf "$(HELPER_APP_SOURCE)"
@@ -103,22 +109,25 @@ helper-artifacts:
 icons:
 	./Scripts/GenerateIcons.swift
 
-build: generate-config-artifacts helper-artifacts icons generate-project
+project-build: generate-config-artifacts helper-artifacts icons generate-project
 	xcodebuild -workspace FanCurveApp.xcworkspace \
 		-scheme FanCurve \
 		-configuration $(CONFIGURATION) \
 		-derivedDataPath $(BUILD_DIR) \
 		$(XCODE_BUILD_SETTINGS) \
+		$(SWIFT_MK_XCODEBUILD_ARGS) \
 		MARKETING_VERSION="$(MARKETING_VERSION)" \
 		CURRENT_PROJECT_VERSION="$(CURRENT_PROJECT_VERSION)" \
 		SMC_FAN_HELPER_APP="$(HELPER_APP_SOURCE)"
 
-app: build
+app-local: project-build
 	@mkdir -p $(PRODUCTS_DIR)
 	@./Scripts/RefreshIconCache.swift "$(APP_SOURCE)" "$(ICON_HASH_STAMP)"
 	@rm -rf "$(APP_DEST)" "$(LEGACY_APP_DEST)"
 	@cp -R "$(APP_SOURCE)" "$(PRODUCTS_DIR)/"
 	@./Scripts/RefreshIconCache.swift "$(APP_DEST)" "$(ICON_HASH_STAMP)"
+
+app: build
 
 install-user: app
 	@mkdir -p "$(HOME)/Applications"
@@ -168,35 +177,28 @@ prepare-sparkle-updates:
 
 sparkle-appcast: release-assets prepare-sparkle-updates
 
-run: app
-	@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
-	@open "$(APP_DEST)"
-
-test: generate-config-artifacts helper-artifacts generate-project
+test-local: generate-config-artifacts helper-artifacts generate-project
 	xcodebuild -workspace FanCurveApp.xcworkspace \
 		-scheme FanCurve \
 		-configuration Debug \
 		-derivedDataPath $(BUILD_DIR) \
 		$(XCODE_BUILD_SETTINGS) \
+		$(SWIFT_MK_XCODEBUILD_ARGS) \
 		SMC_FAN_HELPER_APP="$(HELPER_APP_SOURCE)" \
 		test
 
-format:
-	swift-format format --in-place --recursive $(SWIFT_FORMAT_FILES)
+format: fmt
 
-format-check:
-	swift-format lint --strict --recursive $(SWIFT_FORMAT_FILES)
+format-check: lint-format
 
-swiftlint-lint:
-	swiftlint lint --strict --config "$(SWIFTLINT_CONFIG)"
-
-lint: format-check swiftlint-lint log-audit
+swiftlint-lint: lint-swiftlint
 
 xcode-analyze: generate-project
 	xcodebuild -workspace FanCurveApp.xcworkspace \
 		-scheme FanCurve \
 		-configuration Debug \
 		-derivedDataPath $(BUILD_DIR) \
+		$(SWIFT_MK_XCODEBUILD_ARGS) \
 		analyze
 
 swiftlint-analyze: generate-project
@@ -206,19 +208,13 @@ swiftlint-analyze: generate-project
 		-scheme FanCurve \
 		-configuration Debug \
 		-derivedDataPath "$(SWIFTLINT_ANALYZE_DERIVED_DATA)" \
-		clean build > "$(SWIFTLINT_ANALYZE_LOG)"
+		$(SWIFT_MK_XCODEBUILD_NO_CACHE_ARGS) \
+		clean build | tee "$(SWIFTLINT_ANALYZE_LOG)"
 	swiftlint analyze --strict \
-		--config "$(SWIFTLINT_CONFIG)" \
+		--config "$(SWIFT_MK_SWIFTLINT_CONFIG)" \
 		--compiler-log-path "$(SWIFTLINT_ANALYZE_LOG)"
 
-periphery-scan: generate-project
-	@if ! command -v periphery >/dev/null 2>&1; then \
-		echo "periphery not found. Install it with: brew install periphery"; \
-		exit 127; \
-	fi
-	periphery scan --config "$(PERIPHERY_CONFIG)"
-
-analyze: xcode-analyze swiftlint-analyze periphery-scan
+periphery-scan: lint-deadcode
 
 launch-agent-audit: app
 	@Scripts/AuditLaunchAgent.swift "$(APP_DEST)" "$(AGENT_PLIST_NAME)" "$(AGENT_BUNDLE_PROGRAM)" "$(AGENT_LABEL)"
@@ -232,9 +228,3 @@ settings-layout-audit:
 verify: launch-agent-audit run-audit settings-layout-audit log-audit test
 
 quality: lint analyze verify
-
-clean:
-	rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) FanCurveApp.xcworkspace FanCurveApp.xcodeproj
-
-log-audit:
-	@Scripts/AuditLogging.swift Sources
