@@ -48,7 +48,6 @@ final class CurveLearner: ObservableObject {
     private var probeTimer: Timer?
     private var sensorState: SensorState?
     private var sweepSignpostState: OSSignpostIntervalState?
-    private var probeSignpostState: OSSignpostIntervalState?
 
     func start(sensorState: SensorState, totalSeconds: Int = 180) {
         if isSampling { return }
@@ -114,7 +113,8 @@ final class CurveLearner: ObservableObject {
             probeSustainedRPM: probeResult?.sustainedRPM,
             probeSampleCount: probeResult?.sampleCount)
 
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let support = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let dir =
             support
             .appendingPathComponent("io.goodkind.fan", isDirectory: true)
@@ -134,7 +134,8 @@ final class CurveLearner: ObservableObject {
 
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-        let stamp = formatter.string(from: payload.timestamp).replacingOccurrences(of: ":", with: "-")
+        let stamp = formatter.string(from: payload.timestamp).replacingOccurrences(
+            of: ":", with: "-")
         let path = dir.appendingPathComponent("\(stamp).json")
 
         let encoder = JSONEncoder()
@@ -207,13 +208,10 @@ final class CurveLearner: ObservableObject {
         }
 
         let temps = stride(from: lower, through: upper, by: bucketSize).map { Double($0) }
-        var bucketMedian: [Double: Double] = [:]
-        for temp in temps {
-            if let values = bucketValues[temp], values.count >= 3 {
-                let sorted = values.sorted()
-                bucketMedian[temp] = sorted[sorted.count / 2]
-            }
-        }
+        let bucketMedian = medianPercentByTemperature(
+            temperatures: temps,
+            bucketValues: bucketValues
+        )
 
         // If we have nothing, bail with the built-in default.
         guard !bucketMedian.isEmpty else {
@@ -221,35 +219,21 @@ final class CurveLearner: ObservableObject {
         }
 
         // Fill empty buckets by interpolating between nearest known neighbors.
-        let filledTemps = temps
         var filled: [(Double, Double)] = []
         let known = temps.filter { bucketMedian[$0] != nil }
-        for temp in filledTemps {
+        for temp in temps {
             if let value = bucketMedian[temp] {
                 filled.append((temp, value))
                 continue
             }
-            // Find neighbors in the known list.
-            let prev = known.last { $0 < temp }
-            let next = known.first { $0 > temp }
-            if let previousTemp = prev, let nextTemp = next {
-                guard
-                    let previousValue = bucketMedian[previousTemp],
-                    let nextValue = bucketMedian[nextTemp]
-                else { continue }
-                let fraction = (temp - previousTemp) / (nextTemp - previousTemp)
-                filled.append((temp, previousValue + fraction * (nextValue - previousValue)))
-            } else if let previousTemp = prev {
-                // Above the highest sampled bucket: extrapolate forward by
-                // extending the last slope, clamped to one.
-                guard let previousValue = bucketMedian[previousTemp] else { continue }
-                filled.append((temp, previousValue))
-            } else if next != nil {
-                // Below the lowest sampled bucket: we did not observe idle
-                // behavior, so fall back to Apple's silent-first model and
-                // assume fans stay at zero percent.
-                filled.append((temp, 0))
-            }
+            guard
+                let interpolatedValue = interpolatedBucketValue(
+                    at: temp,
+                    knownTemperatures: known,
+                    bucketMedian: bucketMedian
+                )
+            else { continue }
+            filled.append((temp, interpolatedValue))
         }
 
         // Enforce monotonic non-decreasing and clamp to 0 to 1.
@@ -262,6 +246,48 @@ final class CurveLearner: ObservableObject {
         }
 
         return monotone.map { CurvePoint(temperature: $0.0, fanPercent: $0.1) }
+    }
+
+    private func medianPercentByTemperature(
+        temperatures: [Double],
+        bucketValues: [Double: [Double]]
+    ) -> [Double: Double] {
+        var bucketMedian: [Double: Double] = [:]
+        for temp in temperatures {
+            guard let values = bucketValues[temp], values.count >= 3 else {
+                continue
+            }
+            let sorted = values.sorted()
+            bucketMedian[temp] = sorted[sorted.count / 2]
+        }
+        return bucketMedian
+    }
+
+    private func interpolatedBucketValue(
+        at temperature: Double,
+        knownTemperatures: [Double],
+        bucketMedian: [Double: Double]
+    ) -> Double? {
+        let previousTemperature = knownTemperatures.last { $0 < temperature }
+        let nextTemperature = knownTemperatures.first { $0 > temperature }
+        if let previousTemperature, let nextTemperature {
+            guard
+                let previousValue = bucketMedian[previousTemperature],
+                let nextValue = bucketMedian[nextTemperature]
+            else {
+                return nil
+            }
+            let fraction =
+                (temperature - previousTemperature) / (nextTemperature - previousTemperature)
+            return previousValue + fraction * (nextValue - previousValue)
+        }
+        if let previousTemperature {
+            return bucketMedian[previousTemperature]
+        }
+        if nextTemperature != nil {
+            return 0
+        }
+        return nil
     }
 
     // MARK: - Max RPM Probe
@@ -291,7 +317,9 @@ final class CurveLearner: ObservableObject {
                 log.error(
                     "probe.start.failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=finish-probe"
                 )
-                await MainActor.run { self.finishProbe(commandedRPM: commandedRPM, fanIndex: fanIndex) }
+                await MainActor.run {
+                    self.finishProbe(commandedRPM: commandedRPM, fanIndex: fanIndex)
+                }
             }
         }
 

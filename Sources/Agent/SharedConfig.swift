@@ -30,7 +30,8 @@ struct SharedConfig {
         do {
             let points = try JSONDecoder().decode([CurvePoint].self, from: data)
             guard points.count >= 2 else {
-                sharedConfigLog.notice("config.curve.invalid reason=too-few-points recovery=default")
+                sharedConfigLog.notice(
+                    "config.curve.invalid reason=too-few-points recovery=default")
                 return FanCurveModel.defaultCurve
             }
             return points
@@ -63,29 +64,6 @@ struct SharedConfig {
 
     func loadBoostEnabled() -> Bool {
         defaults.bool(forKey: SharedConfigKeys.boostEnabled)
-    }
-
-    func loadLoadFloorEnabled() -> Bool {
-        defaults.bool(forKey: SharedConfigKeys.loadFloorEnabled)
-    }
-
-    /// Threshold CPU percent (0 to 100) that activates the floor. Defaults
-    /// to 70 when unset so a fresh enable has sensible behavior.
-    func loadLoadFloorThreshold() -> Double {
-        let stored = defaults.double(forKey: SharedConfigKeys.loadFloorThreshold)
-        return stored > 0 ? stored : 70
-    }
-
-    func loadGpuLoadFloorThreshold() -> Double {
-        let stored = defaults.double(forKey: SharedConfigKeys.gpuLoadFloorThreshold)
-        return stored > 0 ? stored : 70
-    }
-
-    /// Minimum fan percent (0 to 100) applied while the floor is active.
-    /// Defaults to 60 when unset.
-    func loadLoadFloorPercent() -> Double {
-        let stored = defaults.double(forKey: SharedConfigKeys.loadFloorPercent)
-        return stored > 0 ? stored : 60
     }
 
     func loadLoadAssistEnabled(_ kind: LoadAssistKind) -> Bool {

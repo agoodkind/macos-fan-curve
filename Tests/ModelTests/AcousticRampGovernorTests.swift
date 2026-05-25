@@ -44,7 +44,8 @@ final class AcousticRampGovernorTests: XCTestCase {
         )
         let balancedDecision = governor.decision(for: input, policy: balancedPolicy)
 
-        expect(balancedDecision.commandedRPM).to(beCloseTo(defaultDecision.commandedRPM, within: 0.1))
+        expect(balancedDecision.commandedRPM).to(
+            beCloseTo(defaultDecision.commandedRPM, within: 0.1))
         expect(balancedDecision.rateRPMPerSecond)
             .to(beCloseTo(defaultDecision.rateRPMPerSecond, within: 0.1))
     }

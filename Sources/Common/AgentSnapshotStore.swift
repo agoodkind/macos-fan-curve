@@ -16,26 +16,6 @@ enum AgentSnapshotStore {
         let schemaVersion: Int
     }
 
-    static func load(defaults: UserDefaults) -> AgentSnapshot? {
-        guard let data = defaults.data(forKey: SharedConfigKeys.agentSnapshot) else { return nil }
-        let snapshot: AgentSnapshot
-        do {
-            snapshot = try JSONDecoder().decode(AgentSnapshot.self, from: data)
-        } catch {
-            agentSnapshotStoreLog.notice(
-                "snapshot.decode_failed error=\(error.localizedDescription, privacy: .public) recovery=stale-ui"
-            )
-            return nil
-        }
-        guard snapshot.schemaVersion == AgentSnapshot.currentSchemaVersion else {
-            agentSnapshotStoreLog.notice(
-                "snapshot.schema_mismatch got=\(snapshot.schemaVersion, privacy: .public) want=\(AgentSnapshot.currentSchemaVersion, privacy: .public) recovery=stale-ui"
-            )
-            return nil
-        }
-        return snapshot
-    }
-
     static func storedSchemaVersion(defaults: UserDefaults) -> Int? {
         guard let data = defaults.data(forKey: SharedConfigKeys.agentSnapshot) else { return nil }
         do {

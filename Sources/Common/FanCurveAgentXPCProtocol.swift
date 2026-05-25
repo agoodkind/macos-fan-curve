@@ -23,7 +23,6 @@ struct AgentCurveUpdate: Codable, Sendable, Equatable {
 
 enum AgentCommand: Codable, Sendable, Equatable {
     case openSystemSettings
-    case registerHelperDaemon
     case requestFanAuto(fanIndex: UInt)
     case requestFanRPM(AgentFanRPMRequest)
     case setApplyInBackground(Bool)
@@ -35,8 +34,6 @@ enum AgentCommand: Codable, Sendable, Equatable {
         switch self {
         case .openSystemSettings:
             return "open_system_settings"
-        case .registerHelperDaemon:
-            return "register_helper_daemon"
         case .requestFanAuto:
             return "request_fan_auto"
         case .requestFanRPM:

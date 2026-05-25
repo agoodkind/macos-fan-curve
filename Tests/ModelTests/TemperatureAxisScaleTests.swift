@@ -44,7 +44,9 @@ final class TemperatureAxisScaleTests: XCTestCase {
     }
 
     func testDefaultControlPointsAreEvenlySpacedOnAxis() {
-        let controlPointFractions = self.scale.controlPointTemperaturesC.map { self.scale.fraction(for: $0) }
+        let controlPointFractions = self.scale.controlPointTemperaturesC.map { temperature in
+            self.scale.fraction(for: temperature)
+        }
 
         expect(controlPointFractions.count) == 8
         for (index, fraction) in controlPointFractions.enumerated() {

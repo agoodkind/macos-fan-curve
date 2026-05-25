@@ -13,15 +13,17 @@ import ServiceManagement
 
 private let log = AppLog.make(category: "InstallationState")
 
-private struct AgentServiceMutationResult: Sendable {
+struct AgentServiceMutationResult: Sendable {
     let statusBefore: String
     let statusAfterUnregister: String?
     let statusAfterRegister: String?
     let errorDescription: String?
 }
 
-private struct ServiceRegistrationFingerprints {
-    let agent: String
+struct HelperServiceMutationResult: Sendable {
+    let statusBefore: String
+    let statusAfterRegister: String?
+    let errorDescription: String?
 }
 
 /// Tracks whether the privileged helper and background agent are installed
@@ -54,9 +56,13 @@ final class InstallationState: ObservableObject {
     @Published private(set) var isRegisteringHelper = false
 
     private var timer: Timer?
-    private var lastAutoRefreshAttemptedHash: String?
-    private var lastAutoRefreshAttemptDate: Date?
-    private let agentRefreshRetryInterval: TimeInterval = 30
+    var lastAutoRefreshAttemptedHash: String?
+    var lastAutoRefreshAttemptDate: Date?
+    let agentRefreshRetryInterval: TimeInterval = 30
+    var lastAutoRegisterAttemptDate: Date?
+    let agentAutoRegisterRetryInterval: TimeInterval = 30
+    var lastAgentServiceRegisterDate: Date?
+    let agentStartupGraceInterval: TimeInterval = 5
 
     /// Convenience computed helpers for the Settings UI.
     var agentEnabled: Bool {
@@ -65,7 +71,16 @@ final class InstallationState: ObservableObject {
     }
 
     var helperEnabled: Bool {
-        step == .ready
+        guard #available(macOS 13.0, *) else { return false }
+        return SMAppService.Status(rawValue: helperRawStatus) == .enabled
+    }
+
+    var helperNeedsRepair: Bool {
+        step == .helperMissing && helperReachable
+    }
+
+    var helperApprovalPending: Bool {
+        step == .helperAwaitingApproval
     }
 
     /// True when the Agent is registered AND has written a tick within the
@@ -75,17 +90,6 @@ final class InstallationState: ObservableObject {
         guard agentEnabled else { return false }
         let lastTick = Date(timeIntervalSince1970: agentLastTickEpoch)
         return agentLastTickEpoch > 0 && Date().timeIntervalSince(lastTick) < 10
-    }
-
-    var agentStatusLabel: String {
-        guard #available(macOS 13.0, *) else { return "Unavailable" }
-        switch SMAppService.Status(rawValue: agentRawStatus) {
-        case .enabled: return "Enabled"
-        case .requiresApproval: return "Awaiting approval in System Settings"
-        case .notFound: return "Not installed"
-        case .notRegistered: return "Not registered"
-        default: return "Unknown"
-        }
     }
 
     var agentSnapshotCompatible: Bool {
@@ -110,15 +114,22 @@ final class InstallationState: ObservableObject {
         timer = nil
     }
 
+    func refreshOnce(agentClient: FanCurveAgentClient) async {
+        await refresh(agentClient: agentClient)
+    }
+
     /// Attempts to register the agent via SMAppService. Idempotent.
     /// Opens System Settings if approval is required.
     func registerAgent() {
         guard #available(macOS 13.0, *) else { return }
         guard !isRegisteringAgent else {
-            log.notice("agent.register.skipped reason=registration-in-progress recovery=keep-current-registration")
+            log.notice(
+                "agent.register.skipped reason=registration-in-progress recovery=keep-current-registration"
+            )
             return
         }
         isRegisteringAgent = true
+        lastError = nil
         log.notice("agent.register.started")
         Task {
             defer {
@@ -138,34 +149,57 @@ final class InstallationState: ObservableObject {
                 return
             }
 
+            lastAgentServiceRegisterDate = Date()
+            let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+            suite.set(
+                serviceRegistrationFingerprints().agent,
+                forKey: SharedConfigKeys.agentRegistrationFingerprint
+            )
             lastError = nil
-            log.notice("agent.register.done status=\(result.statusAfterRegister ?? "unknown", privacy: .public)")
+            log.notice(
+                "agent.register.done status=\(result.statusAfterRegister ?? "unknown", privacy: .public)"
+            )
         }
     }
 
     func registerHelperDaemon(agentClient: FanCurveAgentClient) {
         guard !isRegisteringHelper else {
-            log.notice("helper.register.skipped reason=registration-in-progress recovery=keep-current-registration")
+            log.notice(
+                "helper.register.skipped reason=registration-in-progress recovery=keep-current-registration"
+            )
             return
         }
         isRegisteringHelper = true
-        log.notice("helper.register.started owner=agent-xpc")
+        lastError = nil
+        log.notice("helper.register.started owner=app")
         Task {
             defer {
                 isRegisteringHelper = false
                 log.notice("helper.register.finished")
             }
-            do {
-                try await agentClient.registerHelperDaemon()
-                lastError = nil
-                log.notice("helper.register.done owner=agent-xpc")
-                await refresh(agentClient: agentClient)
-            } catch {
-                lastError = error.localizedDescription
+            let result = await Self.registerHelperService()
+            log.notice(
+                "helper.register.requested plist=\(generatedHelperDaemonPlistName, privacy: .public) status=\(result.statusBefore, privacy: .public)"
+            )
+
+            if let errorDescription = result.errorDescription {
+                lastError = errorDescription
                 log.error(
-                    "helper.register.failed owner=agent-xpc error=\(error.localizedDescription, privacy: .public) recovery=show-login-item-error"
+                    "helper.register.failed owner=app error=\(errorDescription, privacy: .public) recovery=show-login-item-error"
                 )
+                return
             }
+
+            let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+            suite.set(
+                serviceRegistrationFingerprints().helper,
+                forKey: SharedConfigKeys.helperRegistrationFingerprint
+            )
+            lastError = nil
+            log.notice(
+                "helper.register.done owner=app status=\(result.statusAfterRegister ?? "unknown", privacy: .public)"
+            )
+            await refresh(agentClient: agentClient)
         }
     }
 
@@ -193,7 +227,9 @@ final class InstallationState: ObservableObject {
             }
 
             lastError = nil
-            log.notice("agent.unregister.done status=\(result.statusAfterUnregister ?? "unknown", privacy: .public)")
+            log.notice(
+                "agent.unregister.done status=\(result.statusAfterUnregister ?? "unknown", privacy: .public)"
+            )
         }
     }
 
@@ -203,37 +239,63 @@ final class InstallationState: ObservableObject {
         let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
         let helperOK = agentClient.helperReachable
         let runtimeSetup = agentClient.runtimeState.setup
+        let agentConnected = agentClient.connectionState == .connected
+        let appBundlePath = Bundle.main.bundleURL.path
+        let storedAgentFingerprint = suite.string(
+            forKey: SharedConfigKeys.agentRegistrationFingerprint
+        )
 
         helperReachable = helperOK
         helperRawStatus = Self.helperRawStatus(from: runtimeSetup, helperReachable: helperOK)
-        agentRawStatus = agentStatus.rawValue
 
         agentLastTickEpoch = suite.double(forKey: SharedConfigKeys.agentLastTick)
         agentExecutableHash = suite.string(forKey: SharedConfigKeys.agentExecutableHash) ?? ""
         agentLastError = suite.string(forKey: SharedConfigKeys.agentLastError) ?? ""
         agentSnapshotSchemaVersion = AgentSnapshotStore.storedSchemaVersion(defaults: suite)
 
+        let resolvedAgentStatus = await resolveAgentStatus(
+            agentStatus: agentStatus,
+            agentConnected: agentConnected,
+            appBundlePath: appBundlePath,
+            applyInBackground: suite.bool(forKey: SharedConfigKeys.applyInBackground),
+            storedFingerprint: storedAgentFingerprint
+        )
+        let visibleAgentStatus = Self.visibleAgentStatus(
+            serviceStatus: resolvedAgentStatus,
+            agentConnected: agentConnected
+        )
+        agentRawStatus = visibleAgentStatus.rawValue
+
         let fingerprints = serviceRegistrationFingerprints()
-        if agentStatus == .enabled {
+        if resolvedAgentStatus == .enabled {
             await refreshAgentIfNeeded(
-                runningHash: agentExecutableHash,
-                snapshotSchemaVersion: agentSnapshotSchemaVersion,
-                storedFingerprint: suite.string(forKey: SharedConfigKeys.agentRegistrationFingerprint),
-                expectedFingerprint: fingerprints.agent,
-                defaults: suite)
+                AgentRefreshContext(
+                    agentConnected: agentConnected,
+                    runningHash: agentExecutableHash,
+                    snapshotSchemaVersion: agentSnapshotSchemaVersion,
+                    storedFingerprint: storedAgentFingerprint,
+                    expectedFingerprint: fingerprints.agent,
+                    defaults: suite)
+            )
         }
 
-        if agentStatus == .requiresApproval {
+        if resolvedAgentStatus == .requiresApproval, !agentConnected {
             step = .agentAwaitingApproval
             return
         }
 
-        if agentStatus != .enabled {
-            step = .agentMissing
-            return
+        if resolvedAgentStatus != .enabled {
+            if !agentConnected {
+                step = .agentMissing
+                return
+            }
+
+            log.notice(
+                "agent.status.disagrees smappservice=\(resolvedAgentStatus.rawValue, privacy: .public) xpc=connected recovery=use-runtime-state"
+            )
         }
 
-        guard agentClient.connectionState == .connected else {
+        guard agentConnected else {
             log.debug(
                 "agent.xpc.unavailable connection=\(String(describing: agentClient.connectionState), privacy: .public) recovery=wait-for-agent-runtime-state"
             )
@@ -244,86 +306,19 @@ final class InstallationState: ObservableObject {
         step = Self.installationStep(from: runtimeSetup)
     }
 
-    private func currentAgentStatus() async -> SMAppService.Status {
-        guard #available(macOS 13.0, *) else { return .notFound }
-        let rawValue = await Self.currentAgentStatusRawValue()
-        return SMAppService.Status(rawValue: rawValue) ?? .notFound
-    }
-
-    private func refreshAgentIfNeeded(
-        runningHash: String,
-        snapshotSchemaVersion: Int?,
-        storedFingerprint: String?,
-        expectedFingerprint: String,
-        defaults: UserDefaults
-    ) async {
-        guard #available(macOS 13.0, *) else { return }
-
-        let appBundlePath = Bundle.main.bundleURL.path
-        let stagedBundle = isLocalStagedBundle(path: appBundlePath)
-        let bundledHash = BuildFingerprint.bundledAgentHash
-        let registrationMismatch = storedFingerprint != expectedFingerprint
-        let snapshotSchemaMismatch = snapshotSchemaVersion.map { $0 != AgentSnapshot.currentSchemaVersion } ?? false
-        guard bundledHash != "n/a" else {
-            log.error("agent.refresh.skipped reason=bundled-hash-unavailable")
-            return
-        }
-
-        if !stagedBundle {
-            log.notice("agent.refresh.context appPath=\(appBundlePath, privacy: .public) mode=non-staged-bundle")
-        }
-
-        if runningHash == bundledHash, !snapshotSchemaMismatch, !registrationMismatch {
-            clearRefreshAttempt()
-            return
-        }
-
-        let now = Date()
-        guard shouldRetryRefresh(for: bundledHash, now: now) else {
-            log.notice(
-                "agent.refresh.deferred appPath=\(appBundlePath, privacy: .public) bundledHash=\(bundledHash, privacy: .public) recovery=wait-before-retrying"
-            )
-            return
-        }
-
-        recordRefreshAttempt(for: bundledHash, at: now)
-        let result = await Self.refreshRegisteredAgentService()
-        log.notice(
-            "agent.refresh.needed appPath=\(appBundlePath, privacy: .public) stagedBundle=\(stagedBundle, privacy: .public) status=\(result.statusBefore, privacy: .public) runningHash=\(runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public) snapshotSchema=\(snapshotSchemaVersion ?? -1, privacy: .public) expectedSchema=\(AgentSnapshot.currentSchemaVersion, privacy: .public) schemaMismatch=\(snapshotSchemaMismatch, privacy: .public)"
-        )
-
-        if let statusAfterUnregister = result.statusAfterUnregister {
-            log.notice("agent.refresh.unregister.done status=\(statusAfterUnregister, privacy: .public)")
-        }
-
-        if let errorDescription = result.errorDescription {
-            lastError = errorDescription
-            log.error(
-                "agent.refresh.failed appPath=\(appBundlePath, privacy: .public) status=\(result.statusBefore, privacy: .public) error=\(errorDescription, privacy: .public) recovery=retry-auto-refresh"
-            )
-            return
-        }
-
-        if let statusAfterRegister = result.statusAfterRegister {
-            lastError = nil
-            clearRefreshAttempt()
-            log.notice(
-                "agent.refresh.done appPath=\(appBundlePath, privacy: .public) bundledHash=\(bundledHash, privacy: .public) registrationMismatch=\(registrationMismatch, privacy: .public) status=\(statusAfterRegister, privacy: .public)"
-            )
-            defaults.set(expectedFingerprint, forKey: SharedConfigKeys.agentRegistrationFingerprint)
-        }
-    }
-
-    private func serviceRegistrationFingerprints() -> ServiceRegistrationFingerprints {
-        ServiceRegistrationFingerprints(
-            agent: [
-                generatedAppBundleID,
-                generatedAppDisplayName,
-                generatedAgentBundleID,
-                generatedAgentDisplayName,
-                generatedAgentExecutableName,
-                BuildFingerprint.bundledAgentHash,
-            ].joined(separator: "|")
+    private func resolveAgentStatus(
+        agentStatus: SMAppService.Status,
+        agentConnected: Bool,
+        appBundlePath: String,
+        applyInBackground: Bool,
+        storedFingerprint: String?
+    ) async -> SMAppService.Status {
+        guard !agentConnected else { return agentStatus }
+        return await autoRegisterAgentIfNeeded(
+            agentStatus: agentStatus,
+            appBundlePath: appBundlePath,
+            applyInBackground: applyInBackground,
+            storedFingerprint: storedFingerprint
         )
     }
 }
@@ -332,6 +327,11 @@ extension InstallationState {
     @available(macOS 13.0, *)
     nonisolated private static func agentService() -> SMAppService {
         SMAppService.agent(plistName: generatedAgentPlistName)
+    }
+
+    @available(macOS 13.0, *)
+    nonisolated private static func helperService() -> SMAppService {
+        SMAppService.daemon(plistName: generatedHelperDaemonPlistName)
     }
 
     @available(macOS 13.0, *)
@@ -351,17 +351,28 @@ extension InstallationState {
     }
 
     @available(macOS 13.0, *)
-    nonisolated private static func currentAgentStatusRawValue() async -> Int {
-        await Task.detached {
-            agentService().status.rawValue
-        }.value
+    nonisolated private static func describeHelperStatus(_ status: SMAppService.Status) -> String {
+        describeAgentStatus(status)
     }
 
     @available(macOS 13.0, *)
-    nonisolated private static func registerAgentService() async -> AgentServiceMutationResult {
-        await Task.detached {
+    nonisolated static func currentAgentStatusRawValue() async -> Int {
+        await MainActor.run {
+            agentService().status.rawValue
+        }
+    }
+
+    @available(macOS 13.0, *)
+    nonisolated static func registerAgentService() async -> AgentServiceMutationResult {
+        await MainActor.run {
             let service = agentService()
             let statusBefore = describeAgentStatus(service.status)
+            let legacyRepair = repairLegacyLaunchAgentIfNeeded()
+            if legacyRepair.repaired {
+                log.notice(
+                    "agent.register.legacy_repair.done path=\(legacyRepair.sourcePath, privacy: .public) backup=\(legacyRepair.backupPath ?? "none", privacy: .public) reason=\(legacyRepair.reason, privacy: .public)"
+                )
+            }
             do {
                 try service.register()
                 return AgentServiceMutationResult(
@@ -381,12 +392,37 @@ extension InstallationState {
                     errorDescription: error.localizedDescription
                 )
             }
-        }.value
+        }
     }
 
     @available(macOS 13.0, *)
-    nonisolated private static func unregisterAgentService() async -> AgentServiceMutationResult {
-        await Task.detached {
+    nonisolated static func registerHelperService() async -> HelperServiceMutationResult {
+        await MainActor.run {
+            let service = helperService()
+            let statusBefore = describeHelperStatus(service.status)
+            do {
+                try service.register()
+                return HelperServiceMutationResult(
+                    statusBefore: statusBefore,
+                    statusAfterRegister: describeHelperStatus(service.status),
+                    errorDescription: nil
+                )
+            } catch {
+                log.error(
+                    "helper.register.service.failed status=\(statusBefore, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-ui"
+                )
+                return HelperServiceMutationResult(
+                    statusBefore: statusBefore,
+                    statusAfterRegister: nil,
+                    errorDescription: error.localizedDescription
+                )
+            }
+        }
+    }
+
+    @available(macOS 13.0, *)
+    nonisolated static func unregisterAgentService() async -> AgentServiceMutationResult {
+        await MainActor.run {
             let service = agentService()
             let statusBefore = describeAgentStatus(service.status)
             do {
@@ -408,12 +444,12 @@ extension InstallationState {
                     errorDescription: error.localizedDescription
                 )
             }
-        }.value
+        }
     }
 
     @available(macOS 13.0, *)
-    nonisolated private static func refreshRegisteredAgentService() async -> AgentServiceMutationResult {
-        await Task.detached {
+    nonisolated static func refreshRegisteredAgent() async -> AgentServiceMutationResult {
+        await MainActor.run {
             let service = agentService()
             let statusBefore = describeAgentStatus(service.status)
             do {
@@ -437,27 +473,7 @@ extension InstallationState {
                     errorDescription: error.localizedDescription
                 )
             }
-        }.value
-    }
-
-    private func isLocalStagedBundle(path: String) -> Bool {
-        path.hasSuffix("/Products/FanCurve.app") || path.hasSuffix("/Products/Fan Curve.app")
-    }
-
-    private func shouldRetryRefresh(for bundledHash: String, now: Date) -> Bool {
-        guard lastAutoRefreshAttemptedHash == bundledHash else { return true }
-        guard let lastAutoRefreshAttemptDate else { return true }
-        return now.timeIntervalSince(lastAutoRefreshAttemptDate) >= agentRefreshRetryInterval
-    }
-
-    private func recordRefreshAttempt(for bundledHash: String, at date: Date) {
-        lastAutoRefreshAttemptedHash = bundledHash
-        lastAutoRefreshAttemptDate = date
-    }
-
-    private func clearRefreshAttempt() {
-        lastAutoRefreshAttemptedHash = nil
-        lastAutoRefreshAttemptDate = nil
+        }
     }
 
     nonisolated private static func installationStep(from setup: SetupState) -> Step {
@@ -475,7 +491,10 @@ extension InstallationState {
         }
     }
 
-    nonisolated private static func helperRawStatus(from setup: SetupState, helperReachable: Bool) -> Int {
+    nonisolated private static func helperRawStatus(
+        from setup: SetupState,
+        helperReachable: Bool
+    ) -> Int {
         guard #available(macOS 13.0, *) else { return 0 }
         switch setup {
         case .helperApproval:
@@ -489,5 +508,13 @@ extension InstallationState {
         case .backgroundAgentApproval, .backgroundAgentRequired:
             return SMAppService.Status.notFound.rawValue
         }
+    }
+
+    nonisolated private static func visibleAgentStatus(
+        serviceStatus: SMAppService.Status,
+        agentConnected: Bool
+    ) -> SMAppService.Status {
+        guard agentConnected else { return serviceStatus }
+        return .enabled
     }
 }

@@ -32,7 +32,10 @@ struct LoadAssistCurveEditor: View {
                         .fill(Color(nsColor: .textBackgroundColor))
                         .frame(width: 10, height: 10)
                         .overlay(Circle().stroke(accent, lineWidth: 2))
-                        .position(dataToPixel(load: point.temperature, fanPercent: point.fanPercent, size: size))
+                        .position(
+                            dataToPixel(
+                                load: point.temperature, fanPercent: point.fanPercent, size: size)
+                        )
                         .gesture(dragGesture(index: index, size: size))
                 }
             }
@@ -82,7 +85,8 @@ struct LoadAssistCurveEditor: View {
         for earlierIndex in stride(from: index - 1, through: 0, by: -1) {
             let weight = pow(0.6, Double(index - earlierIndex - 1))
             let desired = original[earlierIndex].fanPercent + delta * weight
-            points[earlierIndex].fanPercent = max(0, min(points[earlierIndex + 1].fanPercent, desired))
+            points[earlierIndex].fanPercent = max(
+                0, min(points[earlierIndex + 1].fanPercent, desired))
         }
 
         for laterIndex in (index + 1)..<points.count {
@@ -134,7 +138,8 @@ struct LoadAssistCurveEditor: View {
 
         var path = Path()
         for (index, sample) in samples.enumerated() {
-            let point = dataToPixel(load: sample.temperature, fanPercent: sample.fanPercent, size: size)
+            let point = dataToPixel(
+                load: sample.temperature, fanPercent: sample.fanPercent, size: size)
             if index == 0 {
                 path.move(to: point)
             } else {
@@ -142,7 +147,11 @@ struct LoadAssistCurveEditor: View {
             }
         }
 
-        context.stroke(path, with: .color(accent), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+        context.stroke(
+            path,
+            with: .color(accent),
+            style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+        )
     }
 
     private func plotFrame(_ size: CGSize) -> CGRect {

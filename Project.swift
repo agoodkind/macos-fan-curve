@@ -104,7 +104,6 @@ let modelTestSources: SourceFilesList = [
     "Sources/Common/SetupActionAffordance+Codable.swift",
     "Sources/Models/TemperatureUnit.swift",
     "Sources/Models/TemperatureAxisScale.swift",
-    "Sources/Models/SystemUsage.swift",
     "Sources/Models/SensorState.swift",
     "Sources/Models/CurveColumns.swift",
     "Sources/Models/CurvePoint.swift",
@@ -116,6 +115,7 @@ let modelTestSources: SourceFilesList = [
     "Sources/Models/LoadAssistStore.swift",
     "Sources/Models/WorkloadGenerator.swift",
     "Sources/Models/CPULoadSampler.swift",
+    "Sources/Models/IOAcceleratorPerformanceStatistics.swift",
     "Sources/Models/AcousticRampGovernor.swift",
     "Sources/Models/FanResponse.swift",
     "Sources/Models/CurvePresets.swift",
@@ -123,6 +123,8 @@ let modelTestSources: SourceFilesList = [
     "Sources/Models/CurveInterpolation.swift",
     "Sources/Models/LiveMarkerPresentation.swift",
     "Sources/Services/AppRenderActivity.swift",
+    "Sources/Views/SettingsTab.swift",
+    "Sources/Views/SettingsMonitoringGate.swift",
 ]
 
 let strictConcurrencySettings: SettingsDictionary = [

@@ -164,6 +164,9 @@ struct AboutContentView: View {
 
     private func openURL(_ urlString: String) {
         guard let url = URL(string: urlString) else { return }
+        aboutSettingsLog.notice(
+            "about_settings.open_url destination=\(url.absoluteString, privacy: .public)"
+        )
         NSWorkspace.shared.open(url)
     }
 

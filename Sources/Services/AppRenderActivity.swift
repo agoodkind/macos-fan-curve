@@ -29,10 +29,6 @@ enum AppRenderMode: Equatable, Hashable {
         self == .interactive
     }
 
-    var showsPausedDashboard: Bool {
-        !showsLiveDashboard
-    }
-
     var preferredFramesPerSecond: Int {
         switch self {
         case .interactive, .backgroundVisible: return Self.maximumDisplayFramesPerSecond
@@ -49,14 +45,6 @@ enum AppRenderMode: Equatable, Hashable {
             from: .now,
             by: 1.0 / Double(preferredFramesPerSecond)
         )
-    }
-
-    var markerSmoothingIntervalNanoseconds: UInt64 {
-        switch self {
-        case .interactive: return 16_700_000
-        case .backgroundVisible: return 140_000_000
-        case .occluded: return 1_000_000_000
-        }
     }
 }
 

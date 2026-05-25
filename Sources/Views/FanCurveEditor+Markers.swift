@@ -184,10 +184,12 @@ extension FanCurveEditor {
         let liveTemperature =
             runtime.semanticDemandTemperature
             ?? runtime.rawPressureTemperature
-            ?? (runtime.committedTemperature > 0 ? runtime.committedTemperature : runtime.governingTemperature)
+            ?? (runtime.committedTemperature > 0
+                ? runtime.committedTemperature : runtime.governingTemperature)
         guard liveTemperature > 0 else { return nil }
 
-        let clampedTemperature = max(plotTempRange.lowerBound, min(plotTempRange.upperBound, liveTemperature))
+        let clampedTemperature = max(
+            plotTempRange.lowerBound, min(plotTempRange.upperBound, liveTemperature))
         let previewPercent = CurveInterpolation.evaluate(
             at: clampedTemperature,
             points: model.controlPoints,
@@ -195,14 +197,14 @@ extension FanCurveEditor {
         )
         return LiveMarkerPresentation.makeTarget(
             from: LiveMarkerPresentation.TargetInput(
-                snapshotEpoch: runtime.snapshot?.timestampEpoch ?? 0,
                 curveActive: presentation.usesActiveCurveStyling,
                 boostEnabled: boostEnabled,
                 governingTemperatureC: runtime.governingTemperature,
                 committedTemperatureC: runtime.committedTemperature,
                 rawPressureTemperatureC: runtime.rawPressureTemperature,
                 semanticDemandTemperatureC: clampedTemperature,
-                baseCurvePercent: presentation.usesActiveCurveStyling ? runtime.baseCurvePercent : previewPercent,
+                baseCurvePercent: presentation.usesActiveCurveStyling
+                    ? runtime.baseCurvePercent : previewPercent,
                 semanticDemandPercent: runtime.semanticDemandPercent,
                 commandedTargetPercent: runtime.commandedTargetPercent,
                 rawBaselinePercent: runtime.rawBaselinePercent,

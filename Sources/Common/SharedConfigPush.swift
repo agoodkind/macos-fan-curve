@@ -6,10 +6,7 @@
 //  Copyright © 2026
 //
 
-import AppLog
 import Foundation
-
-private let log = AppLog.make(category: "SharedConfigPush")
 
 /// Cross-process ping used by the GUI to tell the Agent that something
 /// in the shared UserDefaults suite changed. The Agent responds by
@@ -25,15 +22,4 @@ enum SharedConfigPush {
     static let notificationNameString = "io.goodkind.fancurve.configChanged"
 
     static var notificationName: CFString { notificationNameString as CFString }
-
-    /// GUI posts this after any write to the shared suite.
-    static func post() {
-        log.debug("config.pushed notification=\(notificationNameString, privacy: .public)")
-        CFNotificationCenterPostNotification(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            CFNotificationName(notificationNameString as CFString),
-            nil,
-            nil,
-            true)
-    }
 }

@@ -51,6 +51,9 @@ struct LoadAssistModuleView: View {
             get: { enabled },
             set: { newValue in
                 enabled = newValue
+                loadAssistModuleLog.notice(
+                    "load_assist.toggle kind=\(kind.rawValue, privacy: .public) enabled=\(newValue, privacy: .public)"
+                )
                 LoadAssistStore.saveEnabled(newValue, kind: kind, defaults: Self.suite)
             })
     }
@@ -73,10 +76,16 @@ struct LoadAssistModuleView: View {
         LoadAssistStore.migrateLegacyIfNeeded(defaults: Self.suite)
         enabled = LoadAssistStore.loadEnabled(kind, defaults: Self.suite)
         points = LoadAssistStore.loadPoints(kind, defaults: Self.suite)
+        loadAssistModuleLog.debug(
+            "load_assist.loaded kind=\(kind.rawValue, privacy: .public) point_count=\(points.count, privacy: .public)"
+        )
     }
 
     private func savePoints() {
         guard !points.isEmpty else { return }
         LoadAssistStore.savePoints(points, kind: kind, defaults: Self.suite)
+        loadAssistModuleLog.debug(
+            "load_assist.points_saved kind=\(kind.rawValue, privacy: .public) point_count=\(points.count, privacy: .public)"
+        )
     }
 }

@@ -94,7 +94,8 @@ struct ContentView: View {
             installState.stopMonitoring()
         }
         .onChange(of: curveModel.controlPoints) { _ in pushCurveToAgent(reason: "points-changed") }
-        .onChange(of: curveModel.interpolationMode) { _ in pushCurveToAgent(reason: "mode-changed") }
+        .onChange(of: curveModel.interpolationMode) { _ in pushCurveToAgent(reason: "mode-changed")
+        }
     }
 
     private var settingsToolbarButton: some View {
@@ -208,11 +209,15 @@ private struct LiveDashboardContent: View {
 
     private var presentation: DashboardPresentationState {
         DashboardPresentationState.make(
-            installationStep: installState.step,
-            telemetryFresh: agentClient.isFresh,
-            runtimeTelemetryAvailable: agentClient.governingTemperature > 0 && !agentClient.fans.isEmpty,
-            curveActive: curveModel.isActive,
-            boostEnabled: boostEnabled
+            DashboardPresentationState.Inputs(
+                installationStep: installState.step,
+                telemetryFresh: agentClient.isFresh,
+                runtimeTelemetryAvailable: agentClient.governingTemperature > 0
+                    && !agentClient.fans.isEmpty,
+                helperReachable: agentClient.helperReachable,
+                curveActive: curveModel.isActive,
+                boostEnabled: boostEnabled
+            )
         )
     }
 

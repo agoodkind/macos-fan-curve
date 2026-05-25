@@ -88,7 +88,8 @@ struct AcousticRampGovernor: Sendable {
         }
 
         let elapsedSeconds = normalizedElapsedSeconds(input.elapsedSeconds)
-        let rateRPMPerSecond = selectedRateRPMPerSecond(input: input, delta: delta, policy: activePolicy)
+        let rateRPMPerSecond = selectedRateRPMPerSecond(
+            input: input, delta: delta, policy: activePolicy)
         let allowedDelta = rateRPMPerSecond * Float(elapsedSeconds)
         let candidateRPM: Float
         if delta > 0 {
@@ -117,7 +118,8 @@ struct AcousticRampGovernor: Sendable {
 
         let thermalDebt = max(0, min(1, input.thermalDebt))
         return policy.quietFallRPMPerSecond
-            - Float(thermalDebt) * (policy.quietFallRPMPerSecond - policy.thermalDebtMinimumFallRPMPerSecond)
+            - Float(thermalDebt)
+            * (policy.quietFallRPMPerSecond - policy.thermalDebtMinimumFallRPMPerSecond)
     }
 
     private func selectedRiseRateRPMPerSecond(input: Input, policy: Policy) -> Float {

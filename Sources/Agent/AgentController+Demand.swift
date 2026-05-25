@@ -104,12 +104,14 @@ extension AgentController {
             ? demandNormalRiseVelocityPerSecond
             : demandNormalFallVelocityPerSecond
         let nextPercent = accelerationLimitedStep(
-            current: currentPercent,
-            target: targetPercent,
-            velocity: conditionedDemandPercentVelocity,
-            maxVelocity: maxPercentVelocity,
-            maxAcceleration: demandNormalAccelerationPerSecond,
-            elapsedSeconds: dt
+            input: AgentControllerDemandTypes.AccelerationStepInput(
+                current: currentPercent,
+                target: targetPercent,
+                velocity: conditionedDemandPercentVelocity,
+                maxVelocity: maxPercentVelocity,
+                maxAcceleration: demandNormalAccelerationPerSecond,
+                elapsedSeconds: dt
+            )
         )
 
         let maxTemperatureVelocity =
@@ -117,12 +119,14 @@ extension AgentController {
             ? demandTemperatureRiseVelocityCPerSecond
             : demandTemperatureFallVelocityCPerSecond
         let nextTemperature = accelerationLimitedStep(
-            current: currentTemperature,
-            target: rawTemperatureC,
-            velocity: conditionedDemandTemperatureVelocityC,
-            maxVelocity: maxTemperatureVelocity,
-            maxAcceleration: demandTemperatureAccelerationCPerSecond,
-            elapsedSeconds: dt
+            input: AgentControllerDemandTypes.AccelerationStepInput(
+                current: currentTemperature,
+                target: rawTemperatureC,
+                velocity: conditionedDemandTemperatureVelocityC,
+                maxVelocity: maxTemperatureVelocity,
+                maxAcceleration: demandTemperatureAccelerationCPerSecond,
+                elapsedSeconds: dt
+            )
         )
 
         conditionedDemandPercent = nextPercent.value
@@ -134,32 +138,30 @@ extension AgentController {
     }
 
     func accelerationLimitedStep(
-        current: Double,
-        target: Double,
-        velocity: Double,
-        maxVelocity: Double,
-        maxAcceleration: Double,
-        elapsedSeconds: Double
+        input: AgentControllerDemandTypes.AccelerationStepInput
     ) -> (value: Double, velocity: Double) {
-        let delta = target - current
-        guard delta != 0, elapsedSeconds > 0 else {
-            return (target, 0)
+        let delta = input.target - input.current
+        guard delta != 0, input.elapsedSeconds > 0 else {
+            return (input.target, 0)
         }
 
         let direction = delta > 0 ? 1.0 : -1.0
-        let clampedMaxVelocity = max(0, maxVelocity)
-        let clampedAcceleration = max(0, maxAcceleration)
+        let clampedMaxVelocity = max(0, input.maxVelocity)
+        let clampedAcceleration = max(0, input.maxAcceleration)
         let stoppingVelocity = sqrt(2 * clampedAcceleration * abs(delta))
         let desiredVelocity = direction * min(clampedMaxVelocity, stoppingVelocity)
         let nextVelocity = limitedStep(
-            current: velocity,
+            current: input.velocity,
             target: desiredVelocity,
-            maximumDelta: clampedAcceleration * elapsedSeconds
+            maximumDelta: clampedAcceleration * input.elapsedSeconds
         )
-        let nextValue = current + nextVelocity * elapsedSeconds
+        let nextValue = input.current + nextVelocity * input.elapsedSeconds
 
-        if (target - nextValue).sign != delta.sign || abs(target - nextValue) < 0.0001 {
-            return (target, 0)
+        let reachedTarget =
+            (input.target - nextValue).sign != delta.sign
+            || abs(input.target - nextValue) < 0.0001
+        if reachedTarget {
+            return (input.target, 0)
         }
         return (nextValue, nextVelocity)
     }

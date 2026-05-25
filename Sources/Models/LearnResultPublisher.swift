@@ -18,6 +18,33 @@ private let learnResultPublisherLog = AppLog.make(category: "LearnResultPublishe
 /// The maintainer can evolve this into a proper data file once the
 /// community starts submitting results.
 enum LearnResultPublisher {
+    private struct CurvePayloadPoint: Encodable {
+        let temperature: Double
+        let fanPercent: Double
+
+        enum CodingKeys: String, CodingKey {
+            case temperature = "t"
+            case fanPercent = "p"
+        }
+    }
+
+    private struct ProbePayload: Encodable {
+        let fan: Int
+        let commanded: Float
+        let sustained: Float
+        let samples: Int
+    }
+
+    private struct LearnPayload: Encodable {
+        let model: String
+        let os: String
+        let samples: Int
+        let minTemp: Double
+        let maxTemp: Double
+        let curve: [CurvePayloadPoint]
+        let probe: ProbePayload?
+    }
+
     private static let repository = "agoodkind/macos-fan-curve"
 
     static func publish(
@@ -35,7 +62,8 @@ enum LearnResultPublisher {
             probe: probe)
         let title = "Learn results from \(hardwareModel())"
 
-        guard var components = URLComponents(string: "https://github.com/\(repository)/issues/new") else {
+        guard var components = URLComponents(string: "https://github.com/\(repository)/issues/new")
+        else {
             throw PublishError.invalidURL
         }
         components.queryItems = [
@@ -111,25 +139,45 @@ enum LearnResultPublisher {
         sampleCount: Int,
         probe: ProbeResult?
     ) -> String {
-        var dict: [String: Any] = [
-            "model": hardwareModel(),
-            "os": ProcessInfo.processInfo.operatingSystemVersionString,
-            "samples": sampleCount,
-            "minTemp": minTemp,
-            "maxTemp": maxTemp,
-            "curve": curve.map { ["t": $0.temperature, "p": $0.fanPercent] },
-        ]
-        if let probe {
-            dict["probe"] = [
-                "fan": probe.fanIndex,
-                "commanded": probe.commandedRPM,
-                "sustained": probe.sustainedRPM,
-                "samples": probe.sampleCount,
-            ]
+        let payload = LearnPayload(
+            model: hardwareModel(),
+            os: ProcessInfo.processInfo.operatingSystemVersionString,
+            samples: sampleCount,
+            minTemp: minTemp,
+            maxTemp: maxTemp,
+            curve: curve.map { point in
+                CurvePayloadPoint(
+                    temperature: point.temperature,
+                    fanPercent: point.fanPercent
+                )
+            },
+            probe: probe.map { probeResult in
+                ProbePayload(
+                    fan: Int(probeResult.fanIndex),
+                    commanded: probeResult.commandedRPM,
+                    sustained: probeResult.sustainedRPM,
+                    samples: probeResult.sampleCount
+                )
+            }
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+
+        do {
+            let data = try encoder.encode(payload)
+            guard let jsonString = String(bytes: data, encoding: .utf8) else {
+                learnResultPublisherLog.error(
+                    "learn.publish.payload_string_failed recovery=return-empty-json"
+                )
+                return "{}"
+            }
+            return jsonString
+        } catch {
+            learnResultPublisherLog.error(
+                "learn.publish.payload_encode_failed error=\(error.localizedDescription, privacy: .public) recovery=return-empty-json"
+            )
+            return "{}"
         }
-        let data = try? JSONSerialization.data(
-            withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
-        return data.flatMap { String(bytes: $0, encoding: .utf8) } ?? "{}"
     }
 
     /// Reads hw.model via sysctl. Returns something like "Mac15,6" so the

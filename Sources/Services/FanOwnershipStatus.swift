@@ -38,7 +38,10 @@ final class FanOwnershipStatus: ObservableObject {
         log.debug(
             "ownership_status.start interval=\(intervalSeconds, privacy: .public)"
         )
-        self.timer = Timer.scheduledTimer(withTimeInterval: intervalSeconds, repeats: true) { [weak self] _ in
+        self.timer = Timer.scheduledTimer(
+            withTimeInterval: intervalSeconds,
+            repeats: true
+        ) { [weak self] _ in
             Task { @MainActor [weak self] in await self?.tick(agentClient: agentClient) }
         }
         Task { @MainActor [weak self] in await self?.tick(agentClient: agentClient) }
@@ -49,6 +52,10 @@ final class FanOwnershipStatus: ObservableObject {
         self.timer = nil
         self.isMonitoring = false
         log.debug("ownership_status.stop")
+    }
+
+    func refreshOnce(agentClient: FanCurveAgentClient) async {
+        await tick(agentClient: agentClient)
     }
 
     private func tick(agentClient: FanCurveAgentClient) async {
@@ -62,8 +69,8 @@ final class FanOwnershipStatus: ObservableObject {
             self.reachable = false
             self.lastError = error.localizedDescription
             self.hasLoaded = true
-            log.debug(
-                "ownership_status.unreachable error=\(error.localizedDescription, privacy: .public)"
+            log.notice(
+                "ownership_status.unreachable error=\(error.localizedDescription, privacy: .public) recovery=show-helper-unreachable"
             )
         }
     }

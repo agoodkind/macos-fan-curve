@@ -41,7 +41,8 @@ struct FanCurveApp: App {
                 .environmentObject(curveModel)
                 .environmentObject(appUpdater)
                 .onReceive(
-                    NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
+                    NotificationCenter.default.publisher(
+                        for: NSApplication.willTerminateNotification)
                 ) { _ in
                     handleTermination()
                 }

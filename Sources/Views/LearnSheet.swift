@@ -9,7 +9,7 @@
 import AppLog
 import SwiftUI
 
-private let learnSheetLog = AppLog.make(category: "LearnSheet")
+let learnSheetLog = AppLog.make(category: "LearnSheet")
 
 struct LearnSheet: View {
     @ObservedObject var curveModel: FanCurveModel
@@ -99,10 +99,13 @@ struct LearnSheet: View {
         // moment inside the learner, so schedule based on its total seconds.
         let delay = learner.probeTotalSeconds + 1
         Task {
+            let clock = ContinuousClock()
             do {
-                try await Task.sleep(nanoseconds: UInt64(delay) * 1_000_000_000)
+                try await clock.sleep(for: .seconds(Double(delay)))
             } catch {
-                learnSheetLog.debug("probe.auto_restore.cancelled recovery=probe-cleanup-on-dismiss")
+                learnSheetLog.notice(
+                    "probe.auto_restore.cancelled recovery=probe-cleanup-on-dismiss"
+                )
                 return
             }
             do {
@@ -115,106 +118,7 @@ struct LearnSheet: View {
         }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Learn from System")
-                .font(.title3.weight(.semibold))
-            Text(
-                "Samples temperature and fan speed for three minutes while macOS runs your machine in Auto. "
-                    + "The result becomes your new curve."
-            )
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    @ViewBuilder
-    private var sheetBody: some View {
-        if !learner.learnedCurve.isEmpty {
-            learnedSummary
-        } else if learner.isSampling {
-            samplingView
-        } else {
-            preSampleOptions
-        }
-    }
-
-    private var preSampleOptions: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if sensorState.governingTemperature > 50 {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Your machine is already warm (\(Int(sensorState.governingTemperature))°C).")
-                            .font(.callout.weight(.medium))
-                        Text(
-                            "Idle behavior below this temperature cannot be sampled. "
-                                + "Wait for the machine to cool, or proceed and the curve will assume zero fan speed "
-                                + "at lower temps."
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-                } icon: {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(Color(nsColor: .systemOrange))
-                }
-                .padding(10)
-                .fancurveGlass(
-                    in: RoundedRectangle(cornerRadius: 6),
-                    fallbackFill: Color(nsColor: .systemOrange).opacity(0.10))
-            }
-
-            Toggle("Stress the CPU during sampling", isOn: $runCPU)
-            Toggle("Stress the GPU during sampling", isOn: $runGPU)
-
-            Text(
-                "Stressing both covers the whole thermal band quickly. "
-                    + "Turning them off lets you load the machine with your own workload instead."
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var samplingView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ProgressView(
-                value: Double(learner.secondsElapsed),
-                total: Double(learner.totalSeconds))
-
-            HStack {
-                statCard(
-                    title: "Elapsed",
-                    value: "\(learner.secondsElapsed)s",
-                    sub: "of \(learner.totalSeconds)s")
-                statCard(
-                    title: "Samples",
-                    value: "\(learner.samplesCollected)",
-                    sub: "one per second")
-                statCard(
-                    title: "Temp range",
-                    value: rangeLabel,
-                    sub: "covered")
-            }
-
-            HStack(spacing: 8) {
-                Text("Current:")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("\(Int(sensorState.governingTemperature))°C")
-                    .font(.system(.caption, design: .monospaced))
-                Text("•")
-                    .foregroundStyle(.secondary)
-                Text("\(Int(averageFanRPM)) RPM avg")
-                    .font(.system(.caption, design: .monospaced))
-            }
-        }
-    }
-
-    private var learnedSummary: some View {
+    var learnedSummary: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(
                 "Learned a curve from \(learner.samplesCollected) samples",
@@ -265,9 +169,11 @@ struct LearnSheet: View {
                     systemImage: "gauge.with.needle.fill"
                 )
                 .foregroundColor(Color(nsColor: .systemBlue))
-                Text("Commanded \(Int(result.commandedRPM)) RPM across \(result.sampleCount) samples.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "Commanded \(Int(result.commandedRPM)) RPM across \(result.sampleCount) samples."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 Text("Overdrive will now target this value.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -340,21 +246,21 @@ struct LearnSheet: View {
         }
     }
 
-    private var rangeLabel: String {
+    var rangeLabel: String {
         guard learner.maxTempSampled > 0 else { return "none yet" }
         let lo = Int(learner.minTempSampled)
         let hi = Int(learner.maxTempSampled)
         return "\(lo) to \(hi)"
     }
 
-    private var averageFanRPM: Float {
+    var averageFanRPM: Float {
         let fans = sensorState.fans
         guard !fans.isEmpty else { return 0 }
         return fans.reduce(0) { $0 + $1.actualRPM } / Float(fans.count)
     }
 
     @ViewBuilder
-    private func statCard(title: String, value: String, sub: String) -> some View {
+    func statCard(title: String, value: String, sub: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.caption2)
@@ -368,5 +274,113 @@ struct LearnSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
         .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
+    }
+}
+
+extension LearnSheet {
+    var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Learn from System")
+                .font(.title3.weight(.semibold))
+            Text(
+                "Samples temperature and fan speed for three minutes while macOS runs your machine in Auto. "
+                    + "The result becomes your new curve."
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    var sheetBody: some View {
+        if !learner.learnedCurve.isEmpty {
+            learnedSummary
+        } else if learner.isSampling {
+            samplingView
+        } else {
+            preSampleOptions
+        }
+    }
+
+    var preSampleOptions: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if sensorState.governingTemperature > 50 {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(
+                            "Your machine is already warm (\(Int(sensorState.governingTemperature))°C)."
+                        )
+                        .font(.callout.weight(.medium))
+                        Text(
+                            "Idle behavior below this temperature cannot be sampled. "
+                                + "Wait for the machine to cool, or proceed and the curve will assume zero fan speed "
+                                + "at lower temps."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(Color(nsColor: .systemOrange))
+                }
+                .padding(10)
+                .fancurveGlass(
+                    in: RoundedRectangle(cornerRadius: 6),
+                    fallbackFill: Color(nsColor: .systemOrange).opacity(0.10)
+                )
+            }
+
+            Toggle("Stress the CPU during sampling", isOn: $runCPU)
+            Toggle("Stress the GPU during sampling", isOn: $runGPU)
+
+            Text(
+                "Stressing both covers the whole thermal band quickly. "
+                    + "Turning them off lets you load the machine with your own workload instead."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    var samplingView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ProgressView(
+                value: Double(learner.secondsElapsed),
+                total: Double(learner.totalSeconds)
+            )
+
+            HStack {
+                statCard(
+                    title: "Elapsed",
+                    value: "\(learner.secondsElapsed)s",
+                    sub: "of \(learner.totalSeconds)s"
+                )
+                statCard(
+                    title: "Samples",
+                    value: "\(learner.samplesCollected)",
+                    sub: "one per second"
+                )
+                statCard(
+                    title: "Temp range",
+                    value: rangeLabel,
+                    sub: "covered"
+                )
+            }
+
+            HStack(spacing: 8) {
+                Text("Current:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("\(Int(sensorState.governingTemperature))°C")
+                    .font(.system(.caption, design: .monospaced))
+                Text("•")
+                    .foregroundStyle(.secondary)
+                Text("\(Int(averageFanRPM)) RPM avg")
+                    .font(.system(.caption, design: .monospaced))
+            }
+        }
     }
 }

@@ -13,8 +13,30 @@ private let sensorDashboardSidebarStatusLog = AppLog.make(category: "SensorDashb
 
 extension SensorDashboardSidebar {
     var systemStatus: SystemStatus {
-        let helperReachable = runtime.isFresh ? runtime.helperReachable : installState.helperReachable
-        if helperReachable, installState.agentEnabled, installState.agentLive, installState.agentSnapshotCompatible {
+        let setupNeedsAttention =
+            installState.step == .helperAwaitingApproval
+            || installState.step == .agentAwaitingApproval
+            || installState.step == .agentMissing
+        if installState.helperNeedsRepair {
+            return .orange
+        }
+        if setupNeedsAttention {
+            return .orange
+        }
+        if installState.step == .helperMissing {
+            return .red
+        }
+        if presentation.chartState == .degraded {
+            return .red
+        }
+        let helperReachable =
+            runtime.isFresh ? runtime.helperReachable : installState.helperReachable
+        let isFullyOperational =
+            helperReachable
+            && installState.agentEnabled
+            && installState.agentLive
+            && installState.agentSnapshotCompatible
+        if isFullyOperational {
             return .green
         }
         if helperReachable, installState.agentEnabled, !installState.agentLive {
@@ -27,6 +49,7 @@ extension SensorDashboardSidebar {
     }
 
     var statusLabel: String {
+        if installState.helperNeedsRepair { return "System Helper Needs Repair" }
         if presentation.installationStep == .helperMissing { return "System Helper Required" }
         if presentation.installationStep == .agentMissing { return "Background Control Required" }
         let approvalPending =
@@ -42,7 +65,11 @@ extension SensorDashboardSidebar {
         switch systemStatus {
         case .green: return "All systems go"
         case .orange:
-            if installState.agentEnabled, installState.agentLive, !installState.agentSnapshotCompatible {
+            let needsUpdate =
+                installState.agentEnabled
+                && installState.agentLive
+                && !installState.agentSnapshotCompatible
+            if needsUpdate {
                 return "Update Required"
             }
             if installState.agentEnabled, !installState.agentLive {
@@ -54,7 +81,6 @@ extension SensorDashboardSidebar {
     }
 
     var statusColor: Color {
-        if presentation.chartState == .degraded { return Color(nsColor: .systemRed) }
         switch systemStatus {
         case .green: return Color(nsColor: .systemGreen)
         case .orange: return Color(nsColor: .systemOrange)
@@ -85,10 +111,17 @@ extension SensorDashboardSidebar {
                     .help("Fan Curve needs attention. Open settings or try setup again.")
             }
         }
+        .onAppear {
+            sensorDashboardSidebarStatusLog.debug(
+                "sidebar.status.appeared label=\(statusLabel, privacy: .public)"
+            )
+        }
     }
 
     var activeAssistStates: [ActiveAssistState] {
-        guard fanControlReady, presentation.showsRuntimeStats, curveModel.isActive, !boost else { return [] }
+        guard fanControlReady, presentation.showsRuntimeStats, curveModel.isActive, !boost else {
+            return []
+        }
         let curveReferenceTemp = runtime.rawPressureTemperature ?? runtime.governingTemperature
         let basePercent = curveModel.evaluate(at: curveReferenceTemp)
         var candidates: [ActiveAssistState] = []
@@ -97,8 +130,10 @@ extension SensorDashboardSidebar {
             let enabled = kind == .cpu ? cpuLoadAssistEnabled : gpuLoadAssistEnabled
             guard enabled else { continue }
             let load = kind == .cpu ? runtime.cpuLoadPercent : runtime.gpuLoadPercent
-            guard runtime.activeAssistKinds.contains(kind), floorPercent > basePercent + 0.005 else { continue }
-            candidates.append(ActiveAssistState(kind: kind, loadPercent: load, floorPercent: floorPercent))
+            guard runtime.activeAssistKinds.contains(kind), floorPercent > basePercent + 0.005
+            else { continue }
+            candidates.append(
+                ActiveAssistState(kind: kind, loadPercent: load, floorPercent: floorPercent))
         }
         guard let maxFloor = candidates.map(\.floorPercent).max() else { return [] }
         return candidates.filter { abs($0.floorPercent - maxFloor) < 0.001 }

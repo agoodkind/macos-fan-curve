@@ -54,8 +54,13 @@ struct SensorDashboardSidebar: View {
         }
         .task(id: pendingAction) {
             guard let pendingAction else { return }
+            let clock = ContinuousClock()
             do {
-                try await Task.sleep(nanoseconds: pendingAction.timeoutNanoseconds)
+                try await clock.sleep(
+                    until: clock.now.advanced(
+                        by: .nanoseconds(Int64(pendingAction.timeoutNanoseconds))
+                    )
+                )
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     completePendingAction(
@@ -64,7 +69,7 @@ struct SensorDashboardSidebar: View {
                     )
                 }
             } catch {
-                sensorDashboardSidebarViewLog.debug(
+                sensorDashboardSidebarViewLog.notice(
                     "sidebar.pending.timer.cancelled action=\(pendingAction.logName, privacy: .public) recovery=keep-current-pending-state"
                 )
             }
@@ -73,14 +78,19 @@ struct SensorDashboardSidebar: View {
             guard let pendingAction else { return }
             let remainingNanoseconds = pendingActionMinimumRemainingNanoseconds()
             guard remainingNanoseconds > 0 else { return }
+            let clock = ContinuousClock()
             do {
-                try await Task.sleep(nanoseconds: remainingNanoseconds)
+                try await clock.sleep(
+                    until: clock.now.advanced(
+                        by: .nanoseconds(Int64(remainingNanoseconds))
+                    )
+                )
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     reconcilePendingAction(reason: "minimum-duration-elapsed")
                 }
             } catch {
-                sensorDashboardSidebarViewLog.debug(
+                sensorDashboardSidebarViewLog.notice(
                     "sidebar.pending.minimum_timer.cancelled action=\(pendingAction.logName, privacy: .public) recovery=keep-current-pending-state"
                 )
             }
@@ -171,12 +181,20 @@ struct SensorDashboardSidebar: View {
         VStack(spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
+                    let showsControllerState =
+                        presentation.chartState == .active
+                        && fanControlReady
+                        && curveModel.isActive
+                        && !boost
+                    let showsStateSubtitle = presentation.controlState != .setup
                     Text("Fan Control")
                         .font(.body)
-                    Text(fanControlStateLabel)
-                        .font(.caption)
-                        .foregroundColor(fanControlStateColor)
-                    if fanControlReady, curveModel.isActive, !boost {
+                    if showsStateSubtitle {
+                        Text(fanControlStateLabel)
+                            .font(.caption)
+                            .foregroundColor(fanControlStateColor)
+                    }
+                    if showsControllerState {
                         Text(controllerStateLabel)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
@@ -200,7 +218,7 @@ struct SensorDashboardSidebar: View {
                 }
             }
 
-            if presentation.helperActionVisible {
+            if presentation.controlState == .setup || presentation.helperActionVisible {
                 setupButton
             } else if presentation.showsBoostControl, curveModel.isActive {
                 boostButton

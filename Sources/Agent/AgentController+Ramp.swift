@@ -51,7 +51,8 @@ extension AgentController {
                     by: input.fanResponseMultiplier
                 )
             )
-            rampStateByFan[input.index] = RampCommandState(rpm: decision.commandedRPM, timestamp: input.now)
+            rampStateByFan[input.index] = RampCommandState(
+                rpm: decision.commandedRPM, timestamp: input.now)
             logRampDecisionIfNeeded(
                 fanIndex: input.index,
                 decision: decision,
@@ -95,9 +96,12 @@ extension AgentController {
         currentTemperatureC: Double
     ) {
         guard currentFan.maxRPM > currentFan.minRPM else { return }
-        let commandedPercent = Double((commandedRPM - currentFan.minRPM) / (currentFan.maxRPM - currentFan.minRPM))
+        let commandedPercent = Double(
+            (commandedRPM - currentFan.minRPM) / (currentFan.maxRPM - currentFan.minRPM))
         let previousPercent = lastCommandLogPercentByFan[fanIndex]
-        guard previousPercent == nil || abs((previousPercent ?? 0) - commandedPercent) >= minimumCommandPercentDelta
+        guard
+            previousPercent == nil
+                || abs((previousPercent ?? 0) - commandedPercent) >= minimumCommandPercentDelta
         else {
             return
         }

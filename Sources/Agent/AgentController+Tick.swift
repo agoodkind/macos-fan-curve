@@ -55,7 +55,8 @@ extension AgentController {
             cachedFanCount = UInt(result.fans.count)
         }
 
-        sharedConfig.writeAgentStatus(pid: ProcessInfo.processInfo.processIdentifier, lastTick: Date())
+        sharedConfig.writeAgentStatus(
+            pid: ProcessInfo.processInfo.processIdentifier, lastTick: Date())
         sharedConfig.writeAgentLastError(nil)
 
         let activityState: ActivityState = active ? .active : .inactive
@@ -78,7 +79,9 @@ extension AgentController {
         )
     }
 
-    func handleInactiveTickIfNeeded(_ telemetry: AgentControllerTickTypes.TickTelemetry) async -> Bool {
+    func handleInactiveTickIfNeeded(
+        _ telemetry: AgentControllerTickTypes.TickTelemetry
+    ) async -> Bool {
         guard telemetry.active else {
             resetInactiveControllerState()
             publishSnapshotIfNeeded(inactiveSnapshot(from: telemetry))
@@ -203,86 +206,6 @@ extension AgentController {
                     manualMode: fan.manualMode
                 )
             }
-        )
-    }
-
-    func makeActiveTickContext(
-        from telemetry: AgentControllerTickTypes.TickTelemetry
-    ) -> AgentControllerTickTypes.ActiveTickContext? {
-        let now = Date()
-        let fastTemp = smoothedTemperature(
-            rawTemp: telemetry.maxCPUTemp,
-            current: filteredTemperatureFast,
-            previous: &previousFastTemperature,
-            alpha: fastTemperatureEMAAlpha
-        )
-        filteredTemperatureFast = fastTemp
-
-        let slowTemp = smoothedTemperature(
-            rawTemp: telemetry.maxCPUTemp,
-            current: filteredTemperatureSlow,
-            previous: &previousSlowTemperature,
-            alpha: slowTemperatureEMAAlpha
-        )
-        filteredTemperatureSlow = slowTemp
-
-        let fastTrend = previousFastTemperature.map { fastTemp - $0 } ?? 0
-        let slowTrend = previousSlowTemperature.map { slowTemp - $0 } ?? 0
-        let boost = sharedConfig.loadBoostEnabled()
-        let pressureTemperature = thermalPressureTemperature(
-            fastTemperatureC: fastTemp,
-            slowTemperatureC: slowTemp
-        )
-        let points = sharedConfig.loadCurve()
-        let mode = sharedConfig.loadInterpolationMode()
-        let baseCurvePercent = CurveInterpolation.evaluate(
-            at: pressureTemperature,
-            points: points,
-            mode: mode
-        )
-        let manualFanResponse = sharedConfig.loadFanResponse()
-        let inferFanResponseFromGraph = sharedConfig.loadInferFanResponseFromGraph()
-        let inferredFanResponse = CurveInterpolation.localResponse(
-            at: pressureTemperature,
-            points: points,
-            mode: mode
-        )
-        let fanResponseMultiplier = FanResponse.finalMultiplier(
-            manualResponse: manualFanResponse,
-            inferredResponse: inferredFanResponse,
-            inferFromGraph: inferFanResponseFromGraph
-        )
-        let curvePercent = boost ? 1.0 : baseCurvePercent
-
-        let assistState = resolveAssistState(
-            boost: boost,
-            curvePercent: curvePercent,
-            cpuLoad: telemetry.cpuLoad,
-            gpuLoad: telemetry.gpuLoad
-        )
-        let conditionedDemand = conditionedThermalDemand(
-            rawPercent: boost ? 1.0 : assistState.rawBaselinePercent,
-            rawTemperatureC: pressureTemperature,
-            now: now
-        )
-
-        return AgentControllerTickTypes.ActiveTickContext(
-            telemetry: telemetry,
-            now: now,
-            fastTemp: fastTemp,
-            slowTemp: slowTemp,
-            fastTrend: fastTrend,
-            slowTrend: slowTrend,
-            boost: boost,
-            pressureTemperature: pressureTemperature,
-            baseCurvePercent: baseCurvePercent,
-            fanResponseMultiplier: fanResponseMultiplier,
-            fanResponseInferred: inferFanResponseFromGraph,
-            rawBaselinePercent: assistState.rawBaselinePercent,
-            assistFloorPercent: assistState.assistFloorPercent,
-            assistAppliedKinds: assistState.assistAppliedKinds,
-            demandSource: assistState.demandSource,
-            conditionedDemand: conditionedDemand
         )
     }
 

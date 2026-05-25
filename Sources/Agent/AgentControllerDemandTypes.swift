@@ -48,4 +48,13 @@ enum AgentControllerDemandTypes {
         let committedPercent: Double
         let steppedUp: Bool
     }
+
+    struct AccelerationStepInput {
+        let current: Double
+        let target: Double
+        let velocity: Double
+        let maxVelocity: Double
+        let maxAcceleration: Double
+        let elapsedSeconds: Double
+    }
 }

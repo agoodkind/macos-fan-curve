@@ -223,11 +223,13 @@ extension FanCurveEditor {
     }
 
     func tooltipPill(temp: Double, percent: Double, rpm: Int) -> some View {
-        let label = Text("\(displayTemp(temp))\(unit.symbol)  \(Int(percent * 100))%  \(rpm.formatted()) RPM")
-            .font(.system(.caption2, design: .rounded).weight(.medium))
-            .foregroundColor(Color.primary.opacity(0.95))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
+        let label = Text(
+            "\(displayTemp(temp))\(unit.symbol)  \(Int(percent * 100))%  \(rpm.formatted()) RPM"
+        )
+        .font(.system(.caption2, design: .rounded).weight(.medium))
+        .foregroundColor(Color.primary.opacity(0.95))
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
 
         return
             label

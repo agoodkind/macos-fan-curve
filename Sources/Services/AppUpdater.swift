@@ -14,7 +14,6 @@ final class AppUpdater: ObservableObject {
     @Published private(set) var automaticallyChecksForUpdates = false
 
     private(set) var updaterController: SPUStandardUpdaterController?
-    private var cancellables = Set<AnyCancellable>()
 
     var isConfigured: Bool {
         !generatedSparkleFeedURL.isEmpty && !generatedSparklePublicEDKey.isEmpty

@@ -6,10 +6,7 @@
 //  Copyright © 2026
 //
 
-import AppLog
 import Foundation
-
-private let temperatureUnitLog = AppLog.make(category: "TemperatureUnit")
 
 /// User-facing temperature unit preference.
 /// Values persist in UserDefaults.standard under the key 'temperatureUnit'.
@@ -39,10 +36,5 @@ enum TemperatureUnit: String, CaseIterable, Identifiable {
         case .celsius: return celsius
         case .fahrenheit: return celsius * 9.0 / 5.0 + 32.0
         }
-    }
-
-    static var current: TemperatureUnit {
-        let raw = UserDefaults.standard.string(forKey: "temperatureUnit") ?? ""
-        return TemperatureUnit(rawValue: raw) ?? .celsius
     }
 }

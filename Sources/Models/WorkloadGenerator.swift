@@ -23,32 +23,44 @@ private let signposter = AppLog.signposter(category: "WorkloadGenerator")
 final class WorkloadGenerator: ObservableObject {
     @Published var isRunning = false
 
-    private var cpuTask: Task<Void, Never>?
-    private var gpuTask: Task<Void, Never>?
+    private var cpuCancellation: StressCancellation?
+    private var gpuCancellation: StressCancellation?
 
     func start(cpu: Bool, gpu: Bool) {
         if isRunning { return }
         isRunning = true
-        if cpu { cpuTask = Task.detached(priority: .utility) { Self.runCPUStress() } }
-        if gpu { gpuTask = Task.detached(priority: .utility) { Self.runGPUStress() } }
+        if cpu {
+            let cancellation = StressCancellation()
+            cpuCancellation = cancellation
+            DispatchQueue.global(qos: .utility).async {
+                Self.runCPUStress(cancellation: cancellation)
+            }
+        }
+        if gpu {
+            let cancellation = StressCancellation()
+            gpuCancellation = cancellation
+            DispatchQueue.global(qos: .utility).async {
+                Self.runGPUStress(cancellation: cancellation)
+            }
+        }
     }
 
     func stop() {
-        cpuTask?.cancel()
-        gpuTask?.cancel()
-        cpuTask = nil
-        gpuTask = nil
+        cpuCancellation?.cancel()
+        gpuCancellation?.cancel()
+        cpuCancellation = nil
+        gpuCancellation = nil
         isRunning = false
     }
 
     /// One SHA256 loop per logical core. Saturates the CPU quickly.
-    nonisolated private static func runCPUStress() {
+    nonisolated private static func runCPUStress(cancellation: StressCancellation) {
         let state = signposter.beginInterval("cpu.stress")
         defer { signposter.endInterval("cpu.stress", state) }
         let cores = max(2, ProcessInfo.processInfo.activeProcessorCount)
         DispatchQueue.concurrentPerform(iterations: cores) { _ in
             var buffer = [UInt8](repeating: 0, count: 4_096)
-            while !Task.isCancelled {
+            while !cancellation.isCancelled {
                 for byteIndex in 0..<buffer.count { buffer[byteIndex] = UInt8.random(in: 0...255) }
                 _ = SHA256.hash(data: buffer)
             }
@@ -57,7 +69,7 @@ final class WorkloadGenerator: ObservableObject {
 
     /// Repeated 1024x1024 matrix multiplies on the default Metal device.
     /// Cancels cleanly when the task is cancelled.
-    nonisolated private static func runGPUStress() {
+    nonisolated private static func runGPUStress(cancellation: StressCancellation) {
         let state = signposter.beginInterval("gpu.stress")
         defer { signposter.endInterval("gpu.stress", state) }
         guard
@@ -74,8 +86,10 @@ final class WorkloadGenerator: ObservableObject {
         else { return }
 
         // Fill A and B with random floats once.
-        let ptrA = bufferA.contents().bindMemory(to: Float.self, capacity: matrixDimension * matrixDimension)
-        let ptrB = bufferB.contents().bindMemory(to: Float.self, capacity: matrixDimension * matrixDimension)
+        let ptrA = bufferA.contents().bindMemory(
+            to: Float.self, capacity: matrixDimension * matrixDimension)
+        let ptrB = bufferB.contents().bindMemory(
+            to: Float.self, capacity: matrixDimension * matrixDimension)
         for valueIndex in 0..<(matrixDimension * matrixDimension) {
             ptrA[valueIndex] = Float.random(in: 0...1)
             ptrB[valueIndex] = Float.random(in: 0...1)
@@ -102,11 +116,29 @@ final class WorkloadGenerator: ObservableObject {
             alpha: 1.0,
             beta: 0.0)
 
-        while !Task.isCancelled {
+        while !cancellation.isCancelled {
             guard let cmd = queue.makeCommandBuffer() else { break }
-            kernel.encode(commandBuffer: cmd, leftMatrix: matA, rightMatrix: matB, resultMatrix: matC)
+            kernel.encode(
+                commandBuffer: cmd, leftMatrix: matA, rightMatrix: matB, resultMatrix: matC)
             cmd.commit()
             cmd.waitUntilCompleted()
         }
+    }
+}
+
+private final class StressCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
     }
 }

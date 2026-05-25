@@ -14,10 +14,9 @@ private let snapshotLog = AppLog.make(category: "AgentSnapshot")
 enum AgentSnapshotPush {
     static let notificationNameString = "io.goodkind.fancurve.snapshotChanged"
 
-    static var notificationName: CFString { notificationNameString as CFString }
-
     static func post() {
-        snapshotLog.debug("snapshot.pushed notification=\(notificationNameString, privacy: .public)")
+        snapshotLog.debug(
+            "snapshot.pushed notification=\(notificationNameString, privacy: .public)")
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDarwinNotifyCenter(),
             CFNotificationName(notificationNameString as CFString),

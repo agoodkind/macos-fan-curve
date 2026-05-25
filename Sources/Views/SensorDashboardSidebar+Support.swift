@@ -29,7 +29,8 @@ extension SensorDashboardSidebar {
             case .openSystemSettings: return "open_system_settings"
             case .enableBoost: return "enable_boost"
             case .disableBoost: return "disable_boost"
-            case .setFanControl(let enabled): return enabled ? "enable_fan_control" : "disable_fan_control"
+            case .setFanControl(let enabled):
+                return enabled ? "enable_fan_control" : "disable_fan_control"
             }
         }
 
@@ -62,6 +63,14 @@ extension SensorDashboardSidebar {
         var id: String { kind.rawValue }
     }
 
+    struct SidebarProminentActionConfiguration {
+        let title: String
+        let systemImage: String?
+        let tint: Color
+        let active: Bool
+        let isBusy: Bool
+    }
+
     func usageBlock(
         label: String,
         icon: String,
@@ -90,8 +99,18 @@ extension SensorDashboardSidebar {
 
     var fanControlStateLabel: String {
         if presentation.chartState == .degraded {
+            if installState.helperNeedsRepair { return "Helper Needs Repair" }
             if presentation.installationStep == .helperMissing { return "System Helper Required" }
-            if presentation.installationStep == .helperAwaitingApproval { return "Approval Required" }
+            if presentation.installationStep == .agentMissing {
+                return "Background Control Required"
+            }
+            if presentation.installationStep == .helperAwaitingApproval {
+                return "Approval Required"
+            }
+            if presentation.installationStep == .agentAwaitingApproval {
+                return "Approval Required"
+            }
+            return presentation.telemetryFresh ? "Telemetry Unavailable" : "Agent Not Responding"
         }
         if presentation.controlState == .monitorOnly { return "Monitor only" }
         if !fanControlReady { return "Not Set Up" }
@@ -100,6 +119,7 @@ extension SensorDashboardSidebar {
     }
 
     var fanControlStateColor: Color {
+        if presentation.chartState == .degraded { return statusColor }
         if !fanControlReady { return .secondary }
         if boost { return Color(nsColor: .systemOrange) }
         return curveModel.isActive ? Color.accentColor : .secondary
@@ -153,13 +173,14 @@ extension SensorDashboardSidebar {
 
     var boostButton: some View {
         let targetAction: SidebarPendingAction = boost ? .disableBoost : .enableBoost
-        return sidebarProminentActionButton(
+        let configuration = SidebarProminentActionConfiguration(
             title: boostButtonLabel,
             systemImage: "bolt.fill",
             tint: Color(nsColor: .systemOrange),
             active: boost,
             isBusy: isPendingAction(targetAction)
-        ) {
+        )
+        return sidebarProminentActionButton(configuration) {
             sensorDashboardSidebarLog.notice(
                 "sidebar.boost.toggled next_enabled=\((!boost), privacy: .public)"
             )
@@ -191,73 +212,56 @@ extension SensorDashboardSidebar {
     }
 
     func sidebarProminentActionButton(
-        title: String,
-        systemImage: String?,
-        tint: Color,
-        active: Bool,
-        isBusy: Bool,
+        _ configuration: SidebarProminentActionConfiguration,
         action: @escaping () -> Void
     ) -> some View {
         Group {
             styledSidebarProminentActionButton(
-                title: title,
-                systemImage: systemImage,
-                tint: tint,
-                active: active,
-                isBusy: isBusy,
+                configuration,
                 action: action
             )
         }
         .frame(maxWidth: .infinity)
-        .allowsHitTesting(!isBusy)
+        .allowsHitTesting(!configuration.isBusy)
     }
 
     @ViewBuilder
     private func styledSidebarProminentActionButton(
-        title: String,
-        systemImage: String?,
-        tint: Color,
-        active: Bool,
-        isBusy: Bool,
+        _ configuration: SidebarProminentActionConfiguration,
         action: @escaping () -> Void
     ) -> some View {
         sidebarProminentActionButtonBody(
-            title: title,
-            systemImage: systemImage,
-            tint: tint,
-            active: active,
-            isBusy: isBusy,
+            configuration,
             action: action
         )
         .buttonStyle(.plain)
         .background {
             Capsule()
-                .fill(active ? tint : tint.opacity(0.12))
+                .fill(
+                    configuration.active
+                        ? configuration.tint
+                        : configuration.tint.opacity(0.12)
+                )
         }
         .overlay(
             Capsule()
-                .stroke(tint.opacity(active ? 0 : 0.45), lineWidth: 0.8)
+                .stroke(
+                    configuration.tint.opacity(configuration.active ? 0 : 0.45),
+                    lineWidth: 0.8
+                )
         )
     }
 
     private func sidebarProminentActionButtonBody(
-        title: String,
-        systemImage: String?,
-        tint: Color,
-        active: Bool,
-        isBusy: Bool,
+        _ configuration: SidebarProminentActionConfiguration,
         action: @escaping () -> Void
     ) -> some View {
         Button {
-            guard !isBusy else { return }
+            guard !configuration.isBusy else { return }
             action()
         } label: {
             sidebarProminentActionButtonLabel(
-                title: title,
-                systemImage: systemImage,
-                tint: tint,
-                active: active,
-                isBusy: isBusy
+                configuration
             )
             .frame(maxWidth: .infinity)
         }
@@ -265,71 +269,32 @@ extension SensorDashboardSidebar {
 
     @ViewBuilder
     private func sidebarProminentActionButtonLabel(
-        title: String,
-        systemImage: String?,
-        tint: Color,
-        active: Bool,
-        isBusy: Bool
+        _ configuration: SidebarProminentActionConfiguration
     ) -> some View {
-        ZStack {
-            if isBusy {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(active ? Color.white : tint)
-                    Text(title)
-                }
-                .foregroundStyle(active ? Color.white : Color.primary)
-            } else {
-                Text(title)
-                    .foregroundStyle(active ? Color.white : Color.primary)
-                if let systemImage {
-                    HStack {
-                        Image(systemName: systemImage)
-                            .foregroundStyle(active ? Color.white : tint)
-                        Spacer()
-                    }
-                    .padding(.leading, 14)
-                }
+        HStack(spacing: 8) {
+            Spacer(minLength: 0)
+
+            if configuration.isBusy {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(configuration.active ? Color.white : configuration.tint)
+            } else if let systemImage = configuration.systemImage {
+                Image(systemName: systemImage)
+                    .foregroundStyle(
+                        configuration.active ? Color.white : configuration.tint
+                    )
             }
+
+            Text(configuration.title)
+                .foregroundStyle(configuration.active ? Color.white : Color.primary)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
         }
         .font(.callout.weight(.medium))
         .frame(maxWidth: .infinity)
+        .padding(.horizontal, 14)
         .padding(.vertical, 7)
-    }
-
-    @ViewBuilder
-    private func legacySidebarProminentActionButton(
-        title: String,
-        systemImage: String?,
-        tint: Color,
-        active: Bool,
-        isBusy: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        if active {
-            sidebarProminentActionButtonBody(
-                title: title,
-                systemImage: systemImage,
-                tint: tint,
-                active: active,
-                isBusy: isBusy,
-                action: action
-            )
-            .buttonStyle(.borderedProminent)
-            .tint(tint)
-        } else {
-            sidebarProminentActionButtonBody(
-                title: title,
-                systemImage: systemImage,
-                tint: tint,
-                active: active,
-                isBusy: isBusy,
-                action: action
-            )
-            .buttonStyle(.bordered)
-            .tint(tint)
-        }
     }
 
     var boostHelp: String {

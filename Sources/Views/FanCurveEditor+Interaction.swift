@@ -25,7 +25,10 @@ extension FanCurveEditor {
             .fill(Color(nsColor: .windowBackgroundColor).opacity(0.98))
             .frame(width: isHighlighted ? 14 : 11, height: isHighlighted ? 14 : 11)
             .overlay(Circle().stroke(strokeColor, lineWidth: strokeWidth))
-            .shadow(color: strokeColor.opacity(effectiveActive ? 0.25 : 0.2), radius: isHighlighted ? 6 : 2)
+            .shadow(
+                color: strokeColor.opacity(effectiveActive ? 0.25 : 0.2),
+                radius: isHighlighted ? 6 : 2
+            )
             .padding(controlPointHitRadius - ((isHighlighted ? 14 : 11) / 2))
             .contentShape(Circle())
             .position(position)
@@ -56,7 +59,8 @@ extension FanCurveEditor {
     func hoveredControlPointIndex(at location: CGPoint, in size: CGSize) -> Int? {
         model.controlPoints.enumerated()
             .compactMap { index, point -> (index: Int, distance: CGFloat)? in
-                let position = dataToPixel(temp: point.temperature, percent: point.fanPercent, in: size)
+                let position = dataToPixel(
+                    temp: point.temperature, percent: point.fanPercent, in: size)
                 let distance = hypot(position.x - location.x, position.y - location.y)
                 guard distance <= controlPointHitRadius else { return nil }
                 return (index, distance)

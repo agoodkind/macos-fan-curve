@@ -264,6 +264,15 @@ struct RuntimeStateInputs: Codable, Sendable, Equatable {
     }
 }
 
+private struct RuntimeHealthInputs: Codable, Sendable, Equatable {
+    let setupState: SetupState
+    let telemetry: RuntimeTelemetry?
+    let now: Date
+    let freshnessInterval: TimeInterval
+    let agentReportedFailure: Bool
+    let ownershipPreempted: Bool
+}
+
 struct RuntimeState: Codable, Sendable, Equatable {
     let setup: SetupState
     let control: ControlState
@@ -282,12 +291,14 @@ struct RuntimeState: Codable, Sendable, Equatable {
         let snapshot = inputs.snapshot
         let telemetry = snapshot.map(RuntimeTelemetry.init(snapshot:))
         let health = resolveHealth(
-            setupState: setupState,
-            telemetry: telemetry,
-            now: inputs.now,
-            freshnessInterval: inputs.freshnessInterval,
-            agentReportedFailure: inputs.agentReportedFailure,
-            ownershipPreempted: inputs.ownershipPreempted
+            inputs: RuntimeHealthInputs(
+                setupState: setupState,
+                telemetry: telemetry,
+                now: inputs.now,
+                freshnessInterval: inputs.freshnessInterval,
+                agentReportedFailure: inputs.agentReportedFailure,
+                ownershipPreempted: inputs.ownershipPreempted
+            )
         )
         let control = ControlState.resolve(
             setupState: setupState,
@@ -296,7 +307,8 @@ struct RuntimeState: Codable, Sendable, Equatable {
             ownershipPreempted: health == .ownershipPreempted
         )
         let telemetryState = TelemetryState.resolve(telemetry: telemetry, health: health)
-        return RuntimeState(setup: setupState, control: control, telemetry: telemetryState, health: health)
+        return RuntimeState(
+            setup: setupState, control: control, telemetry: telemetryState, health: health)
     }
 
     static func fromSharedDefaultsSnapshot(
@@ -317,30 +329,23 @@ struct RuntimeState: Codable, Sendable, Equatable {
         )
     }
 
-    private static func resolveHealth(
-        setupState: SetupState,
-        telemetry: RuntimeTelemetry?,
-        now: Date,
-        freshnessInterval: TimeInterval,
-        agentReportedFailure: Bool,
-        ownershipPreempted: Bool
-    ) -> RuntimeHealth {
-        guard setupState.isReady else {
+    private static func resolveHealth(inputs: RuntimeHealthInputs) -> RuntimeHealth {
+        guard inputs.setupState.isReady else {
             return .degraded(reason: .setupIncomplete)
         }
-        guard let telemetry else {
+        guard let telemetry = inputs.telemetry else {
             return .degraded(reason: .snapshotUnavailable)
         }
-        if ownershipPreempted {
+        if inputs.ownershipPreempted {
             return .ownershipPreempted
         }
         if !telemetry.helperReachable {
             return .degraded(reason: .helperUnavailable)
         }
-        if agentReportedFailure {
+        if inputs.agentReportedFailure {
             return .degraded(reason: .agentReportedFailure)
         }
-        if now.timeIntervalSince(telemetry.timestamp) >= freshnessInterval {
+        if inputs.now.timeIntervalSince(telemetry.timestamp) >= inputs.freshnessInterval {
             return .stale
         }
         return .healthy

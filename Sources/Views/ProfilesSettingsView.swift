@@ -87,7 +87,8 @@ struct ProfilesSettingsView: View {
             Text("Presets")
         } footer: {
             SettingsDescription(
-                text: "Applying a preset replaces your current curve. You can edit the points again afterward."
+                text:
+                    "Applying a preset replaces your current curve. You can edit the points again afterward."
             )
         }
 
@@ -106,7 +107,8 @@ struct ProfilesSettingsView: View {
         } header: {
             Text("Reset")
         } footer: {
-            SettingsDescription(text: "Replaces the current curve with the built-in starting curve.")
+            SettingsDescription(
+                text: "Replaces the current curve with the built-in starting curve.")
         }
 
         Section {
@@ -119,7 +121,8 @@ struct ProfilesSettingsView: View {
             Text("Learn")
         } footer: {
             SettingsDescription(
-                text: "Samples your machine under load and fits a curve that mirrors how macOS runs it in Auto mode."
+                text:
+                    "Samples your machine under load and fits a curve that mirrors how macOS runs it in Auto mode."
             )
         }
     }
@@ -140,10 +143,8 @@ struct ProfilesSettingsView: View {
             FanReading(
                 id: fan.index,
                 actualRPM: fan.actualRPM,
-                targetRPM: fan.targetRPM,
                 minRPM: fan.minRPM,
-                maxRPM: fan.maxRPM,
-                manualMode: fan.manualMode
+                maxRPM: fan.maxRPM
             )
         }
         sensorState.lastUpdate = snapshot.timestamp

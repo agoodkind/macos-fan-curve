@@ -107,7 +107,8 @@ final class EventArtifactWriter: @unchecked Sendable {
         ].joined(separator: ",") + "\n"
 
     init() {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let support = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask)[0]
         self.directory = support.appendingPathComponent("io.goodkind.fan", isDirectory: true)
         self.activeJSON = directory.appendingPathComponent("events.jsonl")
         self.rotatedJSON = directory.appendingPathComponent("events.1.jsonl")
@@ -181,8 +182,18 @@ final class EventArtifactWriter: @unchecked Sendable {
     }
 
     private func rotateIfNeededLocked() {
-        let attrs = try? FileManager.default.attributesOfItem(atPath: activeJSON.path)
-        guard let size = attrs?[.size] as? Int, size >= rotateThreshold else { return }
+        let size: Int
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: activeJSON.path)
+            guard let fileSize = attributes[.size] as? Int else { return }
+            size = fileSize
+        } catch {
+            log.notice(
+                "artifact.rotate.attributes_failed path=\(activeJSON.lastPathComponent, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=skip-rotation-check"
+            )
+            return
+        }
+        guard size >= rotateThreshold else { return }
         let fm = FileManager.default
         removeRotatedArtifactIfPresent(rotatedJSON)
         removeRotatedArtifactIfPresent(rotatedCSV)
@@ -197,7 +208,8 @@ final class EventArtifactWriter: @unchecked Sendable {
                 "artifact.rotated from=\(activeJSON.lastPathComponent, privacy: .public) to=\(rotatedJSON.lastPathComponent, privacy: .public)"
             )
         } catch {
-            log.error("artifact.rotate.failed error=\(error.localizedDescription, privacy: .public)")
+            log.error(
+                "artifact.rotate.failed error=\(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -221,21 +233,32 @@ final class EventArtifactWriter: @unchecked Sendable {
                 initial.append(Data(header.utf8))
             }
             initial.append(data)
-            fm.createFile(atPath: url.path, contents: initial, attributes: [.posixPermissions: 0o600])
+            fm.createFile(
+                atPath: url.path, contents: initial, attributes: [.posixPermissions: 0o600])
             log.info("artifact.written path=\(url.path, privacy: .public) kind=create")
             return
         }
         let handle = try FileHandle(forWritingTo: url)
-        defer { try? handle.close() }
+        defer {
+            do {
+                try handle.close()
+            } catch {
+                log.notice(
+                    "artifact.close.failed path=\(url.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=ignore-close-error"
+                )
+            }
+        }
         try handle.seekToEnd()
         try handle.write(contentsOf: data)
     }
 
     private func csvLine(for event: Event) -> String {
         let avgActual =
-            event.fanActualRPM.isEmpty ? 0 : event.fanActualRPM.reduce(0, +) / Float(event.fanActualRPM.count)
+            event.fanActualRPM.isEmpty
+            ? 0 : event.fanActualRPM.reduce(0, +) / Float(event.fanActualRPM.count)
         let avgTarget =
-            event.fanTargetRPM.isEmpty ? 0 : event.fanTargetRPM.reduce(0, +) / Float(event.fanTargetRPM.count)
+            event.fanTargetRPM.isEmpty
+            ? 0 : event.fanTargetRPM.reduce(0, +) / Float(event.fanTargetRPM.count)
         let columns: [String] = [
             iso8601(event.ts),
             event.kind,

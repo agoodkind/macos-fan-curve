@@ -35,6 +35,7 @@ struct FanResponse: Sendable, Equatable {
 
     static func loadValue(defaults: UserDefaults) -> FanResponse {
         guard defaults.object(forKey: SharedConfigKeys.fanResponseValue) != nil else {
+            fanResponseLog.debug("fan_response.value.default recovery=balanced")
             return .balanced
         }
         return FanResponse(value: defaults.double(forKey: SharedConfigKeys.fanResponseValue))
@@ -98,8 +99,6 @@ struct FanResponse: Sendable, Equatable {
 }
 
 struct FanResponseMultiplier: Sendable, Equatable {
-    static let balanced = FanResponseMultiplier(1.0)
-
     let rawValue: Double
 
     init(_ rawValue: Double) {

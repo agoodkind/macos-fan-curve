@@ -17,11 +17,13 @@ extension SensorDashboardSidebar {
             if let (label, action) = setupAction {
                 let isBusy = setupButtonBusy
                 sidebarProminentActionButton(
-                    title: setupButtonLabel(fallback: label),
-                    systemImage: setupButtonSystemImage,
-                    tint: Color.accentColor,
-                    active: true,
-                    isBusy: isBusy,
+                    SidebarProminentActionConfiguration(
+                        title: setupButtonLabel(fallback: label),
+                        systemImage: setupButtonSystemImage,
+                        tint: Color.accentColor,
+                        active: true,
+                        isBusy: isBusy
+                    ),
                     action: action
                 )
                 .help(setupHelp)
@@ -41,7 +43,9 @@ extension SensorDashboardSidebar {
     private var setupButtonSystemImage: String? {
         switch installState.step {
         case .helperMissing:
-            return nil
+            return installState.helperNeedsRepair
+                ? "arrow.triangle.2.circlepath.circle.fill"
+                : nil
         case .agentMissing:
             return "arrow.triangle.2.circlepath.circle.fill"
         case .agentAwaitingApproval, .helperAwaitingApproval:
@@ -54,11 +58,17 @@ extension SensorDashboardSidebar {
     private var setupHelp: String {
         switch installState.step {
         case .helperMissing:
+            if installState.helperNeedsRepair {
+                return
+                    "The helper is reachable, but this app install needs to repair its registration."
+            }
             return "Install the helper so Fan Curve can apply fan speeds."
         case .agentMissing:
-            return "Enable background control so Fan Curve can keep applying your curve after the app closes."
+            return
+                "Enable background control so Fan Curve can keep applying your curve after the app closes."
         case .agentAwaitingApproval, .helperAwaitingApproval:
-            return "Open Login Items in System Settings and allow Fan Curve to run in the background."
+            return
+                "Open Login Items in System Settings and allow Fan Curve to run in the background."
         case .ready, .checking:
             return ""
         }
@@ -68,23 +78,13 @@ extension SensorDashboardSidebar {
         switch installState.step {
         case .helperMissing:
             return (
-                "Set Up System Helper",
+                installState.helperNeedsRepair
+                    ? "Reinstall System Helper"
+                    : "Install System Helper",
                 {
                     sensorDashboardSidebarSetupLog.notice("sidebar.helper_setup.tapped")
                     beginPendingAction(.helperSetup)
-                    Task {
-                        do {
-                            try await runtime.registerHelperDaemon()
-                        } catch {
-                            sensorDashboardSidebarSetupLog.notice(
-                                "sidebar.helper_setup.command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-error"
-                            )
-                            await MainActor.run {
-                                installState.lastError = error.localizedDescription
-                                completePendingAction(.helperSetup, reason: "command-failed")
-                            }
-                        }
-                    }
+                    installState.registerHelperDaemon(agentClient: runtime)
                 }
             )
         case .agentMissing:
@@ -132,17 +132,27 @@ extension SensorDashboardSidebar {
     }
 
     private func setupButtonLabel(fallback: String) -> String {
-        if isPendingAction(.helperSetup) { return "Setting Up System Helper" }
+        if isPendingAction(.helperSetup) {
+            return installState.helperNeedsRepair
+                ? "Reinstalling System Helper"
+                : "Installing System Helper"
+        }
         if isPendingAction(.agentSetup) { return "Enabling Background Control" }
         if isPendingAction(.openSystemSettings) { return "Opening System Settings" }
-        if installState.isRegisteringHelper { return "Setting Up System Helper" }
+        if installState.isRegisteringHelper {
+            return installState.helperNeedsRepair
+                ? "Reinstalling System Helper"
+                : "Installing System Helper"
+        }
         if installState.isRegisteringAgent { return "Enabling Background Control" }
         return fallback
     }
 
     var fanControlToggleHelp: String {
         if boost { return "Turn Boost off first to change this." }
-        if fanControlToggleBusy { return "Waiting for background control to observe this fan-control change." }
+        if fanControlToggleBusy {
+            return "Waiting for background control to observe this fan-control change."
+        }
         return ""
     }
 

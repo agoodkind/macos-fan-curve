@@ -33,6 +33,9 @@ enum InterpolationMode: Codable, Sendable, Equatable {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
         guard let mode = Self(rawValue: rawValue) else {
+            interpolationModeLog.error(
+                "interpolation_mode.decode_failed raw=\(rawValue, privacy: .public) recovery=throw-data-corrupted"
+            )
             throw DecodingError.dataCorruptedError(
                 in: container,
                 debugDescription: "Unknown interpolation mode: \(rawValue)"

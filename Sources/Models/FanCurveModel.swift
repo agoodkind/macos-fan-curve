@@ -70,8 +70,6 @@ class FanCurveModel: ObservableObject {
     /// aggressive preset from Settings if they want.
     static let defaultCurve: [CurvePoint] = CurvePresets.appleSilent.curvePoints()
 
-    static let tempRange: ClosedRange<Double> = CurveColumns.tempRange
-
     init() {
         let loaded = Self.load()
         self.controlPoints = Self.normalizedCurve(loaded.isEmpty ? Self.defaultCurve : loaded)
@@ -87,15 +85,6 @@ class FanCurveModel: ObservableObject {
 
     func evaluate(at temperature: Double) -> Double {
         CurveInterpolation.evaluate(at: temperature, points: controlPoints, mode: interpolationMode)
-    }
-
-    /// Map a curve percent (0...1) to an RPM target for a specific fan.
-    /// Shares its semantics with `fanCommandFor`. Kept for GUI preview uses.
-    func rpmForFan(percent: Double, minRPM: Float, maxRPM: Float) -> Float {
-        switch fanCommandFor(percent: percent, minRPM: minRPM, maxRPM: maxRPM) {
-        case .auto: return minRPM
-        case .setRPM(let rpm): return rpm
-        }
     }
 
     func resetToDefault() {
@@ -120,7 +109,9 @@ class FanCurveModel: ObservableObject {
     }
 
     private static func load() -> [CurvePoint] {
-        guard let data = sharedDefaults().data(forKey: SharedConfigKeys.curvePoints) else { return [] }
+        guard let data = sharedDefaults().data(forKey: SharedConfigKeys.curvePoints) else {
+            return []
+        }
         do {
             let points = try JSONDecoder().decode([CurvePoint].self, from: data)
             guard points.count >= 2 else {

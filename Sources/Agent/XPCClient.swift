@@ -21,6 +21,17 @@ import SMCFanXPCClient
 
 private let log = AppLog.make(category: "XPCClient")
 
+enum XPCClientError: LocalizedError {
+    case unavailable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable(let message):
+            return message
+        }
+    }
+}
+
 /// Upstream's FanInfo and the project local FanInfo in
 /// Sources/Common/SMCProtocol.swift have the same fields but are distinct
 /// types. Convert at the XPC boundary so AgentController keeps using the
@@ -48,7 +59,8 @@ enum ConnectionState: Sendable {
 /// reconnect, `ResumeGuard`) is handled by `SMCFanXPCClient` internally,
 /// and the privileged helper arbitrates priority.
 class XPCClient: ObservableObject, @unchecked Sendable {
-    private let client: SMCFanXPCClient
+    private let client: SMCFanXPCClient?
+    private let initializationError: String?
     private let stateLock = NSLock()
 
     @Published var state: ConnectionState = .disconnected
@@ -62,9 +74,12 @@ class XPCClient: ObservableObject, @unchecked Sendable {
                 clientName: clientName,
                 defaultPriority: defaultPriority
             )
+            self.initializationError = nil
         } catch {
-            log.error("xpc.client_init_failed error=\(error.localizedDescription, privacy: .public)")
-            preconditionFailure("SMCFanXPCClient init failed: \(error.localizedDescription)")
+            self.client = nil
+            self.initializationError = error.localizedDescription
+            log.error(
+                "xpc.client_init_failed error=\(error.localizedDescription, privacy: .public)")
         }
         log.debug(
             "xpc.client_init name=\(clientName, privacy: .public) default_priority=\(defaultPriority, privacy: .public)"
@@ -73,29 +88,16 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
     /// Invalidate on app termination.
     func shutdown() {
-        self.client.shutdown()
+        client?.shutdown()
         Task { @MainActor [weak self] in self?.state = .disconnected }
         log.debug("xpc.shutdown")
     }
 
     // MARK: - SMC Operations
 
-    func getFanCount() async throws -> UInt {
-        do {
-            let count = try await client.getFanCount()
-            self.markConnected()
-            return count
-        } catch {
-            self.markError(error)
-            log.notice(
-                "xpc.get_fan_count.failed error=\(error.localizedDescription, privacy: .public) recovery=propagate"
-            )
-            throw error
-        }
-    }
-
     func getFanInfo(_ index: UInt) async throws -> FanInfo {
         do {
+            let client = try requireClient()
             let info = try await client.getFanInfo(index)
             self.markConnected()
             return toLocal(info)
@@ -114,6 +116,7 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
     func setFanRPM(_ index: UInt, rpm: Float, priority: Int?) async throws {
         do {
+            let client = try requireClient()
             if let priority {
                 try await client.setFanRPM(index, rpm: rpm, priority: priority)
             } else {
@@ -124,9 +127,11 @@ class XPCClient: ObservableObject, @unchecked Sendable {
             // Preempted by a higher priority client (for example lmd while an
             // LLM is running). Not an error from the curve's point of view;
             // skip this write and let the next tick retry.
-            log.debug(
+            self.markConnected()
+            log.notice(
                 "xpc.write_preempted fan=\(index, privacy: .public) reason=\(err.message, privacy: .public)"
             )
+            return
         } catch {
             self.markError(error)
             log.notice(
@@ -142,6 +147,7 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
     func setFanAuto(_ index: UInt, priority: Int?) async throws {
         do {
+            let client = try requireClient()
             if let priority {
                 try await client.setFanAuto(index, priority: priority)
             } else {
@@ -149,9 +155,11 @@ class XPCClient: ObservableObject, @unchecked Sendable {
             }
             self.markConnected()
         } catch let err as SMCXPCConflictError {
-            log.debug(
+            self.markConnected()
+            log.notice(
                 "xpc.auto_preempted fan=\(index, privacy: .public) reason=\(err.message, privacy: .public)"
             )
+            return
         } catch {
             self.markError(error)
             log.notice(
@@ -163,6 +171,7 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
     func readKey(_ key: String) async throws -> Float {
         do {
+            let client = try requireClient()
             let value = try await client.readKey(key)
             self.markConnected()
             return value
@@ -177,6 +186,7 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
     func getOwnership() async throws -> [AgentOwnershipEntry] {
         do {
+            let client = try requireClient()
             let entries = try await client.getOwnership()
             self.markConnected()
             return entries.map { entry in
@@ -262,6 +272,18 @@ class XPCClient: ObservableObject, @unchecked Sendable {
     }
 
     // MARK: - State transitions
+
+    private func requireClient() throws -> SMCFanXPCClient {
+        if let client {
+            return client
+        }
+
+        let message = initializationError ?? "SMCFanXPCClient is unavailable"
+        log.notice(
+            "xpc.client_unavailable error=\(message, privacy: .public) recovery=propagate"
+        )
+        throw XPCClientError.unavailable(message)
+    }
 
     private func markConnected() {
         self.stateLock.lock()

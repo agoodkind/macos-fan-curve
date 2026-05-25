@@ -15,14 +15,6 @@ enum LiveMarkerPresentation {
         var demandTemperatureC: Double
         var demandPercent: Double
         var demandBasePercent: Double
-
-        static let zero = Values(
-            fanTemperatureC: 0,
-            fanPercent: 0,
-            demandTemperatureC: 0,
-            demandPercent: 0,
-            demandBasePercent: 0
-        )
     }
 
     struct Target: Sendable, Equatable {
@@ -30,7 +22,6 @@ enum LiveMarkerPresentation {
         var generation: Generation
 
         struct Generation: Sendable, Equatable {
-            var snapshotEpoch: Double
             var curveActive: Bool
             var boostEnabled: Bool
             var fanSignature: String
@@ -40,7 +31,6 @@ enum LiveMarkerPresentation {
     }
 
     struct TargetInput: Sendable {
-        var snapshotEpoch: Double
         var curveActive: Bool
         var boostEnabled: Bool
         var governingTemperatureC: Double
@@ -98,7 +88,6 @@ enum LiveMarkerPresentation {
                 demandBasePercent: basePercent
             ),
             generation: Target.Generation(
-                snapshotEpoch: input.snapshotEpoch,
                 curveActive: input.curveActive,
                 boostEnabled: input.boostEnabled,
                 fanSignature: fanSignature(input.fans),

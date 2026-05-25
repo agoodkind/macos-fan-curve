@@ -37,7 +37,6 @@ final class LiveMarkerPresentationTests: XCTestCase {
     func testCurveDemandUsesBaseCurveAnchorAndActualFanPercent() {
         let target = LiveMarkerPresentation.makeTarget(
             from: LiveMarkerPresentation.TargetInput(
-                snapshotEpoch: 1,
                 curveActive: true,
                 boostEnabled: false,
                 governingTemperatureC: 72,
@@ -72,7 +71,6 @@ final class LiveMarkerPresentationTests: XCTestCase {
     func testAssistDemandCanRenderAboveBaseCurveAnchor() {
         let target = LiveMarkerPresentation.makeTarget(
             from: LiveMarkerPresentation.TargetInput(
-                snapshotEpoch: 1,
                 curveActive: true,
                 boostEnabled: false,
                 governingTemperatureC: 72,
@@ -98,7 +96,6 @@ final class LiveMarkerPresentationTests: XCTestCase {
     func testDemandUsesSemanticStreamWhenCommandedTargetLags() {
         let target = LiveMarkerPresentation.makeTarget(
             from: LiveMarkerPresentation.TargetInput(
-                snapshotEpoch: 1,
                 curveActive: true,
                 boostEnabled: false,
                 governingTemperatureC: 92,

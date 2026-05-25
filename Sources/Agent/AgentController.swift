@@ -99,7 +99,10 @@ final class AgentController: @unchecked Sendable {
 
     func start() {
         agentControllerLog.notice("agent.started pollInterval=\(pollInterval, privacy: .public)s")
-        timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(
+            withTimeInterval: pollInterval,
+            repeats: true
+        ) { [weak self] _ in
             self?.requestTick()
         }
         registerDarwinObserver()

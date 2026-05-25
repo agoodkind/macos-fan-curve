@@ -9,9 +9,13 @@
 import SwiftUI
 
 struct DashboardPresentationState: Equatable {
-    enum Layout: Equatable {
-        case setup
-        case dashboard
+    struct Inputs: Equatable {
+        let installationStep: InstallationState.Step
+        let telemetryFresh: Bool
+        let runtimeTelemetryAvailable: Bool
+        let helperReachable: Bool
+        let curveActive: Bool
+        let boostEnabled: Bool
     }
 
     enum ChartState: Equatable {
@@ -26,23 +30,18 @@ struct DashboardPresentationState: Equatable {
         case fanControl
     }
 
-    let layout: Layout
     let chartState: ChartState
     let controlState: ControlState
     let installationStep: InstallationState.Step
     let telemetryFresh: Bool
     let helperActionVisible: Bool
 
-    var showsDashboardSidebar: Bool {
-        layout == .dashboard
-    }
-
     var showsFanControlToggle: Bool {
-        controlState == .fanControl
+        controlState == .fanControl && chartState != .degraded
     }
 
     var showsBoostControl: Bool {
-        controlState == .fanControl
+        controlState == .fanControl && chartState == .active
     }
 
     var usesActiveCurveStyling: Bool {
@@ -65,59 +64,56 @@ struct DashboardPresentationState: Equatable {
         chartState == .active
     }
 
-    static func make(
-        installationStep: InstallationState.Step,
-        telemetryFresh: Bool,
-        runtimeTelemetryAvailable: Bool,
-        curveActive: Bool,
-        boostEnabled: Bool
-    ) -> DashboardPresentationState {
+    static func make(_ inputs: Inputs) -> DashboardPresentationState {
         let backgroundControlNeedsSetup =
-            installationStep == .agentMissing
-            || installationStep == .agentAwaitingApproval
-        if installationStep == .checking || backgroundControlNeedsSetup {
+            inputs.installationStep == .agentMissing
+            || inputs.installationStep == .agentAwaitingApproval
+        if inputs.installationStep == .checking || backgroundControlNeedsSetup {
             return DashboardPresentationState(
-                layout: .setup,
                 chartState: .degraded,
                 controlState: .setup,
-                installationStep: installationStep,
-                telemetryFresh: telemetryFresh,
+                installationStep: inputs.installationStep,
+                telemetryFresh: inputs.telemetryFresh,
                 helperActionVisible: false
             )
         }
 
         let helperNeedsSetup =
-            installationStep == .helperMissing
-            || installationStep == .helperAwaitingApproval
-        if helperNeedsSetup {
+            inputs.installationStep == .helperMissing
+            || inputs.installationStep == .helperAwaitingApproval
+        let helperRepairIsNonBlocking =
+            inputs.installationStep == .helperMissing
+            && inputs.helperReachable
+            && inputs.telemetryFresh
+            && inputs.runtimeTelemetryAvailable
+        if helperNeedsSetup, !helperRepairIsNonBlocking {
             return DashboardPresentationState(
-                layout: .dashboard,
-                chartState: telemetryFresh && runtimeTelemetryAvailable ? .preview : .degraded,
+                chartState: inputs.telemetryFresh && inputs.runtimeTelemetryAvailable
+                    ? .preview
+                    : .degraded,
                 controlState: .monitorOnly,
-                installationStep: installationStep,
-                telemetryFresh: telemetryFresh,
+                installationStep: inputs.installationStep,
+                telemetryFresh: inputs.telemetryFresh,
                 helperActionVisible: true
             )
         }
 
-        if !telemetryFresh || !runtimeTelemetryAvailable {
+        if !inputs.telemetryFresh || !inputs.runtimeTelemetryAvailable {
             return DashboardPresentationState(
-                layout: .dashboard,
                 chartState: .degraded,
                 controlState: .fanControl,
-                installationStep: installationStep,
-                telemetryFresh: telemetryFresh,
+                installationStep: inputs.installationStep,
+                telemetryFresh: inputs.telemetryFresh,
                 helperActionVisible: false
             )
         }
 
-        let active = curveActive || boostEnabled
+        let active = inputs.curveActive || inputs.boostEnabled
         return DashboardPresentationState(
-            layout: .dashboard,
             chartState: active ? .active : .preview,
             controlState: .fanControl,
-            installationStep: installationStep,
-            telemetryFresh: telemetryFresh,
+            installationStep: inputs.installationStep,
+            telemetryFresh: inputs.telemetryFresh,
             helperActionVisible: false
         )
     }

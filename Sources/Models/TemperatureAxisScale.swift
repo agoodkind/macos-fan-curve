@@ -17,8 +17,6 @@ struct TemperatureAxisScale: Sendable {
 
     let temperatureRangeC: ClosedRange<Double>
     let controlPointTemperaturesC: [Double]
-    let minorTickStepC: Double
-    let majorTickStepC: Double
     let minorTickTemperaturesC: [Double]
     let majorTickTemperaturesC: [Double]
 
@@ -31,11 +29,10 @@ struct TemperatureAxisScale: Sendable {
             controlPointTemperaturesC
         )
         let safeTemperatureRange =
-            safeControlPointTemperatures[0]...safeControlPointTemperatures[safeControlPointTemperatures.count - 1]
+            safeControlPointTemperatures[
+                0]...safeControlPointTemperatures[safeControlPointTemperatures.count - 1]
         self.temperatureRangeC = safeTemperatureRange
         self.controlPointTemperaturesC = safeControlPointTemperatures
-        self.minorTickStepC = minorTickStepC
-        self.majorTickStepC = majorTickStepC
         self.minorTickTemperaturesC = Self.intervalTicks(
             in: safeTemperatureRange,
             stepC: minorTickStepC
@@ -47,7 +44,8 @@ struct TemperatureAxisScale: Sendable {
     }
 
     func fraction(for temperatureC: Double) -> Double {
-        let clampedTemperature = max(temperatureRangeC.lowerBound, min(temperatureRangeC.upperBound, temperatureC))
+        let clampedTemperature = max(
+            temperatureRangeC.lowerBound, min(temperatureRangeC.upperBound, temperatureC))
         guard let firstTemperature = controlPointTemperaturesC.first else { return 0 }
         guard let lastTemperature = controlPointTemperaturesC.last else { return 0 }
 
@@ -131,6 +129,7 @@ struct TemperatureAxisScale: Sendable {
         let rightFraction = Double(pointIndex + 1) / Double(controlPointTemperaturesC.count - 1)
         let localFraction =
             (temperatureC - leftTemperature) / (rightTemperature - leftTemperature)
-        return Self.interpolate(lowerBound: leftFraction, upperBound: rightFraction, progress: localFraction)
+        return Self.interpolate(
+            lowerBound: leftFraction, upperBound: rightFraction, progress: localFraction)
     }
 }

@@ -18,7 +18,10 @@ enum LoadAssistStore {
     static let loadRange: ClosedRange<Double> = 0...100
 
     static func migrateLegacyIfNeeded(defaults: UserDefaults) {
-        if defaults.integer(forKey: SharedConfigKeys.loadAssistMigrationVersion) >= migrationVersion {
+        let currentMigrationVersion = defaults.integer(
+            forKey: SharedConfigKeys.loadAssistMigrationVersion
+        )
+        if currentMigrationVersion >= migrationVersion {
             return
         }
 
@@ -45,7 +48,10 @@ enum LoadAssistStore {
             }
             if defaults.object(forKey: kind.curvePointsKey) == nil {
                 savePoints(
-                    defaultPoints(threshold: threshold, floorPercent: floorPercent), kind: kind, defaults: defaults)
+                    defaultPoints(threshold: threshold, floorPercent: floorPercent),
+                    kind: kind,
+                    defaults: defaults
+                )
             }
         }
 
@@ -90,11 +96,6 @@ enum LoadAssistStore {
         }
     }
 
-    static func evaluate(_ kind: LoadAssistKind, loadPercent: Double, defaults: UserDefaults) -> Double {
-        let points = loadPoints(kind, defaults: defaults)
-        return CurveInterpolation.evaluate(at: loadPercent, points: points, mode: .linear)
-    }
-
     static func defaultPoints() -> [CurvePoint] {
         defaultPoints(threshold: defaultThreshold, floorPercent: defaultFloorPercent)
     }
@@ -117,18 +118,23 @@ enum LoadAssistStore {
 
         var normalized = sorted.enumerated().map { index, point in
             CurvePoint(
-                temperature: clampedTemperature(point.temperature, index: index, count: sorted.count),
+                temperature: clampedTemperature(
+                    point.temperature, index: index, count: sorted.count),
                 fanPercent: max(0.0, min(1.0, point.fanPercent))
             )
         }
 
         if normalized.first?.temperature ?? 0 > loadRange.lowerBound {
             normalized.insert(
-                CurvePoint(temperature: loadRange.lowerBound, fanPercent: normalized.first?.fanPercent ?? 0), at: 0)
+                CurvePoint(
+                    temperature: loadRange.lowerBound, fanPercent: normalized.first?.fanPercent ?? 0
+                ), at: 0)
         }
         if normalized.last?.temperature ?? 100 < loadRange.upperBound {
             normalized.append(
-                CurvePoint(temperature: loadRange.upperBound, fanPercent: normalized.last?.fanPercent ?? 0))
+                CurvePoint(
+                    temperature: loadRange.upperBound, fanPercent: normalized.last?.fanPercent ?? 0)
+            )
         }
 
         var previousTemp = loadRange.lowerBound

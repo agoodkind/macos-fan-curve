@@ -20,29 +20,35 @@ do {
     let contents = try String(contentsOfFile: makefile, encoding: .utf8)
     let lines = contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
 
-    var runBody: [String] = []
-    var inRun = false
-    for line in lines {
-        if line.hasPrefix("run:") {
-            inRun = true
-            runBody.append(line)
-            continue
-        }
-        if inRun, line.first?.isWhitespace == false, line.contains(":") {
-            break
-        }
-        if inRun {
-            runBody.append(line)
-        }
-    }
-
-    guard let declaration = runBody.first, declaration.range(of: #"^run:\s+app(\s|$)"#, options: .regularExpression) != nil
-    else {
-        try fail("run-audit failed: make run must depend on app and launch Products/$(APP_BUNDLE_NAME).app")
-    }
-
     let forbiddenTokens = ["install-app", "restart-agent", "sync-agent-plist", "launchctl", "/Applications", "pkill"]
-    let body = runBody.joined(separator: "\n")
+    let body: String
+
+    if let commandLine = lines.first(where: { $0.hasPrefix("SWIFT_RUN_CMD :=") }) {
+        body = String(commandLine.drop(while: { $0 != "=" }).dropFirst()).trimmingCharacters(in: .whitespaces)
+    } else {
+        var runBody: [String] = []
+        var inRun = false
+        for line in lines {
+            if line.hasPrefix("run:") {
+                inRun = true
+                runBody.append(line)
+                continue
+            }
+            if inRun, line.first?.isWhitespace == false, line.contains(":") {
+                break
+            }
+            if inRun {
+                runBody.append(line)
+            }
+        }
+
+        guard let declaration = runBody.first, declaration.range(of: #"^run:\s+app(\s|$)"#, options: .regularExpression) != nil
+        else {
+            try fail("run-audit failed: make run must depend on app and launch Products/$(APP_BUNDLE_NAME).app")
+        }
+        body = runBody.joined(separator: "\n")
+    }
+
     for token in forbiddenTokens where body.contains(token) {
         try fail("run-audit failed: make run must not reference '\(token)'")
     }

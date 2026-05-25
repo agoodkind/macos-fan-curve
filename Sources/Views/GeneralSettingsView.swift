@@ -9,11 +9,13 @@
 import AppLog
 import SwiftUI
 
-private let generalSettingsLog = AppLog.make(category: "GeneralSettings")
+let generalSettingsLog = AppLog.make(category: "GeneralSettings")
 
 /// General display preferences. Stored in UserDefaults.standard because they
 /// only affect the GUI and do not need to be visible to the agent.
 struct GeneralSettingsView: View {
+    let monitoringGate: SettingsMonitoringGate
+
     @AppStorage("temperatureUnit") private var unitRaw: String = "celsius"
 
     private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
@@ -25,6 +27,7 @@ struct GeneralSettingsView: View {
     @StateObject private var installState = InstallationState()
     @StateObject private var ownershipStatus = FanOwnershipStatus()
     @State private var showOwnership = false
+    @State private var isMonitoringActive = false
 
     var body: some View {
         SettingsFormContainer {
@@ -47,7 +50,8 @@ struct GeneralSettingsView: View {
                 Text("Background Control")
             } footer: {
                 SettingsDescription(
-                    text: "When on, the curve keeps controlling fans after you quit the app and resumes on next login. "
+                    text:
+                        "When on, the curve keeps controlling fans after you quit the app and resumes on next login. "
                         + "When off, quitting returns fans to system auto."
                 )
             }
@@ -59,7 +63,8 @@ struct GeneralSettingsView: View {
                 Text("Background Agent")
             } footer: {
                 SettingsDescription(
-                    text: "Applies the curve when the app is closed. Resets fans to auto when disabled."
+                    text:
+                        "Applies the curve when the app is closed. Resets fans to auto when disabled."
                 )
             }
 
@@ -78,11 +83,51 @@ struct GeneralSettingsView: View {
             }
         }
         .onAppear {
-            agentClient.start()
-            installState.startMonitoring(agentClient: agentClient)
-            ownershipStatus.startMonitoring(agentClient: agentClient, intervalSeconds: 1.5)
+            refreshInstallationState(reason: "appear")
+            updateMonitoringState()
+        }
+        .onChange(of: monitoringGate) { _ in
+            updateMonitoringState()
+        }
+        .onChange(of: agentClient.connectionState) { _ in
+            refreshInstallationState(reason: "agent-connection-changed")
+        }
+        .onChange(of: agentClient.helperReachable) { _ in
+            refreshInstallationState(reason: "helper-reachability-changed")
         }
         .onDisappear {
+            setMonitoring(active: false)
+        }
+    }
+
+    private func refreshInstallationState(reason: String) {
+        generalSettingsLog.info(
+            "general_settings.installation.refresh_requested reason=\(reason, privacy: .public)"
+        )
+        agentClient.start()
+        Task {
+            await installState.refreshOnce(agentClient: agentClient)
+            await ownershipStatus.refreshOnce(agentClient: agentClient)
+        }
+    }
+
+    private func updateMonitoringState() {
+        setMonitoring(active: monitoringGate.isMonitoringEnabled)
+    }
+
+    private func setMonitoring(active: Bool) {
+        guard active != isMonitoringActive else { return }
+        isMonitoringActive = active
+
+        generalSettingsLog.info(
+            "general_settings.monitoring.changed enabled=\(active, privacy: .public) tab=\(String(describing: monitoringGate.selectedTab), privacy: .public) render_mode=\(String(describing: monitoringGate.renderMode), privacy: .public)"
+        )
+
+        if active {
+            agentClient.start()
+            installState.startMonitoring(agentClient: agentClient)
+            ownershipStatus.startMonitoring(agentClient: agentClient, intervalSeconds: 5.0)
+        } else {
             installState.stopMonitoring()
             ownershipStatus.stopMonitoring()
         }
@@ -111,7 +156,7 @@ struct GeneralSettingsView: View {
         )
     }
 
-    private var activeControllersSummary: some View {
+    var activeControllersSummary: some View {
         SettingsAccessoryRow(accessoryWidth: 144) {
             Text("Active Controllers")
                 .fontWeight(.semibold)
@@ -131,23 +176,28 @@ struct GeneralSettingsView: View {
         }
     }
 
-    private var activeControllersStatusText: String {
+    var activeControllersStatusText: String {
         let count = ownershipStatus.rows.count
         if ownershipStatus.isMonitoring, !ownershipStatus.hasLoaded { return "Checking" }
-        if !ownershipStatus.reachable { return "Helper unreachable" }
+        if !activeControllersReachable { return "Helper unreachable" }
+        if !ownershipStatus.hasLoaded { return "Checking" }
         if count == 0 { return "No controllers" }
         if count == 1 { return "1 fan active" }
         return "\(count) fans active"
     }
 
+    private var activeControllersReachable: Bool {
+        ownershipStatus.reachable || installState.helperReachable
+    }
+
     @ViewBuilder
-    private var activeControllersContent: some View {
+    var activeControllersContent: some View {
         if ownershipStatus.isMonitoring, !ownershipStatus.hasLoaded {
             Text("Checking helper...")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else if ownershipStatus.rows.isEmpty {
-            Text(ownershipStatus.reachable ? "No fan controllers are active." : "Waiting for helper.")
+            Text(activeControllersEmptyText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else {
@@ -157,8 +207,12 @@ struct GeneralSettingsView: View {
         }
     }
 
+    private var activeControllersEmptyText: String {
+        activeControllersReachable ? "No fan controllers are active." : "Waiting for helper."
+    }
+
     @ViewBuilder
-    private func activeControllerRow(_ row: AgentOwnershipEntry) -> some View {
+    func activeControllerRow(_ row: AgentOwnershipEntry) -> some View {
         SettingsAccessoryRow(minimumLabelWidth: 72, accessoryWidth: 260) {
             Text("Fan \(row.fanIndex)")
                 .font(.caption)
@@ -180,11 +234,14 @@ struct GeneralSettingsView: View {
         .padding(.vertical, 2)
     }
 
-    private var activeControllersFooterText: String {
+    var activeControllersFooterText: String {
         "Shows which app or service is currently controlling each fan. "
             + "If another controller has higher priority, Fan Curve may wait before applying changes."
     }
 
+}
+
+extension GeneralSettingsView {
     private func controllerDisplayName(_ clientName: String) -> String {
         if clientName == generatedAgentBundleID {
             return generatedAgentDisplayName
@@ -200,7 +257,12 @@ struct GeneralSettingsView: View {
         return "\(minutes)m ago"
     }
 
-    private func statusRow(title: String, subtitle: String, status: String, state: ServiceRowState) -> some View {
+    private func statusRow(
+        title: String,
+        subtitle: String,
+        status: String,
+        state: ServiceRowState
+    ) -> some View {
         SettingsAccessoryRow(accessoryWidth: 112) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Circle()
@@ -232,22 +294,35 @@ struct GeneralSettingsView: View {
 
     @ViewBuilder
     private var helperAction: some View {
-        if !installState.helperEnabled || !installState.helperReachable {
-            Button {
-                generalSettingsLog.info("general_settings.helper.install.tapped")
-                installState.registerHelperDaemon(agentClient: agentClient)
-            } label: {
-                HStack(spacing: 6) {
-                    if installState.isRegisteringHelper {
-                        ProgressView()
-                            .controlSize(.small)
-                            .scaleEffect(0.7)
+        let showsHelperRepairAction =
+            installState.helperNeedsRepair
+            || !installState.helperEnabled
+            || !installState.helperReachable
+        if showsHelperRepairAction {
+            VStack(alignment: .leading, spacing: 6) {
+                Button {
+                    generalSettingsLog.info("general_settings.helper.install.tapped")
+                    installState.registerHelperDaemon(agentClient: agentClient)
+                } label: {
+                    HStack(spacing: 6) {
+                        if installState.isRegisteringHelper {
+                            ProgressView()
+                                .controlSize(.small)
+                                .scaleEffect(0.7)
+                        }
+                        Text(helperActionTitle)
                     }
-                    Text(installState.isRegisteringHelper ? "Installing" : "Install")
+                }
+                .disabled(installState.isRegisteringHelper)
+                .controlSize(.small)
+
+                if installState.helperNeedsRepair {
+                    SettingsDescription(
+                        text:
+                            "The helper is still reachable, but this app install needs to repair its registration."
+                    )
                 }
             }
-            .disabled(installState.isRegisteringHelper)
-            .controlSize(.small)
         }
     }
 
@@ -280,16 +355,25 @@ struct GeneralSettingsView: View {
     }
 
     private var helperRowState: ServiceRowState {
+        if installState.helperNeedsRepair || installState.helperApprovalPending { return .degraded }
         if installState.helperEnabled, installState.helperReachable { return .healthy }
         if installState.helperReachable { return .degraded }
         return .inactive
     }
 
     private var helperStatusText: String {
+        if installState.helperNeedsRepair { return "Reachable, registration needs repair" }
+        if installState.helperApprovalPending { return "Awaiting approval" }
         if installState.helperEnabled, installState.helperReachable { return "Running" }
         if installState.helperEnabled { return "Installed" }
-        if installState.helperReachable { return "Needs Reinstall" }
         return "Not Installed"
+    }
+
+    private var helperActionTitle: String {
+        if installState.isRegisteringHelper {
+            return installState.helperNeedsRepair ? "Reinstalling" : "Installing"
+        }
+        return installState.helperNeedsRepair ? "Reinstall" : "Install"
     }
 
     private var agentRowState: ServiceRowState {

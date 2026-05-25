@@ -14,17 +14,14 @@ import XCTest
 final class AppRenderModeTests: XCTestCase {
     func testInteractiveModeShowsLiveDashboard() {
         expect(AppRenderMode.interactive.showsLiveDashboard) == true
-        expect(AppRenderMode.interactive.showsPausedDashboard) == false
     }
 
-    func testBackgroundVisibleModeShowsPausedDashboard() {
+    func testBackgroundVisibleModeHidesLiveDashboard() {
         expect(AppRenderMode.backgroundVisible.showsLiveDashboard) == false
-        expect(AppRenderMode.backgroundVisible.showsPausedDashboard) == true
     }
 
-    func testOccludedModeShowsPausedDashboard() {
+    func testOccludedModeHidesLiveDashboard() {
         expect(AppRenderMode.occluded.showsLiveDashboard) == false
-        expect(AppRenderMode.occluded.showsPausedDashboard) == true
     }
 
     func testVisibleModesAllowLiveAnimation() {

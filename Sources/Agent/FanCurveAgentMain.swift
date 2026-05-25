@@ -19,7 +19,8 @@ enum FanCurveAgentMain {
     static func main() {
         AppLog.bootstrap(subsystem: "io.goodkind.fan")
 
-        log.notice("agent.starting pid=\(ProcessInfo.processInfo.processIdentifier, privacy: .public)")
+        log.notice(
+            "agent.starting pid=\(ProcessInfo.processInfo.processIdentifier, privacy: .public)")
 
         let controller = AgentController()
         let appXPCService = FanCurveAgentXPCService(controller: controller)
@@ -46,7 +47,7 @@ enum FanCurveAgentMain {
             Task {
                 await controller.resetAllFansToAuto()
                 controller.stop()
-                exit(0)
+                CFRunLoopStop(CFRunLoopGetMain())
             }
         }
         source.resume()

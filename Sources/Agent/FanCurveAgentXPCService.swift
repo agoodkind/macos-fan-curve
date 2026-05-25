@@ -11,7 +11,7 @@ import ServiceManagement
 
 private let agentXPCLog = AppLog.make(category: "FanCurveAgentXPC")
 
-final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAgentXPCProtocol, @unchecked Sendable {
+final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
     private let controller: AgentController
     private let listener: NSXPCListener
     private let callbackLock = NSLock()
@@ -40,13 +40,9 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
         listener.resume()
         agentXPCLog.notice("agent.xpc.started")
     }
+}
 
-    func stop() {
-        agentXPCLog.notice("agent.xpc.stopping")
-        listener.invalidate()
-        agentXPCLog.notice("agent.xpc.stopped")
-    }
-
+extension FanCurveAgentXPCService: NSXPCListenerDelegate {
     func listener(
         _: NSXPCListener,
         shouldAcceptNewConnection connection: NSXPCConnection
@@ -67,7 +63,9 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
         agentXPCLog.info("agent.xpc.connection.accepted")
         return true
     }
+}
 
+extension FanCurveAgentXPCService: FanCurveAgentXPCProtocol {
     func getCurrentState(reply: @Sendable (Bool, Data?, String?) -> Void) {
         agentXPCLog.debug("agent.xpc.current_state.requested")
         let runtimeState = controller.currentRuntimeStateForXPC()
@@ -141,7 +139,9 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
             do {
                 let rows = try await controller.xpcClient.getOwnership()
                 let data = try JSONEncoder().encode(rows)
-                agentXPCLog.debug("agent.xpc.ownership.returned count=\(rows.count, privacy: .public)")
+                agentXPCLog.debug(
+                    "agent.xpc.ownership.returned count=\(rows.count, privacy: .public)"
+                )
                 reply(true, data, nil)
             } catch {
                 agentXPCLog.notice(
@@ -183,114 +183,124 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
         publishConfigChange()
         reply(true, nil)
     }
+}
 
-    private func publishConfigChange() {
+extension FanCurveAgentXPCService {
+    func publishConfigChange() {
         controller.sharedConfig.defaults.synchronize()
         controller.requestTick()
     }
 
-    private func handleCommand(_ command: AgentCommand) async -> AgentCommandResponse {
+    func handleCommand(_ command: AgentCommand) async -> AgentCommandResponse {
         switch command {
         case .openSystemSettings:
-            if #available(macOS 13.0, *) {
-                SMAppService.openSystemSettingsLoginItems()
-                agentXPCLog.notice("agent.xpc.command.system_settings.opened")
-                return AgentCommandResponse(accepted: true, message: nil)
-            }
-            return AgentCommandResponse(accepted: false, message: "System Settings action requires macOS 13")
-        case .registerHelperDaemon:
-            return await registerHelperDaemon()
+            return openSystemSettingsCommandResponse()
         case .requestFanAuto(let fanIndex):
-            do {
-                try await controller.xpcClient.setFanAuto(fanIndex)
-                controller.requestTick()
-                return AgentCommandResponse(accepted: true, message: nil)
-            } catch {
-                agentXPCLog.notice(
-                    "agent.xpc.command.fan_auto_failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error"
-                )
-                return AgentCommandResponse(accepted: false, message: error.localizedDescription)
-            }
+            return await handleFanAutoCommand(fanIndex)
         case .requestFanRPM(let request):
-            do {
-                try await controller.xpcClient.setFanRPM(request.fanIndex, rpm: request.rpm)
-                controller.requestTick()
-                return AgentCommandResponse(accepted: true, message: nil)
-            } catch {
-                agentXPCLog.notice(
-                    "agent.xpc.command.fan_rpm_failed fan=\(request.fanIndex, privacy: .public) rpm=\(request.rpm, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error"
-                )
-                return AgentCommandResponse(accepted: false, message: error.localizedDescription)
-            }
+            return await handleFanRPMCommand(request)
         case .setApplyInBackground(let enabled):
-            controller.sharedConfig.defaults.set(enabled, forKey: SharedConfigKeys.applyInBackground)
-            publishConfigChange()
-            return AgentCommandResponse(accepted: true, message: nil)
+            return handleSetApplyInBackground(enabled)
         case .setBoostEnabled(let enabled):
-            controller.sharedConfig.defaults.set(enabled, forKey: SharedConfigKeys.boostEnabled)
-            publishConfigChange()
-            return AgentCommandResponse(accepted: true, message: nil)
+            return handleSetBoostEnabled(enabled)
         case .setCurve(let update):
-            do {
-                let data = try JSONEncoder().encode(CurveColumns.normalize(update.points))
-                controller.sharedConfig.defaults.set(data, forKey: SharedConfigKeys.curvePoints)
-                controller.sharedConfig.defaults.set(
-                    update.interpolationMode.rawValue,
-                    forKey: SharedConfigKeys.interpolationMode
-                )
-                publishConfigChange()
-                return AgentCommandResponse(accepted: true, message: nil)
-            } catch {
-                agentXPCLog.error(
-                    "agent.xpc.command.curve_encode_failed point_count=\(update.points.count, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error"
-                )
-                return AgentCommandResponse(accepted: false, message: error.localizedDescription)
-            }
+            return handleSetCurve(update)
         case .setFanControlEnabled(let enabled):
-            controller.sharedConfig.defaults.set(enabled, forKey: SharedConfigKeys.curveActive)
+            return handleSetFanControlEnabled(enabled)
+        }
+    }
+
+    func openSystemSettingsCommandResponse() -> AgentCommandResponse {
+        guard #available(macOS 13.0, *) else {
+            return AgentCommandResponse(
+                accepted: false,
+                message: "System Settings action requires macOS 13"
+            )
+        }
+        SMAppService.openSystemSettingsLoginItems()
+        agentXPCLog.notice("agent.xpc.command.system_settings.opened")
+        return AgentCommandResponse(accepted: true, message: nil)
+    }
+
+    func handleFanAutoCommand(_ fanIndex: UInt) async -> AgentCommandResponse {
+        do {
+            try await controller.xpcClient.setFanAuto(fanIndex)
+            controller.requestTick()
+            return AgentCommandResponse(accepted: true, message: nil)
+        } catch {
+            agentXPCLog.notice(
+                "agent.xpc.command.fan_auto_failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error"
+            )
+            return AgentCommandResponse(accepted: false, message: error.localizedDescription)
+        }
+    }
+
+    func handleFanRPMCommand(
+        _ request: AgentFanRPMRequest
+    ) async -> AgentCommandResponse {
+        do {
+            try await controller.xpcClient.setFanRPM(request.fanIndex, rpm: request.rpm)
+            controller.requestTick()
+            return AgentCommandResponse(accepted: true, message: nil)
+        } catch {
+            agentXPCLog.notice(
+                "agent.xpc.command.fan_rpm_failed fan=\(request.fanIndex, privacy: .public) rpm=\(request.rpm, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error"
+            )
+            return AgentCommandResponse(accepted: false, message: error.localizedDescription)
+        }
+    }
+
+    func handleSetApplyInBackground(_ enabled: Bool) -> AgentCommandResponse {
+        controller.sharedConfig.defaults.set(
+            enabled,
+            forKey: SharedConfigKeys.applyInBackground
+        )
+        publishConfigChange()
+        return AgentCommandResponse(accepted: true, message: nil)
+    }
+
+    func handleSetBoostEnabled(_ enabled: Bool) -> AgentCommandResponse {
+        controller.sharedConfig.defaults.set(enabled, forKey: SharedConfigKeys.boostEnabled)
+        publishConfigChange()
+        return AgentCommandResponse(accepted: true, message: nil)
+    }
+
+    func handleSetCurve(_ update: AgentCurveUpdate) -> AgentCommandResponse {
+        do {
+            let data = try JSONEncoder().encode(CurveColumns.normalize(update.points))
+            controller.sharedConfig.defaults.set(data, forKey: SharedConfigKeys.curvePoints)
+            controller.sharedConfig.defaults.set(
+                update.interpolationMode.rawValue,
+                forKey: SharedConfigKeys.interpolationMode
+            )
             publishConfigChange()
             return AgentCommandResponse(accepted: true, message: nil)
-        }
-    }
-
-    private func registerHelperDaemon() async -> AgentCommandResponse {
-        guard #available(macOS 13.0, *) else {
-            return AgentCommandResponse(accepted: false, message: "Helper setup requires macOS 13")
-        }
-        let response = await Task.detached {
-            let service = SMAppService.daemon(plistName: generatedHelperDaemonPlistName)
-            do {
-                try service.register()
-                agentXPCLog.notice(
-                    "agent.xpc.command.helper_register.done status=\(service.status.rawValue, privacy: .public)"
-                )
-                return AgentCommandResponse(accepted: true, message: nil)
-            } catch {
-                agentXPCLog.error(
-                    "agent.xpc.command.helper_register.failed error=\(error.localizedDescription, privacy: .public) recovery=return-error"
-                )
-                return AgentCommandResponse(accepted: false, message: error.localizedDescription)
-            }
-        }.value
-        if response.accepted {
-            controller.sharedConfig.defaults.set(
-                Self.helperRegistrationFingerprint(),
-                forKey: SharedConfigKeys.helperRegistrationFingerprint
+        } catch {
+            agentXPCLog.error(
+                "agent.xpc.command.curve_encode_failed point_count=\(update.points.count, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error"
             )
-            controller.requestTick()
-            publishRuntimeState(controller.currentRuntimeStateForXPC())
+            return AgentCommandResponse(accepted: false, message: error.localizedDescription)
         }
-        return response
     }
 
-    private static func currentRuntimeSetupInputs(snapshot: AgentSnapshot?) -> RuntimeSetupInputs {
+    func handleSetFanControlEnabled(_ enabled: Bool) -> AgentCommandResponse {
+        controller.sharedConfig.defaults.set(enabled, forKey: SharedConfigKeys.curveActive)
+        publishConfigChange()
+        return AgentCommandResponse(accepted: true, message: nil)
+    }
+
+    static func currentRuntimeSetupInputs(
+        snapshot: AgentSnapshot?
+    ) -> RuntimeSetupInputs {
         RuntimeSetupInputs(
             backgroundAgent: .satisfied,
             helper: currentHelperRequirement(snapshot: snapshot)
         )
     }
 
-    private static func currentHelperRequirement(snapshot: AgentSnapshot?) -> RuntimeServiceRequirement {
+    static func currentHelperRequirement(
+        snapshot: AgentSnapshot?
+    ) -> RuntimeServiceRequirement {
         guard #available(macOS 13.0, *) else { return .required }
         let status = SMAppService.daemon(plistName: generatedHelperDaemonPlistName).status
         switch status {
@@ -305,17 +315,7 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
         }
     }
 
-    private static func helperRegistrationFingerprint() -> String {
-        [
-            generatedAppBundleID,
-            generatedAppDisplayName,
-            generatedHelperBundleID,
-            generatedHelperDisplayName,
-            BuildFingerprint.bundledHelperHash,
-        ].joined(separator: "|")
-    }
-
-    private func publishRuntimeState(_ runtimeState: RuntimeState) {
+    func publishRuntimeState(_ runtimeState: RuntimeState) {
         let callbacks = currentEventCallbacks()
         guard !callbacks.isEmpty else { return }
         do {
@@ -323,7 +323,9 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
             for callback in callbacks {
                 callback.agentRuntimeStateDidUpdate(data)
             }
-            agentXPCLog.debug("agent.xpc.events.runtime_state.sent callbacks=\(callbacks.count, privacy: .public)")
+            agentXPCLog.debug(
+                "agent.xpc.events.runtime_state.sent callbacks=\(callbacks.count, privacy: .public)"
+            )
         } catch {
             agentXPCLog.error(
                 "agent.xpc.events.runtime_state.encode_failed error=\(error.localizedDescription, privacy: .public) recovery=drop-event"
@@ -331,13 +333,13 @@ final class FanCurveAgentXPCService: NSObject, NSXPCListenerDelegate, FanCurveAg
         }
     }
 
-    private func currentEventCallbacks() -> [FanCurveAgentXPCEventProtocol] {
+    func currentEventCallbacks() -> [FanCurveAgentXPCEventProtocol] {
         callbackLock.lock()
         defer { callbackLock.unlock() }
         return eventCallbacks
     }
 
-    private func clearEventCallbacks(reason: String) {
+    func clearEventCallbacks(reason: String) {
         callbackLock.lock()
         eventCallbacks.removeAll()
         callbackLock.unlock()

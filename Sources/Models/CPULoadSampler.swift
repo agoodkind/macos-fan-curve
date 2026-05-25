@@ -13,31 +13,7 @@ import IOKit
 /// Reads the GPU utilization percent from the IOAccelerator IORegistry
 /// node. Returns zero if unavailable. Safe to call from any thread.
 func readGPULoadPercent() -> Double {
-    var iter: io_iterator_t = 0
-    let result = IOServiceGetMatchingServices(
-        kIOMainPortDefault,
-        IOServiceMatching("IOAccelerator"),
-        &iter)
-    guard result == KERN_SUCCESS else { return 0 }
-    defer { IOObjectRelease(iter) }
-
-    while case let entry = IOIteratorNext(iter), entry != 0 {
-        defer { IOObjectRelease(entry) }
-        var props: Unmanaged<CFMutableDictionary>?
-        guard
-            IORegistryEntryCreateCFProperties(entry, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
-            let dict = props?.takeRetainedValue() as? [String: Any],
-            let perf = dict["PerformanceStatistics"] as? [String: Any]
-        else { continue }
-
-        if let util = perf["Device Utilization %"] as? Double {
-            return min(100, max(0, util))
-        }
-        if let util = perf["Device Utilization %"] as? Int {
-            return min(100, max(0, Double(util)))
-        }
-    }
-    return 0
+    readIOAcceleratorDeviceUtilizationPercent(defaultValue: 0)
 }
 
 /// Lightweight CPU load sampler for the Agent-owned runtime snapshot.

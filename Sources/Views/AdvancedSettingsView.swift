@@ -61,7 +61,10 @@ struct AdvancedSettingsView: View {
             dangerZoneSection
         }
         .alert("Enable Overdrive?", isPresented: $confirmOverdrive) {
-            Button("Enable", role: .destructive) { overdrive = true }
+            Button("Enable", role: .destructive) {
+                advancedSettingsLog.notice("advanced_settings.overdrive.confirmed enabled=true")
+                overdrive = true
+            }
             Button("Cancel", role: .cancel) {
                 confirmOverdrive = false
             }
@@ -69,7 +72,10 @@ struct AdvancedSettingsView: View {
             Text(overdriveWarningText)
         }
         .alert("Enable Underdrive?", isPresented: $confirmUnderdrive) {
-            Button("Enable", role: .destructive) { underdrive = true }
+            Button("Enable", role: .destructive) {
+                advancedSettingsLog.notice("advanced_settings.underdrive.confirmed enabled=true")
+                underdrive = true
+            }
             Button("Cancel", role: .cancel) {
                 confirmUnderdrive = false
             }
@@ -104,8 +110,8 @@ struct AdvancedSettingsView: View {
                 range: 0...1,
                 scaleLabels: SettingsSliderScaleLabels(
                     minimum: "Smoother",
-                    midpoint: "Balanced",
-                    maximum: "Faster"
+                    maximum: "Faster",
+                    midpoint: "Balanced"
                 )
             )
         } header: {
@@ -125,7 +131,8 @@ struct AdvancedSettingsView: View {
                 range: 1...100,
                 step: 1,
                 scaleLabels: SettingsSliderScaleLabels(minimum: "Low", maximum: "High"),
-                help: "Priority used for normal curve writes. Higher values preempt lower-priority fan clients."
+                help:
+                    "Priority used for normal curve writes. Higher values preempt lower-priority fan clients."
             )
             SettingsSliderRow(
                 title: "When boost is on",
@@ -135,7 +142,8 @@ struct AdvancedSettingsView: View {
                 range: 1...100,
                 step: 1,
                 scaleLabels: SettingsSliderScaleLabels(minimum: "Low", maximum: "High"),
-                help: "Priority used while Boost is active. Raise it above competing fan apps if Boost should win."
+                help:
+                    "Priority used while Boost is active. Raise it above competing fan apps if Boost should win."
             )
         } header: {
             Text("Client Priority")
@@ -152,7 +160,8 @@ struct AdvancedSettingsView: View {
             ) {
                 SettingsDangerToggleRow(
                     title: "Overdrive",
-                    description: "Allows curve points to request up to \(Int(overdriveTargetRPM)) RPM.",
+                    description:
+                        "Allows curve points to request up to \(Int(overdriveTargetRPM)) RPM.",
                     isOn: overdriveBinding
                 )
 
