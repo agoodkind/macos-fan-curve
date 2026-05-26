@@ -68,7 +68,7 @@ PERIPHERY_ARGS = scan --config "$(SWIFT_MK_PERIPHERY_CONFIG)" --project FanCurve
 
 include bootstrap.mk
 
-.PHONY: all install-dependencies install-analysis-tools app app-local project-build install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons helper-artifacts
+.PHONY: all install-dependencies install-analysis-tools app app-local run-debug project-build install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons helper-artifacts
 
 all: app
 
@@ -128,6 +128,14 @@ app-local: project-build
 	@./Scripts/RefreshIconCache.swift "$(APP_DEST)" "$(ICON_HASH_STAMP)"
 
 app: build
+
+# Debug-configuration build and launch. The dev state-simulation menu and the
+# FANCURVE_DEV_SCENARIO flag are compiled only into Debug builds, so this is the
+# run path used to exercise simulated states.
+run-debug:
+	$(MAKE) SWIFT_MK_SKIP_FETCH=1 CONFIGURATION=Debug app-local
+	@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
+	@open "$(APP_DEST)"
 
 install-user: app
 	@mkdir -p "$(HOME)/Applications"

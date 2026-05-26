@@ -137,9 +137,6 @@ final class AppRenderActivity: ObservableObject {
     /// or the `FanCurveDevKeepLive` user default (`defaults write io.goodkind.fancurve
     /// FanCurveDevKeepLive -bool YES`, or launch with `--args -FanCurveDevKeepLive YES`).
     static var keepsLiveWhenBackgrounded: Bool {
-        if ProcessInfo.processInfo.environment["FANCURVE_DEV_KEEP_LIVE"] == "1" {
-            return true
-        }
-        return UserDefaults.standard.bool(forKey: "FanCurveDevKeepLive")
+        DevOverrides.keepsLiveWhenBackgrounded
     }
 }

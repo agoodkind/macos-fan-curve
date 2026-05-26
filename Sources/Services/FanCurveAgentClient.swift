@@ -92,9 +92,29 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
     }
 
     func start() {
+        #if DEBUG
+            if devScenarioCancellable == nil {
+                let store = DevScenarioStore.shared
+                devScenarioCancellable = store.$current.sink { [weak self] scenario in
+                    Task { @MainActor [weak self] in
+                        self?.applyDevScenario(scenario)
+                    }
+                }
+                return
+            }
+        #endif
         guard connection == nil else { return }
         connect()
     }
+
+    #if DEBUG
+        var devScenarioCancellable: AnyCancellable?
+        var devTimer: Timer?
+        var devScenario: DevScenario?
+        var devStartDate = Date()
+        var devBoostOverride: DevToggleOverride = .inherit
+        var devCurveOverride: DevToggleOverride = .inherit
+    #endif
 
     func setFanControlEnabled(_ enabled: Bool) async throws {
         try await send(.setFanControlEnabled(enabled))
@@ -243,6 +263,12 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
     }
 
     private func send(_ command: AgentCommand) async throws {
+        #if DEBUG
+            if isDevSimulating {
+                applyDevCommand(command)
+                return
+            }
+        #endif
         let proxy = try remoteProxy()
         let data = try encoder.encode(command)
         let response: AgentCommandResponse =
@@ -390,3 +416,92 @@ extension FanCurveAgentClient {
     var boostEnabled: Bool { snapshot?.boostEnabled ?? false }
     var curveActive: Bool { snapshot?.curveActive ?? false }
 }
+
+#if DEBUG
+
+    /// Tri-state override for a simulated boolean control, used so a live toggle
+    /// can override a scenario's natural value without an optional boolean.
+    enum DevToggleOverride {
+        case inherit
+        case off
+        case on
+
+        func value(default fallback: Bool) -> Bool {
+            switch self {
+            case .inherit: return fallback
+            case .on: return true
+            case .off: return false
+            }
+        }
+    }
+
+    extension FanCurveAgentClient {
+        var isDevSimulating: Bool { devScenario != nil }
+
+        /// Drives every published value from a forced scenario and stops talking to
+        /// the real XPC endpoint. Passing `nil` clears the scenario and reconnects.
+        func applyDevScenario(_ scenario: DevScenario?) {
+            devTimer?.invalidate()
+            devTimer = nil
+            devBoostOverride = .inherit
+            devCurveOverride = .inherit
+            devScenario = scenario
+
+            guard let scenario else {
+                fanCurveAgentClientLog.notice(
+                    "agent_client.dev.scenario.cleared recovery=reconnect")
+                connectionState = .disconnected
+                connect()
+                return
+            }
+
+            connection?.interruptionHandler = nil
+            connection?.invalidationHandler = nil
+            connection?.invalidate()
+            connection = nil
+            reconnectTask?.cancel()
+            reconnectTask = nil
+            devStartDate = Date()
+            fanCurveAgentClientLog.notice(
+                "agent_client.dev.scenario.applied scenario=\(scenario.rawValue, privacy: .public)")
+            publishDevScenario()
+
+            guard scenario.animates else { return }
+            devTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.publishDevScenario()
+                }
+            }
+        }
+
+        func applyDevCommand(_ command: AgentCommand) {
+            switch command {
+            case .setBoostEnabled(let enabled):
+                devBoostOverride = enabled ? .on : .off
+            case .setFanControlEnabled(let enabled):
+                devCurveOverride = enabled ? .on : .off
+            case .setCurve, .setApplyInBackground, .requestFanRPM, .requestFanAuto,
+                .openSystemSettings:
+                break
+            }
+            fanCurveAgentClientLog.notice(
+                "agent_client.dev.command kind=\(command.logName, privacy: .public)")
+            publishDevScenario()
+        }
+
+        private func publishDevScenario() {
+            guard let scenario = devScenario else { return }
+            let now = Date()
+            let phase = now.timeIntervalSince(devStartDate)
+            let curveActive = devCurveOverride.value(default: scenario.naturalCurveActive)
+            let boostEnabled = devBoostOverride.value(default: scenario.naturalBoostEnabled)
+            runtimeState = scenario.runtimeState(
+                now: now, phase: phase, curveActive: curveActive, boostEnabled: boostEnabled)
+            snapshot = scenario.snapshot(
+                now: now, phase: phase, curveActive: curveActive, boostEnabled: boostEnabled)
+            connectionState = scenario.connectionState
+            lastError = nil
+        }
+    }
+
+#endif

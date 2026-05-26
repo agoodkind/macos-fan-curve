@@ -123,6 +123,7 @@ let modelTestSources: SourceFilesList = [
     "Sources/Models/CurveInterpolation.swift",
     "Sources/Models/LiveMarkerPresentation.swift",
     "Sources/Services/AppRenderActivity.swift",
+    "Sources/Common/DevOverrides.swift",
     "Sources/Views/SettingsTab.swift",
     "Sources/Views/SettingsMonitoringGate.swift",
 ]
