@@ -293,11 +293,13 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
             resumer.resume(throwing: FanCurveAgentClientError.connectionUnavailable)
             return nil
         }
+        let errorHandler: @Sendable (Error) -> Void = { [weak self] error in
+            resumer.resume(throwing: error)
+            self?.handleRemoteProxyFailure(error)
+        }
         guard
-            let proxy = connection.remoteObjectProxyWithErrorHandler({ @Sendable [weak self] error in
-                resumer.resume(throwing: error)
-                self?.handleRemoteProxyFailure(error)
-            }) as? FanCurveAgentXPCProtocol
+            let proxy = connection.remoteObjectProxyWithErrorHandler(errorHandler)
+                as? FanCurveAgentXPCProtocol
         else {
             resumer.resume(throwing: FanCurveAgentClientError.missingRemoteProxy)
             return nil

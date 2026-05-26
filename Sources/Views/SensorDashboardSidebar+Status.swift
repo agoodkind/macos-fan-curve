@@ -13,24 +13,24 @@ private let sensorDashboardSidebarStatusLog = AppLog.make(category: "SensorDashb
 
 extension SensorDashboardSidebar {
     var systemStatus: SystemStatus {
+        let helperReachable =
+            runtime.isFresh ? runtime.helperReachable : installState.helperReachable
         let setupNeedsAttention =
             installState.step == .helperAwaitingApproval
             || installState.step == .agentAwaitingApproval
             || installState.step == .agentMissing
-        if installState.helperNeedsRepair {
-            return .orange
-        }
         if setupNeedsAttention {
             return .orange
         }
         if installState.step == .helperMissing {
-            return .red
+            // A reachable helper with a stale registration record is a non-blocking
+            // repair rather than an outage, so it must not read as hard red while live
+            // telemetry is flowing. Only an unreachable helper is a true red failure.
+            return helperReachable ? .orange : .red
         }
         if presentation.chartState == .degraded {
             return .red
         }
-        let helperReachable =
-            runtime.isFresh ? runtime.helperReachable : installState.helperReachable
         let isFullyOperational =
             helperReachable
             && installState.agentEnabled
@@ -49,8 +49,11 @@ extension SensorDashboardSidebar {
     }
 
     var statusLabel: String {
-        if installState.helperNeedsRepair { return "System Helper Needs Repair" }
-        if presentation.installationStep == .helperMissing { return "System Helper Required" }
+        let helperReachable =
+            runtime.isFresh ? runtime.helperReachable : installState.helperReachable
+        if installState.step == .helperMissing {
+            return helperReachable ? "System Helper Needs Repair" : "System Helper Required"
+        }
         if presentation.installationStep == .agentMissing { return "Background Control Required" }
         let approvalPending =
             presentation.installationStep == .agentAwaitingApproval

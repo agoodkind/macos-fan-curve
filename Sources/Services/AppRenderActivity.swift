@@ -59,6 +59,12 @@ final class AppRenderActivity: ObservableObject {
         guard !didStart else { return }
         didStart = true
 
+        if Self.keepsLiveWhenBackgrounded {
+            appRenderActivityLog.notice(
+                "render.dev.keep_live.enabled source=env-or-defaults recovery=ignore-background-pause"
+            )
+        }
+
         let notifications: [Notification.Name] = [
             NSApplication.didBecomeActiveNotification,
             NSApplication.didResignActiveNotification,
@@ -108,13 +114,32 @@ final class AppRenderActivity: ObservableObject {
     }
 
     private static func currentMode() -> AppRenderMode {
+        let base: AppRenderMode
         switch currentAppVisibilityState() {
         case .interactive:
-            return .interactive
+            base = .interactive
         case .passiveVisible:
-            return .backgroundVisible
+            base = .backgroundVisible
         case .occluded:
-            return .occluded
+            base = .occluded
         }
+        // Dev override: keep the dashboard fully live even when the window is not the
+        // active/key window, so an automated agent or a side-by-side observer can watch
+        // live telemetry without focusing the window. Opt-in only; default is unchanged.
+        if base != .interactive, keepsLiveWhenBackgrounded {
+            return .interactive
+        }
+        return base
+    }
+
+    /// Opt-in dev flag that disables backgrounded render pausing.
+    /// Enable with the `FANCURVE_DEV_KEEP_LIVE` environment variable set to `1`,
+    /// or the `FanCurveDevKeepLive` user default (`defaults write io.goodkind.fancurve
+    /// FanCurveDevKeepLive -bool YES`, or launch with `--args -FanCurveDevKeepLive YES`).
+    static var keepsLiveWhenBackgrounded: Bool {
+        if ProcessInfo.processInfo.environment["FANCURVE_DEV_KEEP_LIVE"] == "1" {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: "FanCurveDevKeepLive")
     }
 }

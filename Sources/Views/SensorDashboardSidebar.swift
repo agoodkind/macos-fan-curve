@@ -177,24 +177,30 @@ struct SensorDashboardSidebar: View {
         }
     }
 
+    private var showsFanControlStateSubtitle: Bool {
+        presentation.controlState != .setup
+            && presentation.chartState != .degraded
+    }
+
+    private var showsControllerStateLabel: Bool {
+        presentation.chartState == .active
+            && fanControlReady
+            && curveModel.isActive
+            && !boost
+    }
+
     private var controlsSection: some View {
         VStack(spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    let showsControllerState =
-                        presentation.chartState == .active
-                        && fanControlReady
-                        && curveModel.isActive
-                        && !boost
-                    let showsStateSubtitle = presentation.controlState != .setup
                     Text("Fan Control")
                         .font(.body)
-                    if showsStateSubtitle {
+                    if showsFanControlStateSubtitle {
                         Text(fanControlStateLabel)
                             .font(.caption)
                             .foregroundColor(fanControlStateColor)
                     }
-                    if showsControllerState {
+                    if showsControllerStateLabel {
                         Text(controllerStateLabel)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
