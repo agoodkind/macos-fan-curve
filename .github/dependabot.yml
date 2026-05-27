@@ -5,9 +5,13 @@ updates:
     schedule:
       interval: daily
     open-pull-requests-limit: 10
+    reviewers:
+      - agoodkind
 
   - package-ecosystem: swift
     directory: /Tuist
     schedule:
       interval: daily
     open-pull-requests-limit: 10
+    reviewers:
+      - agoodkind
