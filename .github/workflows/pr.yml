@@ -14,6 +14,10 @@ concurrency:
 
 env:
   XCODE_VERSION: "16.4"
+  # The swift-makefile bootstrap fetches swift.mk via `gh api` on every make
+  # invocation; without a token gh fails and the fetch silently writes an empty
+  # swift.mk, so the build target never loads. Authenticate the public fetch.
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   verify:

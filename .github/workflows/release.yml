@@ -29,6 +29,10 @@ env:
   APPLE_TEAM_ID: H3BMXM4W7H
   APPLE_CODE_SIGN_IDENTITY: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
   APPLE_NOTARY_KEY_ID: JHC8GR65Q3
+  # The swift-makefile bootstrap fetches swift.mk via `gh api` on every make
+  # invocation; without a token gh fails and the fetch silently writes an empty
+  # swift.mk, so the build target never loads. Authenticate the public fetch.
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   build:
