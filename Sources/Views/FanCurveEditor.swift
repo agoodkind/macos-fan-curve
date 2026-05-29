@@ -11,6 +11,45 @@ import SwiftUI
 
 let fanCurveEditorLog = AppLog.make(category: "FanCurveEditor")
 
+private enum FanCurveEditorConstants {
+    // Layout padding insets
+    static let topPad: CGFloat = 56
+    static let bottomPad: CGFloat = 44
+    static let leftPad: CGFloat = 72
+    static let rightPad: CGFloat = 24
+
+    // Control-point interaction
+    static let controlPointHitRadius: CGFloat = 14
+
+    // Card corner radius (shared by glass card and clip shape)
+    static let cardCornerRadius: CGFloat = 12
+
+    // Active-phase animation
+    static let activePhaseAnimationDuration: Double = 0.35
+
+    // Runtime marker animation
+    static let runtimeMarkerAnimationDuration: Double = 1.4
+
+    // Fan-now presentation smoothing
+    static let fanPresentationTemperatureAlpha: Double = 0.06
+    static let fanPresentationMaxTemperatureStepC: Double = 0.35
+
+    // Thermal-demand presentation smoothing
+    static let demandPresentationTemperatureAlpha: Double = 0.10
+    static let demandPresentationPercentAlpha: Double = 0.10
+    static let demandPresentationMaxTemperatureStepC: Double = 0.7
+    static let demandPresentationMaxPercentStep: Double = 0.007
+
+    // Fallback RPM range
+    static let fallbackMaxRPM: Float = 8_000
+
+    // Degraded-chart overlay layout
+    static let degradedIconSize: CGFloat = 34
+    static let degradedSpacing: CGFloat = 12
+    static let degradedMaxWidth: CGFloat = 360
+    static let degradedPadding: CGFloat = 32
+}
+
 struct FanCurveEditor: View {
     @ObservedObject var model: FanCurveModel
     @ObservedObject var runtime: FanCurveAgentClient
@@ -22,7 +61,7 @@ struct FanCurveEditor: View {
     @State private var mouseLocationState: CGPoint?
     @State private var markerPresenterTargetState: LiveMarkerPresentation.Target?
     @State private var previousMarkerGenerationState: LiveMarkerPresentation.Target.Generation?
-    let controlPointHitRadius: CGFloat = 14
+    let controlPointHitRadius: CGFloat = FanCurveEditorConstants.controlPointHitRadius
 
     @AppStorage("temperatureUnit") var unitRaw: String = "celsius"
 
@@ -71,10 +110,10 @@ struct FanCurveEditor: View {
 
     @State private var activePhaseState: Double = 1.0
 
-    let topPad: CGFloat = 56
-    let bottomPad: CGFloat = 44
-    let leftPad: CGFloat = 72
-    let rightPad: CGFloat = 24
+    let topPad: CGFloat = FanCurveEditorConstants.topPad
+    let bottomPad: CGFloat = FanCurveEditorConstants.bottomPad
+    let leftPad: CGFloat = FanCurveEditorConstants.leftPad
+    let rightPad: CGFloat = FanCurveEditorConstants.rightPad
 
     let plotTempRange: ClosedRange<Double> = CurveColumns.tempRange
     let temperatureAxisScale = CurveColumns.axisScale
@@ -98,16 +137,26 @@ struct FanCurveEditor: View {
     var boostEnabled: Bool = false
 
     static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
-    let runtimeMarkerAnimation = Animation.easeInOut(duration: 1.4)
-    let fanPresentationTemperatureAlpha: Double = 0.06
-    let fanPresentationMaxTemperatureStepC: Double = 0.35
-    let demandPresentationTemperatureAlpha: Double = 0.10
-    let demandPresentationPercentAlpha: Double = 0.10
-    let demandPresentationMaxTemperatureStepC: Double = 0.7
-    let demandPresentationMaxPercentStep: Double = 0.007
+    let runtimeMarkerAnimation = Animation.easeInOut(
+        duration: FanCurveEditorConstants.runtimeMarkerAnimationDuration
+    )
+    let fanPresentationTemperatureAlpha: Double = FanCurveEditorConstants
+        .fanPresentationTemperatureAlpha
+    let fanPresentationMaxTemperatureStepC: Double = FanCurveEditorConstants
+        .fanPresentationMaxTemperatureStepC
+    let demandPresentationTemperatureAlpha: Double = FanCurveEditorConstants
+        .demandPresentationTemperatureAlpha
+    let demandPresentationPercentAlpha: Double = FanCurveEditorConstants
+        .demandPresentationPercentAlpha
+    let demandPresentationMaxTemperatureStepC: Double = FanCurveEditorConstants
+        .demandPresentationMaxTemperatureStepC
+    let demandPresentationMaxPercentStep: Double = FanCurveEditorConstants
+        .demandPresentationMaxPercentStep
 
     var rpmRange: (min: Float, max: Float) {
-        guard let fan = runtime.fans.first else { return (0, 8_000) }
+        guard let fan = runtime.fans.first else {
+            return (0, FanCurveEditorConstants.fallbackMaxRPM)
+        }
         let minRPM: Float = underdriveEnabled ? 0 : fan.minRPM
         let maxRPM: Float = overdriveEnabled ? max(fan.maxRPM, overdriveTargetRPM) : fan.maxRPM
         return (minRPM, maxRPM)
@@ -141,16 +190,20 @@ struct FanCurveEditor: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .fancurveGlassCard(cornerRadius: 12)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .fancurveGlassCard(cornerRadius: FanCurveEditorConstants.cardCornerRadius)
+        .clipShape(RoundedRectangle(cornerRadius: FanCurveEditorConstants.cardCornerRadius))
         .onAppear { activePhase = targetActivePhase }
         .onChange(of: model.isActive) { _ in
-            withAnimation(.easeInOut(duration: 0.35)) {
+            withAnimation(
+                .easeInOut(duration: FanCurveEditorConstants.activePhaseAnimationDuration)
+            ) {
                 activePhase = targetActivePhase
             }
         }
         .onChange(of: presentation) { _ in
-            withAnimation(.easeInOut(duration: 0.35)) {
+            withAnimation(
+                .easeInOut(duration: FanCurveEditorConstants.activePhaseAnimationDuration)
+            ) {
                 activePhase = targetActivePhase
             }
             refreshRuntimeMarkerTarget()
@@ -184,9 +237,9 @@ struct FanCurveEditor: View {
                 "Fan Curve is waiting for a fresh agent snapshot before drawing live fan demand."
         }
 
-        return VStack(spacing: 12) {
+        return VStack(spacing: FanCurveEditorConstants.degradedSpacing) {
             Image(systemName: "waveform.path.ecg.rectangle")
-                .font(.system(size: 34, weight: .regular))
+                .font(.system(size: FanCurveEditorConstants.degradedIconSize, weight: .regular))
                 .foregroundStyle(.secondary)
             Text(title)
                 .font(.title3.weight(.semibold))
@@ -195,10 +248,10 @@ struct FanCurveEditor: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 360)
+                .frame(maxWidth: FanCurveEditorConstants.degradedMaxWidth)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(32)
+        .padding(FanCurveEditorConstants.degradedPadding)
     }
 
     func handleHoverPhase(_ phase: HoverPhase, size: CGSize) {

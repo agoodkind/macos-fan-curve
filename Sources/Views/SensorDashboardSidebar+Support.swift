@@ -9,6 +9,37 @@
 import AppLog
 import SwiftUI
 
+// MARK: - Layout and timing constants
+
+private enum SidebarSupportConstants {
+    // Pending action timeouts
+    static let setupActionTimeoutNanoseconds: UInt64 = 30_000_000_000
+    static let openSystemSettingsTimeoutNanoseconds: UInt64 = 8_000_000_000
+    static let boostFanControlTimeoutNanoseconds: UInt64 = 12_000_000_000
+
+    // Minimum visible duration for setup spinner
+    static let helperSetupMinimumVisibleDuration: TimeInterval = 0.75
+
+    // Fan state delta thresholds for controller state label
+    static let rampingDeltaThreshold: Double = 0.02
+
+    // RPM ramping detection tolerances
+    static let rampingNearMaxRPMOffset: Float = 50
+    static let rampingMinimumToleranceRPM: Float = 250
+    static let rampingToleranceFactor: Float = 0.05
+
+    // Prominent action button appearance
+    static let inactiveTintOpacity: Double = 0.12
+    static let inactiveBorderOpacity: Double = 0.45
+    static let borderLineWidth: CGFloat = 0.8
+    static let buttonLabelHStackSpacing: CGFloat = 8
+    static let buttonHorizontalPadding: CGFloat = 14
+    static let buttonVerticalPadding: CGFloat = 7
+
+    // Usage block layout
+    static let usageBlockVStackSpacing: CGFloat = 4
+}
+
 private let sensorDashboardSidebarLog = AppLog.make(category: "SensorDashboardSidebar")
 
 extension SensorDashboardSidebar {
@@ -37,18 +68,18 @@ extension SensorDashboardSidebar {
         var timeoutNanoseconds: UInt64 {
             switch self {
             case .helperSetup, .agentSetup:
-                return 30_000_000_000
+                return SidebarSupportConstants.setupActionTimeoutNanoseconds
             case .openSystemSettings:
-                return 8_000_000_000
+                return SidebarSupportConstants.openSystemSettingsTimeoutNanoseconds
             case .enableBoost, .disableBoost, .setFanControl:
-                return 12_000_000_000
+                return SidebarSupportConstants.boostFanControlTimeoutNanoseconds
             }
         }
 
         var minimumVisibleDuration: TimeInterval {
             switch self {
             case .helperSetup:
-                return 0.75
+                return SidebarSupportConstants.helperSetupMinimumVisibleDuration
             case .agentSetup, .openSystemSettings, .enableBoost, .disableBoost, .setFanControl:
                 return 0
             }
@@ -78,7 +109,7 @@ extension SensorDashboardSidebar {
         tint: Color,
         assist: ActiveAssistState?
     ) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: SidebarSupportConstants.usageBlockVStackSpacing) {
             usageRow(
                 label: label,
                 icon: icon,
@@ -134,10 +165,10 @@ extension SensorDashboardSidebar {
         }
 
         let delta = targetPercent - observedPercent
-        if delta > 0.02 {
+        if delta > SidebarSupportConstants.rampingDeltaThreshold {
             return "Stepping up toward \(target)%"
         }
-        if delta < -0.02 {
+        if delta < -SidebarSupportConstants.rampingDeltaThreshold {
             return "Cooling down toward \(target)%"
         }
         return "Targeting \(target)%"
@@ -166,8 +197,12 @@ extension SensorDashboardSidebar {
     func isRamping(_ fan: AgentFanSnapshot) -> Bool {
         let target = fan.targetRPM
         guard target > 0 else { return false }
-        if fan.actualRPM >= fan.maxRPM - 50 { return false }
-        let tolerance = max(250, target * 0.05)
+        if fan.actualRPM >= fan.maxRPM - SidebarSupportConstants.rampingNearMaxRPMOffset {
+            return false
+        }
+        let tolerance = max(
+            SidebarSupportConstants.rampingMinimumToleranceRPM,
+            target * SidebarSupportConstants.rampingToleranceFactor)
         return abs(fan.actualRPM - target) > tolerance
     }
 
@@ -240,14 +275,15 @@ extension SensorDashboardSidebar {
                 .fill(
                     configuration.active
                         ? configuration.tint
-                        : configuration.tint.opacity(0.12)
+                        : configuration.tint.opacity(SidebarSupportConstants.inactiveTintOpacity)
                 )
         }
         .overlay(
             Capsule()
                 .stroke(
-                    configuration.tint.opacity(configuration.active ? 0 : 0.45),
-                    lineWidth: 0.8
+                    configuration.tint.opacity(
+                        configuration.active ? 0 : SidebarSupportConstants.inactiveBorderOpacity),
+                    lineWidth: SidebarSupportConstants.borderLineWidth
                 )
         )
     }
@@ -271,7 +307,7 @@ extension SensorDashboardSidebar {
     private func sidebarProminentActionButtonLabel(
         _ configuration: SidebarProminentActionConfiguration
     ) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: SidebarSupportConstants.buttonLabelHStackSpacing) {
             Spacer(minLength: 0)
 
             if configuration.isBusy {
@@ -293,8 +329,8 @@ extension SensorDashboardSidebar {
         }
         .font(.callout.weight(.medium))
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
+        .padding(.horizontal, SidebarSupportConstants.buttonHorizontalPadding)
+        .padding(.vertical, SidebarSupportConstants.buttonVerticalPadding)
     }
 
     var boostHelp: String {

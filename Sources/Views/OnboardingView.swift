@@ -11,6 +11,19 @@ import SwiftUI
 
 private let onboardingViewLog = AppLog.make(category: "OnboardingView")
 
+private enum OnboardingConstants {
+    static let outerSpacerMinLength: CGFloat = 40
+    static let contentStackSpacing: CGFloat = 24
+    static let contentMaxWidth: CGFloat = 480
+    static let contentPadding: CGFloat = 32
+    static let iconCircleSize: CGFloat = 96
+    static let iconFontSize: CGFloat = 40
+    static let iconBackgroundOpacity: Double = 0.1
+    static let buttonLabelSpacing: CGFloat = 8
+    static let buttonMinWidth: CGFloat = 180
+    static let errorTopPadding: CGFloat = 8
+}
+
 /// Inline onboarding shown when the helper or agent is not installed.
 /// Replaces jarring popup alerts with a clean, reassuring flow.
 struct OnboardingView: View {
@@ -19,19 +32,19 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Spacer(minLength: 40)
+            Spacer(minLength: OnboardingConstants.outerSpacerMinLength)
 
-            VStack(spacing: 24) {
+            VStack(spacing: OnboardingConstants.contentStackSpacing) {
                 icon
                 title
                 subtitle
                 action
                 errorMessage
             }
-            .frame(maxWidth: 480)
-            .padding(32)
+            .frame(maxWidth: OnboardingConstants.contentMaxWidth)
+            .padding(OnboardingConstants.contentPadding)
 
-            Spacer(minLength: 40)
+            Spacer(minLength: OnboardingConstants.outerSpacerMinLength)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -41,10 +54,12 @@ struct OnboardingView: View {
     private var icon: some View {
         ZStack {
             Circle()
-                .fill(Color.accentColor.opacity(0.1))
-                .frame(width: 96, height: 96)
+                .fill(Color.accentColor.opacity(OnboardingConstants.iconBackgroundOpacity))
+                .frame(
+                    width: OnboardingConstants.iconCircleSize,
+                    height: OnboardingConstants.iconCircleSize)
             Image(systemName: iconName)
-                .font(.system(size: 40, weight: .light))
+                .font(.system(size: OnboardingConstants.iconFontSize, weight: .light))
                 .foregroundStyle(Color.accentColor)
         }
     }
@@ -69,7 +84,7 @@ struct OnboardingView: View {
     private var action: some View {
         if let (label, handler) = primaryAction {
             Button(action: handler) {
-                HStack(spacing: 8) {
+                HStack(spacing: OnboardingConstants.buttonLabelSpacing) {
                     if state.isRegisteringAgent || state.isRegisteringHelper {
                         ProgressView()
                             .controlSize(.small)
@@ -77,7 +92,7 @@ struct OnboardingView: View {
                     Text(isRegistering ? installingLabel : label)
                 }
                 .font(.system(.body, weight: .semibold))
-                .frame(minWidth: 180)
+                .frame(minWidth: OnboardingConstants.buttonMinWidth)
             }
             .controlSize(.large)
             .buttonStyle(.borderedProminent)
@@ -96,7 +111,7 @@ struct OnboardingView: View {
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.top, 8)
+                .padding(.top, OnboardingConstants.errorTopPadding)
         }
     }
 

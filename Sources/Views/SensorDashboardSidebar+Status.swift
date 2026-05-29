@@ -9,6 +9,53 @@
 import AppLog
 import SwiftUI
 
+// MARK: - Layout and threshold constants
+
+private enum SidebarStatusConstants {
+    // Status indicator dot
+    static let statusDotSize: CGFloat = 8
+    static let statusDotShadowOpacity: Double = 0.6
+    static let statusDotShadowRadius: CGFloat = 3
+
+    // Status block layout
+    static let statusBlockSpacing: CGFloat = 8
+    static let statusHStackSpacing: CGFloat = 8
+    static let statusDetailLineLimit = 3
+
+    // Assist floor thresholds (fractional, range 0 to 1)
+    static let assistFloorActivationMargin: Double = 0.005
+    static let assistFloorFilterTolerance: Double = 0.001
+
+    // Assist caption row
+    static let assistCaptionHStackSpacing: CGFloat = 6
+    static let assistCaptionIconSize: CGFloat = 11
+    static let assistCaptionHorizontalPadding: CGFloat = 10
+    static let assistCaptionVerticalPadding: CGFloat = 5
+    static let assistCaptionLineLimit = 2
+
+    // Percent scale factor (fractional to whole number)
+    static let percentScale: Double = 100
+
+    // Usage row layout
+    static let usageRowVStackSpacing: CGFloat = 4
+    static let usageRowBarCornerRadius: CGFloat = 2
+    static let usageRowBarTrackOpacity: Double = 0.15
+    static let usageRowBarHeight: CGFloat = 4
+    static let usageRowAnimationDuration: Double = 0.32
+
+    // Fan row layout
+    static let fanRowInnerVStackSpacing: CGFloat = 2
+    static let fanRowTopHStackSpacing: CGFloat = 4
+    static let fanRowRPMHStackSpacing: CGFloat = 3
+    static let fanRowRPMAnimationDuration: Double = 0.38
+    static let fanRowRampingSpinnerScale: CGFloat = 0.7
+
+    // Temperature color thresholds in degrees Celsius
+    static let tempGreenMaxCelsius: Double = 55
+    static let tempYellowMaxCelsius: Double = 75
+    static let tempOrangeMaxCelsius: Double = 90
+}
+
 private let sensorDashboardSidebarStatusLog = AppLog.make(category: "SensorDashboardSidebar")
 
 extension SensorDashboardSidebar {
@@ -92,12 +139,18 @@ extension SensorDashboardSidebar {
     }
 
     var statusBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: SidebarStatusConstants.statusBlockSpacing) {
+            HStack(spacing: SidebarStatusConstants.statusHStackSpacing) {
                 Circle()
                     .fill(statusColor)
-                    .frame(width: 8, height: 8)
-                    .shadow(color: statusColor.opacity(0.6), radius: 3)
+                    .frame(
+                        width: SidebarStatusConstants.statusDotSize,
+                        height: SidebarStatusConstants.statusDotSize
+                    )
+                    .shadow(
+                        color: statusColor.opacity(SidebarStatusConstants.statusDotShadowOpacity),
+                        radius: SidebarStatusConstants.statusDotShadowRadius
+                    )
                 Text(statusLabel)
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -108,7 +161,7 @@ extension SensorDashboardSidebar {
                 Text("Fan Curve needs attention. Open settings or try setup again.")
                     .font(.caption2)
                     .foregroundColor(.secondary)
-                    .lineLimit(3)
+                    .lineLimit(SidebarStatusConstants.statusDetailLineLimit)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .help("Fan Curve needs attention. Open settings or try setup again.")
@@ -133,33 +186,37 @@ extension SensorDashboardSidebar {
             let enabled = kind == .cpu ? cpuLoadAssistEnabled : gpuLoadAssistEnabled
             guard enabled else { continue }
             let load = kind == .cpu ? runtime.cpuLoadPercent : runtime.gpuLoadPercent
-            guard runtime.activeAssistKinds.contains(kind), floorPercent > basePercent + 0.005
+            guard runtime.activeAssistKinds.contains(kind),
+                floorPercent > basePercent + SidebarStatusConstants.assistFloorActivationMargin
             else { continue }
             candidates.append(
                 ActiveAssistState(kind: kind, loadPercent: load, floorPercent: floorPercent))
         }
         guard let maxFloor = candidates.map(\.floorPercent).max() else { return [] }
-        return candidates.filter { abs($0.floorPercent - maxFloor) < 0.001 }
+        return candidates.filter { candidate in
+            let tolerance = SidebarStatusConstants.assistFloorFilterTolerance
+            return abs(candidate.floorPercent - maxFloor) < tolerance
+        }
     }
 
     func loadAssistCaption(_ assist: ActiveAssistState) -> some View {
         let color = Color(nsColor: .systemTeal)
-        let floor = Int((assist.floorPercent * 100).rounded())
+        let floor = Int((assist.floorPercent * SidebarStatusConstants.percentScale).rounded())
         let load = Int(assist.loadPercent.rounded())
         let text = "\(assist.kind.shortTitle) assist holding minimum \(floor)% at \(load)% load"
 
-        return HStack(alignment: .top, spacing: 6) {
+        return HStack(alignment: .top, spacing: SidebarStatusConstants.assistCaptionHStackSpacing) {
             Image(systemName: "arrow.up.forward.circle.fill")
-                .font(.system(size: 11))
+                .font(.system(size: SidebarStatusConstants.assistCaptionIconSize))
             Text(text)
                 .font(.caption)
-                .lineLimit(2)
+                .lineLimit(SidebarStatusConstants.assistCaptionLineLimit)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .foregroundStyle(color)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.horizontal, SidebarStatusConstants.assistCaptionHorizontalPadding)
+        .padding(.vertical, SidebarStatusConstants.assistCaptionVerticalPadding)
         .modifier(LoadFloorGlassModifier(color: color, active: true))
         .help(
             "\(assist.kind.title) is active and is currently raising the effective minimum fan floor to \(floor)%."
@@ -171,9 +228,14 @@ extension SensorDashboardSidebar {
         return value
     }
 
+    private var usageRowAnimation: Animation? {
+        guard renderMode.allowsLiveAnimation else { return nil }
+        return .easeOut(duration: SidebarStatusConstants.usageRowAnimationDuration)
+    }
+
     func usageRow(label: String, icon: String, value: Double?, tint: Color) -> some View {
-        let roundedValue = value.map { Int($0.rounded()) }
-        return VStack(alignment: .leading, spacing: 4) {
+        let roundedValue = value.map { rawValue in Int(rawValue.rounded()) }
+        return VStack(alignment: .leading, spacing: SidebarStatusConstants.usageRowVStackSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Image(systemName: icon)
                     .font(.caption)
@@ -187,10 +249,7 @@ extension SensorDashboardSidebar {
                         .font(.system(.callout, design: .rounded).weight(.medium))
                         .monospacedDigit()
                         .contentTransition(.numericText())
-                        .animation(
-                            renderMode.allowsLiveAnimation ? .easeOut(duration: 0.32) : nil,
-                            value: roundedValue
-                        )
+                        .animation(usageRowAnimation, value: roundedValue)
                 } else {
                     Text("--")
                         .font(.system(.callout, design: .rounded).weight(.medium))
@@ -200,28 +259,31 @@ extension SensorDashboardSidebar {
             }
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.secondary.opacity(0.15))
+                    RoundedRectangle(cornerRadius: SidebarStatusConstants.usageRowBarCornerRadius)
+                        .fill(
+                            Color.secondary.opacity(SidebarStatusConstants.usageRowBarTrackOpacity))
                     if let value {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(tint)
-                            .frame(width: geometry.size.width * CGFloat(value / 100))
-                            .animation(
-                                renderMode.allowsLiveAnimation ? .easeOut(duration: 0.32) : nil,
-                                value: value
-                            )
+                        RoundedRectangle(
+                            cornerRadius: SidebarStatusConstants.usageRowBarCornerRadius
+                        )
+                        .fill(tint)
+                        .frame(
+                            width: geometry.size.width
+                                * CGFloat(value / SidebarStatusConstants.percentScale)
+                        )
+                        .animation(usageRowAnimation, value: value)
                     }
                 }
             }
-            .frame(height: 4)
+            .frame(height: SidebarStatusConstants.usageRowBarHeight)
         }
     }
 
     func fanRow(_ fan: AgentFanSnapshot) -> some View {
         let displayedRPM = Int(fan.actualRPM)
         return HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: SidebarStatusConstants.fanRowInnerVStackSpacing) {
+                HStack(spacing: SidebarStatusConstants.fanRowTopHStackSpacing) {
                     fanIcon(fan: fan)
                     Text("Fan \(fan.id)")
                         .font(.callout)
@@ -232,13 +294,19 @@ extension SensorDashboardSidebar {
                             .foregroundStyle(.tertiary)
                     }
                 }
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                HStack(
+                    alignment: .firstTextBaseline,
+                    spacing: SidebarStatusConstants.fanRowRPMHStackSpacing
+                ) {
                     Text("\(displayedRPM)")
                         .font(.system(.title3, design: .rounded))
                         .monospacedDigit()
                         .contentTransition(.numericText())
                         .animation(
-                            renderMode.allowsLiveAnimation ? .easeOut(duration: 0.38) : nil,
+                            renderMode.allowsLiveAnimation
+                                ? .easeOut(
+                                    duration: SidebarStatusConstants.fanRowRPMAnimationDuration)
+                                : nil,
                             value: displayedRPM
                         )
                     Text("RPM")
@@ -247,7 +315,7 @@ extension SensorDashboardSidebar {
                     if renderMode.allowsLiveAnimation, isRamping(fan) {
                         ProgressView()
                             .controlSize(.mini)
-                            .scaleEffect(0.7)
+                            .scaleEffect(SidebarStatusConstants.fanRowRampingSpinnerScale)
                             .help(
                                 "Ramping to \(Int(fan.targetRPM)) RPM. Spinner stops when the fan settles within range."
                             )
@@ -269,9 +337,15 @@ extension SensorDashboardSidebar {
 
     var tempColor: Color {
         guard let temperature = liveTemperatureCelsius else { return .secondary }
-        if temperature < 55 { return Color(nsColor: .systemGreen) }
-        if temperature < 75 { return Color(nsColor: .systemYellow) }
-        if temperature < 90 { return Color(nsColor: .systemOrange) }
+        if temperature < SidebarStatusConstants.tempGreenMaxCelsius {
+            return Color(nsColor: .systemGreen)
+        }
+        if temperature < SidebarStatusConstants.tempYellowMaxCelsius {
+            return Color(nsColor: .systemYellow)
+        }
+        if temperature < SidebarStatusConstants.tempOrangeMaxCelsius {
+            return Color(nsColor: .systemOrange)
+        }
         return Color(nsColor: .systemRed)
     }
 

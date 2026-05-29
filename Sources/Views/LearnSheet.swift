@@ -11,6 +11,38 @@ import SwiftUI
 
 let learnSheetLog = AppLog.make(category: "LearnSheet")
 
+// MARK: - Layout constants
+
+private enum LearnSheetConstants {
+    // Sheet dimensions
+    static let sheetWidth: CGFloat = 480
+    static let sheetPadding: CGFloat = 20
+    static let sheetCornerRadius: CGFloat = 14
+
+    // Section and content spacing
+    static let outerVStackSpacing: CGFloat = 16
+    static let sectionSpacing: CGFloat = 12
+    static let rowSpacing: CGFloat = 8
+    static let tightSpacing: CGFloat = 6
+    static let labelSpacing: CGFloat = 4
+    static let inlineSpacing: CGFloat = 2
+
+    // Card and inset padding
+    static let cardPadding: CGFloat = 8
+    static let insetPadding: CGFloat = 10
+    static let dividerVerticalPadding: CGFloat = 4
+
+    // Reused corner radii
+    static let cardCornerRadius: CGFloat = 6
+
+    // Opacity values
+    static let glassOpacityLow: Double = 0.08
+    static let glassOpacityMed: Double = 0.10
+
+    // Thresholds
+    static let warmTemperatureThreshold: Double = 50
+}
+
 struct LearnSheet: View {
     @ObservedObject var curveModel: FanCurveModel
     @ObservedObject var sensorState: SensorState
@@ -29,16 +61,16 @@ struct LearnSheet: View {
     private let durationSeconds = 180
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: LearnSheetConstants.outerVStackSpacing) {
             header
             Divider()
             sheetBody
             Divider()
             footer
         }
-        .padding(20)
-        .frame(width: 480)
-        .fancurveGlassCard(cornerRadius: 14)
+        .padding(LearnSheetConstants.sheetPadding)
+        .frame(width: LearnSheetConstants.sheetWidth)
+        .fancurveGlassCard(cornerRadius: LearnSheetConstants.sheetCornerRadius)
         .onDisappear {
             workload.stop()
             learner.cancel()
@@ -119,7 +151,7 @@ struct LearnSheet: View {
     }
 
     var learnedSummary: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: LearnSheetConstants.sectionSpacing) {
             Label(
                 "Learned a curve from \(learner.samplesCollected) samples",
                 systemImage: "checkmark.circle.fill"
@@ -134,7 +166,7 @@ struct LearnSheet: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Divider().padding(.vertical, 4)
+            Divider().padding(.vertical, LearnSheetConstants.dividerVerticalPadding)
 
             probeSection
 
@@ -152,7 +184,7 @@ struct LearnSheet: View {
     @ViewBuilder
     private var probeSection: some View {
         if learner.isProbing {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: LearnSheetConstants.tightSpacing) {
                 Text("Probing max RPM...")
                     .font(.callout.weight(.medium))
                 ProgressView(
@@ -163,7 +195,7 @@ struct LearnSheet: View {
                     .foregroundStyle(.secondary)
             }
         } else if let result = learner.probeResult {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: LearnSheetConstants.labelSpacing) {
                 Label(
                     "Max sustained: \(Int(result.sustainedRPM)) RPM",
                     systemImage: "gauge.with.needle.fill"
@@ -179,10 +211,10 @@ struct LearnSheet: View {
                     .foregroundStyle(.secondary)
             }
         } else {
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .top, spacing: LearnSheetConstants.rowSpacing) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(Color(nsColor: .systemOrange))
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: LearnSheetConstants.inlineSpacing) {
                     Text("Probe max RPM (optional)")
                         .font(.callout.weight(.medium))
                     Text(
@@ -196,10 +228,11 @@ struct LearnSheet: View {
                         .controlSize(.small)
                 }
             }
-            .padding(8)
+            .padding(LearnSheetConstants.cardPadding)
             .fancurveGlass(
-                in: RoundedRectangle(cornerRadius: 6),
-                fallbackFill: Color(nsColor: .systemOrange).opacity(0.08))
+                in: RoundedRectangle(cornerRadius: LearnSheetConstants.cardCornerRadius),
+                fallbackFill: Color(nsColor: .systemOrange).opacity(
+                    LearnSheetConstants.glassOpacityLow))
         }
     }
 
@@ -261,7 +294,7 @@ struct LearnSheet: View {
 
     @ViewBuilder
     func statCard(title: String, value: String, sub: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: LearnSheetConstants.inlineSpacing) {
             Text(title)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -272,14 +305,16 @@ struct LearnSheet: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
+        .padding(LearnSheetConstants.cardPadding)
+        .background(
+            RoundedRectangle(cornerRadius: LearnSheetConstants.cardCornerRadius).fill(
+                Color.secondary.opacity(LearnSheetConstants.glassOpacityLow)))
     }
 }
 
 extension LearnSheet {
     var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: LearnSheetConstants.labelSpacing) {
             Text("Learn from System")
                 .font(.title3.weight(.semibold))
             Text(
@@ -304,10 +339,10 @@ extension LearnSheet {
     }
 
     var preSampleOptions: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if sensorState.governingTemperature > 50 {
+        VStack(alignment: .leading, spacing: LearnSheetConstants.sectionSpacing) {
+            if sensorState.governingTemperature > LearnSheetConstants.warmTemperatureThreshold {
                 Label {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: LearnSheetConstants.inlineSpacing) {
                         Text(
                             "Your machine is already warm (\(Int(sensorState.governingTemperature))°C)."
                         )
@@ -325,10 +360,11 @@ extension LearnSheet {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(Color(nsColor: .systemOrange))
                 }
-                .padding(10)
+                .padding(LearnSheetConstants.insetPadding)
                 .fancurveGlass(
-                    in: RoundedRectangle(cornerRadius: 6),
-                    fallbackFill: Color(nsColor: .systemOrange).opacity(0.10)
+                    in: RoundedRectangle(cornerRadius: LearnSheetConstants.cardCornerRadius),
+                    fallbackFill: Color(nsColor: .systemOrange).opacity(
+                        LearnSheetConstants.glassOpacityMed)
                 )
             }
 
@@ -346,7 +382,7 @@ extension LearnSheet {
     }
 
     var samplingView: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: LearnSheetConstants.sectionSpacing) {
             ProgressView(
                 value: Double(learner.secondsElapsed),
                 total: Double(learner.totalSeconds)
@@ -370,7 +406,7 @@ extension LearnSheet {
                 )
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: LearnSheetConstants.rowSpacing) {
                 Text("Current:")
                     .font(.caption)
                     .foregroundStyle(.secondary)

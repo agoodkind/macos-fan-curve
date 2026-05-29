@@ -11,6 +11,44 @@ import SwiftUI
 
 private let sensorDashboardSidebarViewLog = AppLog.make(category: "SensorDashboardSidebar")
 
+// MARK: - Layout Constants
+
+private enum SensorDashboardSidebarConstants {
+    // Outer layout
+    static let outerVStackSpacing: CGFloat = 24
+    static let horizontalPadding: CGFloat = 20
+    static let topPadding: CGFloat = 24
+    static let bottomPadding: CGFloat = 20
+    static let dividerOpacity: Double = 0.15
+
+    // Hero section
+    static let heroVStackSpacing: CGFloat = 4
+    static let heroHStackSpacing: CGFloat = 6
+    static let tempIndicatorDotSize: CGFloat = 6
+    static let tempValueHStackSpacing: CGFloat = 2
+    static let tempAnimationDuration: Double = 0.38
+    static let unavailableHStackSpacing: CGFloat = 6
+
+    // Usage and fans sections
+    static let usageVStackSpacing: CGFloat = 10
+    static let gpuTintOpacity: Double = 0.55
+    static let fansVStackSpacing: CGFloat = 10
+    static let fanRowHorizontalPadding: CGFloat = 10
+    static let fanRowVerticalPadding: CGFloat = 8
+    static let fanRowCornerRadius: CGFloat = 8
+    static let fanRowBackgroundOpacity: Double = 0.06
+    static let fanRowStrokeOpacity: Double = 0.08
+    static let fanRowStrokeLineWidth: CGFloat = 0.5
+
+    // Controls section
+    static let controlsVStackSpacing: CGFloat = 12
+    static let controlsLabelVStackSpacing: CGFloat = 2
+    static let controlsHStackSpacing: CGFloat = 6
+
+    // Timing
+    static let nanosecondsPerSecond: Double = 1_000_000_000
+}
+
 struct SensorDashboardSidebar: View {
     @State private var pendingAction: SidebarPendingAction?
     @State private var pendingActionStartDate: Date?
@@ -31,18 +69,18 @@ struct SensorDashboardSidebar: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: SensorDashboardSidebarConstants.outerVStackSpacing) {
             heroSection
             usageSection
             fansSection
-            Divider().opacity(0.15)
+            Divider().opacity(SensorDashboardSidebarConstants.dividerOpacity)
             controlsSection
             Spacer()
             statusBlock
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 24)
-        .padding(.bottom, 20)
+        .padding(.horizontal, SensorDashboardSidebarConstants.horizontalPadding)
+        .padding(.top, SensorDashboardSidebarConstants.topPadding)
+        .padding(.bottom, SensorDashboardSidebarConstants.bottomPadding)
         .onChange(of: installState.step) { _ in
             reconcilePendingAction(reason: "installation-step-changed")
         }
@@ -98,8 +136,8 @@ struct SensorDashboardSidebar: View {
     }
 
     private var heroSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: SensorDashboardSidebarConstants.heroVStackSpacing) {
+            HStack(spacing: SensorDashboardSidebarConstants.heroHStackSpacing) {
                 Image(systemName: "thermometer.medium")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -108,23 +146,35 @@ struct SensorDashboardSidebar: View {
                     .foregroundStyle(.secondary)
                 Circle()
                     .fill(tempColor)
-                    .frame(width: 6, height: 6)
+                    .frame(
+                        width: SensorDashboardSidebarConstants.tempIndicatorDotSize,
+                        height: SensorDashboardSidebarConstants.tempIndicatorDotSize
+                    )
             }
 
             if let displayedTemperature {
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                HStack(
+                    alignment: .firstTextBaseline,
+                    spacing: SensorDashboardSidebarConstants.tempValueHStackSpacing
+                ) {
                     Text("\(displayedTemperature)")
                         .font(.system(.largeTitle, design: .rounded).weight(.regular))
                         .foregroundStyle(.primary)
                         .monospacedDigit()
                         .contentTransition(.numericText())
-                        .animation(.easeOut(duration: 0.38), value: displayedTemperature)
+                        .animation(
+                            .easeOut(
+                                duration: SensorDashboardSidebarConstants.tempAnimationDuration),
+                            value: displayedTemperature)
                     Text(unit.symbol)
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
             } else {
-                HStack(alignment: .center, spacing: 6) {
+                HStack(
+                    alignment: .center,
+                    spacing: SensorDashboardSidebarConstants.unavailableHStackSpacing
+                ) {
                     Text("--")
                         .font(.system(.largeTitle, design: .rounded).weight(.regular))
                         .foregroundStyle(.secondary)
@@ -139,7 +189,7 @@ struct SensorDashboardSidebar: View {
 
     private var usageSection: some View {
         let assistStates = activeAssistStates
-        return VStack(spacing: 10) {
+        return VStack(spacing: SensorDashboardSidebarConstants.usageVStackSpacing) {
             usageBlock(
                 label: "CPU",
                 icon: "cpu",
@@ -151,26 +201,37 @@ struct SensorDashboardSidebar: View {
                 label: "GPU",
                 icon: "memorychip",
                 value: runtimeLoadValue(runtime.gpuLoadPercent),
-                tint: Color.accentColor.opacity(0.55),
+                tint: Color.accentColor.opacity(SensorDashboardSidebarConstants.gpuTintOpacity),
                 assist: assistStates.first { $0.kind == .gpu }
             )
         }
     }
 
     private var fansSection: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: SensorDashboardSidebarConstants.fansVStackSpacing) {
             if presentation.showsRuntimeStats {
                 ForEach(runtime.fans) { fan in
                     fanRow(fan)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
+                        .padding(
+                            .horizontal, SensorDashboardSidebarConstants.fanRowHorizontalPadding
+                        )
+                        .padding(.vertical, SensorDashboardSidebarConstants.fanRowVerticalPadding)
                         .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.secondary.opacity(0.06))
+                            RoundedRectangle(
+                                cornerRadius: SensorDashboardSidebarConstants.fanRowCornerRadius
+                            )
+                            .fill(
+                                Color.secondary.opacity(
+                                    SensorDashboardSidebarConstants.fanRowBackgroundOpacity))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                            RoundedRectangle(
+                                cornerRadius: SensorDashboardSidebarConstants.fanRowCornerRadius
+                            )
+                            .stroke(
+                                Color.primary.opacity(
+                                    SensorDashboardSidebarConstants.fanRowStrokeOpacity),
+                                lineWidth: SensorDashboardSidebarConstants.fanRowStrokeLineWidth)
                         )
                 }
             }
@@ -190,9 +251,12 @@ struct SensorDashboardSidebar: View {
     }
 
     private var controlsSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: SensorDashboardSidebarConstants.controlsVStackSpacing) {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(
+                    alignment: .leading,
+                    spacing: SensorDashboardSidebarConstants.controlsLabelVStackSpacing
+                ) {
                     Text("Fan Control")
                         .font(.body)
                     if showsFanControlStateSubtitle {
@@ -208,7 +272,7 @@ struct SensorDashboardSidebar: View {
                 }
                 Spacer()
                 if presentation.showsFanControlToggle {
-                    HStack(spacing: 6) {
+                    HStack(spacing: SensorDashboardSidebarConstants.controlsHStackSpacing) {
                         if fanControlToggleBusy {
                             ProgressView()
                                 .controlSize(.mini)
@@ -301,7 +365,7 @@ extension SensorDashboardSidebar {
         let elapsedDuration = Date().timeIntervalSince(pendingActionStartDate)
         let remainingDuration = minimumDuration - elapsedDuration
         guard remainingDuration > 0 else { return 0 }
-        return UInt64(remainingDuration * 1_000_000_000)
+        return UInt64(remainingDuration * SensorDashboardSidebarConstants.nanosecondsPerSecond)
     }
 
     private func logPendingActionMinimumDelay(_ action: SidebarPendingAction, reason: String) {

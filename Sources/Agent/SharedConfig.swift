@@ -11,6 +11,12 @@ import Foundation
 
 private let sharedConfigLog = AppLog.make(category: "SharedConfig")
 
+private enum SharedConfigConstants {
+    static let minimumCurvePointCount: Int = 2
+    static let defaultCurveNormalPriority: Int = 10
+    static let defaultUserBoostPriority: Int = 50
+}
+
 /// Reads config from the shared UserDefaults suite written by the GUI.
 /// Writes agent status (PID, last tick) back for GUI health display.
 struct SharedConfig {
@@ -29,7 +35,7 @@ struct SharedConfig {
         }
         do {
             let points = try JSONDecoder().decode([CurvePoint].self, from: data)
-            guard points.count >= 2 else {
+            guard points.count >= SharedConfigConstants.minimumCurvePointCount else {
                 sharedConfigLog.notice(
                     "config.curve.invalid reason=too-few-points recovery=default")
                 return FanCurveModel.defaultCurve
@@ -78,14 +84,14 @@ struct SharedConfig {
     /// `SMCFanPriority.curveNormal` (10) by default.
     func loadCurveNormalPriority() -> Int {
         let stored = defaults.integer(forKey: SharedConfigKeys.curveNormalPriority)
-        return stored > 0 ? stored : 10
+        return stored > 0 ? stored : SharedConfigConstants.defaultCurveNormalPriority
     }
 
     /// Priority the agent uses when boost is on. Matches
     /// `SMCFanPriority.userBoost` (50) by default.
     func loadUserBoostPriority() -> Int {
         let stored = defaults.integer(forKey: SharedConfigKeys.userBoostPriority)
-        return stored > 0 ? stored : 50
+        return stored > 0 ? stored : SharedConfigConstants.defaultUserBoostPriority
     }
 
     // MARK: - Writes (agent status)

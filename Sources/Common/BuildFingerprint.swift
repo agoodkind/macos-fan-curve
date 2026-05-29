@@ -12,6 +12,10 @@ import Foundation
 
 private let buildFingerprintLog = AppLog.make(category: "BuildFingerprint")
 
+private enum BuildFingerprintConstants {
+    static let shortHashHexLength: Int = 12
+}
+
 enum BuildFingerprint {
     static var runningExecutableHash: String {
         shortHash(of: Bundle.main.executableURL)
@@ -42,6 +46,6 @@ enum BuildFingerprint {
         }
         let digest = SHA256.hash(data: data)
         let hex = digest.map { String(format: "%02x", $0) }.joined()
-        return String(hex.prefix(12))
+        return String(hex.prefix(BuildFingerprintConstants.shortHashHexLength))
     }
 }

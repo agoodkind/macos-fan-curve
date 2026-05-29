@@ -8,11 +8,48 @@
 
 import Foundation
 
+private enum TemperatureAxisScaleConstants {
+    // Default fan curve control-point temperatures (°C), defining the compressed axis layout.
+    static let controlPointTempC0: Double = 35
+    static let controlPointTempC1: Double = 78
+    static let controlPointTempC2: Double = 84
+    static let controlPointTempC3: Double = 90
+    static let controlPointTempC4: Double = 96
+    static let controlPointTempC5: Double = 101
+    static let controlPointTempC6: Double = 106
+    static let controlPointTempC7: Double = 110
+    static let defaultControlPointTemperaturesC: [Double] = [
+        controlPointTempC0,
+        controlPointTempC1,
+        controlPointTempC2,
+        controlPointTempC3,
+        controlPointTempC4,
+        controlPointTempC5,
+        controlPointTempC6,
+        controlPointTempC7,
+    ]
+    static let defaultMinorTickStepC: Double = 2.5
+    static let defaultMajorTickStepC: Double = 10
+
+    // Fallback axis bounds used when fewer than two valid control points are supplied.
+    static let fallbackMinTempC: Double = 20
+    static let fallbackMaxTempC: Double = 120
+
+    // Minimum safe tick step to prevent an infinite tick-generation loop.
+    static let minimumTickStepC: Double = 1
+
+    // Minimum control points needed to define an axis with at least one interpolation segment.
+    static let minimumControlPointCount: Int = 2
+
+    // Offset from count to the last segment's lower index (count - 2 is the last left point).
+    static let lastSegmentLowerIndexOffset: Int = 2
+}
+
 struct TemperatureAxisScale: Sendable {
     static let fanCurveDefault = TemperatureAxisScale(
-        controlPointTemperaturesC: [35, 78, 84, 90, 96, 101, 106, 110],
-        minorTickStepC: 2.5,
-        majorTickStepC: 10
+        controlPointTemperaturesC: TemperatureAxisScaleConstants.defaultControlPointTemperaturesC,
+        minorTickStepC: TemperatureAxisScaleConstants.defaultMinorTickStepC,
+        majorTickStepC: TemperatureAxisScaleConstants.defaultMajorTickStepC
     )
 
     let temperatureRangeC: ClosedRange<Double>
@@ -74,7 +111,8 @@ struct TemperatureAxisScale: Sendable {
         guard clampedFraction < 1 else { return temperatureRangeC.upperBound }
         let scaledFraction = clampedFraction * Double(controlPointTemperaturesC.count - 1)
         let pointIndex = min(
-            controlPointTemperaturesC.count - 2,
+            controlPointTemperaturesC.count
+                - TemperatureAxisScaleConstants.lastSegmentLowerIndexOffset,
             max(0, Int(scaledFraction.rounded(.down)))
         )
         let localFraction = scaledFraction - Double(pointIndex)
@@ -89,7 +127,7 @@ struct TemperatureAxisScale: Sendable {
         in temperatureRangeC: ClosedRange<Double>,
         stepC: Double
     ) -> [Double] {
-        let safeStep = max(1, stepC)
+        let safeStep = max(TemperatureAxisScaleConstants.minimumTickStepC, stepC)
         var ticks = [temperatureRangeC.lowerBound]
         var nextTick = ceil(temperatureRangeC.lowerBound / safeStep) * safeStep
         if nextTick <= temperatureRangeC.lowerBound {
@@ -107,7 +145,13 @@ struct TemperatureAxisScale: Sendable {
 
     private static func sanitizedControlPointTemperatures(_ temperatures: [Double]) -> [Double] {
         let sortedTemperatures = temperatures.sorted()
-        guard sortedTemperatures.count >= 2 else { return [20, 120] }
+        guard sortedTemperatures.count >= TemperatureAxisScaleConstants.minimumControlPointCount
+        else {
+            return [
+                TemperatureAxisScaleConstants.fallbackMinTempC,
+                TemperatureAxisScaleConstants.fallbackMaxTempC,
+            ]
+        }
         return sortedTemperatures
     }
 

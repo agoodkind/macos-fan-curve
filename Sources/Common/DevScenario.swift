@@ -27,6 +27,37 @@
 
         var id: String { rawValue }
 
+        // MARK: - Scenario simulation constants
+
+        private enum SimConstants {
+            // Temperature simulation
+            static let governingTempBaseC: Double = 45
+            static let governingTempWaveAmplitude: Double = 50
+            static let percentTempLowerBoundC: Double = 35
+            static let percentTempUpperBoundC: Double = 110
+
+            // Fan RPM
+            static let fanBaseRPM: Float = 2_300
+            static let fanRPMWaveRange: Double = 5_500
+            static let fanMinRPM: Float = 2_300
+            static let fanMaxRPM: Float = 7_800
+
+            // Load percent simulation
+            static let cpuLoadBasePercent: Double = 20
+            static let cpuLoadWaveAmplitude: Double = 60
+            static let gpuLoadBasePercent: Double = 30
+            static let gpuLoadWaveAmplitude: Double = 55
+
+            // Wave period divisor
+            static let wavePhraseDivisor: Double = 6
+
+            // Divisor that maps the raw sine range [-1, 1] into the unit interval [0, 1]
+            static let sineUnitNormalizer: Double = 2
+
+            // Stale snapshot age
+            static let staleSnapshotAgeSeconds: TimeInterval = 60
+        }
+
         var menuTitle: String {
             switch self {
             case .agentApproval: return "Agent Approval Pending"
@@ -84,7 +115,9 @@
             }
         }
 
-        private var snapshotAgeSeconds: TimeInterval { self == .stale ? 60 : 0 }
+        private var snapshotAgeSeconds: TimeInterval {
+            self == .stale ? SimConstants.staleSnapshotAgeSeconds : 0
+        }
 
         private var agentReportedFailure: Bool { self == .degraded }
 
@@ -119,17 +152,22 @@
             boostEnabled: Bool
         ) -> AgentSnapshot? {
             guard providesTelemetry else { return nil }
-            let wave = (sin(phase / 6) + 1) / 2
-            let governing = 45 + wave * 50
-            let percent = max(0, min(1, (governing - 35) / (110 - 35)))
-            let rpm = Float(2_300 + percent * 5_500)
+            let wave =
+                (sin(phase / SimConstants.wavePhraseDivisor) + 1) / SimConstants.sineUnitNormalizer
+            let governing =
+                SimConstants.governingTempBaseC + wave * SimConstants.governingTempWaveAmplitude
+            let tempRange =
+                SimConstants.percentTempUpperBoundC - SimConstants.percentTempLowerBoundC
+            let percent = max(
+                0, min(1, (governing - SimConstants.percentTempLowerBoundC) / tempRange))
+            let rpm = Float(Double(SimConstants.fanMinRPM) + percent * SimConstants.fanRPMWaveRange)
             let fans = (0...1).map { index in
                 AgentFanSnapshot(
                     index: index,
                     actualRPM: rpm,
                     targetRPM: rpm,
-                    minRPM: 2_300,
-                    maxRPM: 7_800,
+                    minRPM: SimConstants.fanMinRPM,
+                    maxRPM: SimConstants.fanMaxRPM,
                     manualMode: false
                 )
             }
@@ -141,8 +179,10 @@
                 governingTemperatureC: governing,
                 committedTemperatureC: governing,
                 rawPressureTemperatureC: governing,
-                cpuLoadPercent: 20 + wave * 60,
-                gpuLoadPercent: 30 + (1 - wave) * 55,
+                cpuLoadPercent: SimConstants.cpuLoadBasePercent + wave
+                    * SimConstants.cpuLoadWaveAmplitude,
+                gpuLoadPercent: SimConstants.gpuLoadBasePercent + (1 - wave)
+                    * SimConstants.gpuLoadWaveAmplitude,
                 effectiveCurvePercent: percent,
                 baseCurvePercent: percent,
                 rawBaselinePercent: percent,

@@ -9,6 +9,21 @@
 import AppKit
 import SwiftUI
 
+// MARK: - Layout constants
+
+private enum SettingsSliderRowConstants {
+    // Spacing
+    static let sliderSectionSpacing: CGFloat = 4
+    static let outerStackSpacing: CGFloat = 8
+    static let headerStackSpacing: CGFloat = 12
+    static let dangerToggleSpacing: CGFloat = 16
+
+    // Layout
+    static let dangerToggleMinLabelWidth: CGFloat = 220
+    static let verticalRowPadding: CGFloat = 2
+    static let headerLeadingLayoutPriority: Double = 2
+}
+
 struct SettingsDangerToggleRow: View {
     let title: String
     let description: String
@@ -16,21 +31,18 @@ struct SettingsDangerToggleRow: View {
 
     var body: some View {
         SettingsAccessoryRow(
-            minimumLabelWidth: 220,
+            minimumLabelWidth: SettingsSliderRowConstants.dangerToggleMinLabelWidth,
             accessoryWidth: SettingsFormComponents.switchAccessoryWidth,
-            spacing: 16
+            spacing: SettingsSliderRowConstants.dangerToggleSpacing
         ) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                SettingsDescription(text: description)
-            }
+            SettingsTitleCaption(title: title, caption: description)
         } accessory: {
             Toggle(title, isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .help(description)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, SettingsSliderRowConstants.verticalRowPadding)
     }
 }
 
@@ -77,15 +89,15 @@ struct SettingsSliderRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                    SettingsDescription(text: description)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .layoutPriority(2)
+        VStack(alignment: .leading, spacing: SettingsSliderRowConstants.outerStackSpacing) {
+            HStack(
+                alignment: .firstTextBaseline,
+                spacing: SettingsSliderRowConstants.headerStackSpacing
+            ) {
+                SettingsTitleCaption(title: title, caption: description)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(SettingsSliderRowConstants.headerLeadingLayoutPriority)
 
                 Text(displayValue)
                     .font(.system(.body, design: .rounded).weight(.semibold))
@@ -96,7 +108,7 @@ struct SettingsSliderRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: SettingsSliderRowConstants.sliderSectionSpacing) {
                 sliderControl
 
                 if let scaleLabels {
@@ -222,18 +234,12 @@ struct SettingsToggleDescriptionRow: View {
 
     var body: some View {
         Toggle(isOn: $isOn) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                if let iconSystemName {
-                    Image(systemName: iconSystemName)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(iconColor)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                    SettingsDescription(text: description)
-                }
-            }
+            SettingsTitleCaption(
+                title: title,
+                caption: description,
+                iconSystemName: iconSystemName,
+                iconColor: iconColor
+            )
         }
     }
 }

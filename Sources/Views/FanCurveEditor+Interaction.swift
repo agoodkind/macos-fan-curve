@@ -8,6 +8,38 @@
 
 import SwiftUI
 
+// MARK: - Interaction constants
+
+private enum ControlPointSizeConstants {
+    static let highlightedDiameter: CGFloat = 14
+    static let normalDiameter: CGFloat = 11
+    static let diameterToRadiusDivisor: CGFloat = 2
+}
+
+private enum ControlPointStrokeConstants {
+    static let highlightedWidth: CGFloat = 2.5
+    static let activeWidth: CGFloat = 1.5
+    static let defaultWidth: CGFloat = 2.0
+}
+
+private enum ControlPointOpacityConstants {
+    static let fillBackground: Double = 0.98
+    static let inactiveStroke: Double = 0.96
+    static let activeShadow: Double = 0.25
+    static let inactiveShadow: Double = 0.2
+}
+
+private enum ControlPointShadowConstants {
+    static let highlightedRadius: CGFloat = 6
+    static let defaultRadius: CGFloat = 2
+}
+
+private enum InteractionAnimationConstants {
+    static let springResponse: Double = 0.25
+    static let springDampingFraction: Double = 0.7
+    static let activeToggleDuration: Double = 0.35
+}
+
 extension FanCurveEditor {
     func controlPointsOverlay(size: CGSize) -> some View {
         ForEach(Array(model.controlPoints.enumerated()), id: \.element.id) { index, point in
@@ -18,22 +50,57 @@ extension FanCurveEditor {
     func controlPointView(index: Int, point: CurvePoint, size: CGSize) -> some View {
         let position = dataToPixel(temp: point.temperature, percent: point.fanPercent, in: size)
         let isHighlighted = hoveredIndex == index || draggedIndex == index
-        let strokeColor: Color = effectiveActive ? curveColor : Color.secondary.opacity(0.96)
-        let strokeWidth: CGFloat = isHighlighted ? 2.5 : effectiveActive ? 1.5 : 2.0
+        let strokeColor: Color =
+            effectiveActive
+            ? curveColor : Color.secondary.opacity(ControlPointOpacityConstants.inactiveStroke)
+        let strokeWidth: CGFloat =
+            isHighlighted
+            ? ControlPointStrokeConstants.highlightedWidth
+            : effectiveActive
+                ? ControlPointStrokeConstants.activeWidth : ControlPointStrokeConstants.defaultWidth
 
         return Circle()
-            .fill(Color(nsColor: .windowBackgroundColor).opacity(0.98))
-            .frame(width: isHighlighted ? 14 : 11, height: isHighlighted ? 14 : 11)
+            .fill(
+                Color(nsColor: .windowBackgroundColor).opacity(
+                    ControlPointOpacityConstants.fillBackground)
+            )
+            .frame(
+                width: isHighlighted
+                    ? ControlPointSizeConstants.highlightedDiameter
+                    : ControlPointSizeConstants.normalDiameter,
+                height: isHighlighted
+                    ? ControlPointSizeConstants.highlightedDiameter
+                    : ControlPointSizeConstants.normalDiameter
+            )
             .overlay(Circle().stroke(strokeColor, lineWidth: strokeWidth))
             .shadow(
-                color: strokeColor.opacity(effectiveActive ? 0.25 : 0.2),
-                radius: isHighlighted ? 6 : 2
+                color: strokeColor.opacity(
+                    effectiveActive
+                        ? ControlPointOpacityConstants.activeShadow
+                        : ControlPointOpacityConstants.inactiveShadow),
+                radius: isHighlighted
+                    ? ControlPointShadowConstants.highlightedRadius
+                    : ControlPointShadowConstants.defaultRadius
             )
-            .padding(controlPointHitRadius - ((isHighlighted ? 14 : 11) / 2))
+            .padding(
+                controlPointHitRadius
+                    - ((isHighlighted
+                        ? ControlPointSizeConstants.highlightedDiameter
+                        : ControlPointSizeConstants.normalDiameter)
+                        / ControlPointSizeConstants.diameterToRadiusDivisor)
+            )
             .contentShape(Circle())
             .position(position)
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHighlighted)
-            .animation(.easeInOut(duration: 0.35), value: effectiveActive)
+            .animation(
+                .spring(
+                    response: InteractionAnimationConstants.springResponse,
+                    dampingFraction: InteractionAnimationConstants.springDampingFraction),
+                value: isHighlighted
+            )
+            .animation(
+                .easeInOut(duration: InteractionAnimationConstants.activeToggleDuration),
+                value: effectiveActive
+            )
             .gesture(dragGesture(index: index, size: size))
     }
 

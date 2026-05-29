@@ -11,6 +11,16 @@ import Foundation
 
 private let log = AppLog.make(category: "EventArtifactWriter")
 
+private enum EventArtifactConstants {
+    static let bytesPerKilobyte: Int = 1_024
+    static let bytesPerMegabyte: Int = bytesPerKilobyte * bytesPerKilobyte
+    static let rotateThresholdMegabytes: Int = 50
+    static let eventSchemaVersion: Int = 2
+    static let newlineByte: UInt8 = 0x0A
+    static let directoryPosixPermissions: Int = 0o700
+    static let filePosixPermissions: Int = 0o600
+}
+
 /// Append-only NDJSON ring of agent tick events. Future GUI history view
 /// reads this file directly. Two-file cap: when events.jsonl crosses the
 /// 50 MB threshold it is renamed to events.1.jsonl (overwriting any prior
@@ -76,7 +86,8 @@ final class EventArtifactWriter: @unchecked Sendable {
     private let rotatedJSON: URL
     private let activeCSV: URL
     private let rotatedCSV: URL
-    private let rotateThreshold: Int = 50 * 1_024 * 1_024
+    private let rotateThreshold: Int =
+        EventArtifactConstants.rotateThresholdMegabytes * EventArtifactConstants.bytesPerMegabyte
     private let encoder: JSONEncoder
     private let csvHeader =
         [
@@ -124,7 +135,7 @@ final class EventArtifactWriter: @unchecked Sendable {
 
     func append(_ request: AppendRequest) {
         let event = Event(
-            schemaVersion: 2,
+            schemaVersion: EventArtifactConstants.eventSchemaVersion,
             ts: request.timestamp,
             kind: request.kind,
             governingTempC: request.governingTempC,
@@ -150,7 +161,7 @@ final class EventArtifactWriter: @unchecked Sendable {
         )
         do {
             var jsonData = try encoder.encode(event)
-            jsonData.append(0x0A)
+            jsonData.append(EventArtifactConstants.newlineByte)
             let csvData = Data(csvLine(for: event).utf8)
 
             lock.lock()
@@ -173,7 +184,7 @@ final class EventArtifactWriter: @unchecked Sendable {
             try fm.createDirectory(
                 at: directory,
                 withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700])
+                attributes: [.posixPermissions: EventArtifactConstants.directoryPosixPermissions])
         } catch {
             log.error(
                 "artifact.dir.failed path=\(directory.path, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
@@ -234,7 +245,9 @@ final class EventArtifactWriter: @unchecked Sendable {
             }
             initial.append(data)
             fm.createFile(
-                atPath: url.path, contents: initial, attributes: [.posixPermissions: 0o600])
+                atPath: url.path,
+                contents: initial,
+                attributes: [.posixPermissions: EventArtifactConstants.filePosixPermissions])
             log.info("artifact.written path=\(url.path, privacy: .public) kind=create")
             return
         }

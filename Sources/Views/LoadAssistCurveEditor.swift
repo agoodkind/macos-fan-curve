@@ -8,6 +8,45 @@
 
 import SwiftUI
 
+private enum LoadAssistCurveEditorConstants {
+    // Control point dot
+    static let controlPointDiameter: CGFloat = 10
+    static let controlPointStrokeWidth: CGFloat = 2
+
+    // Editor chrome
+    static let editorVerticalPadding: CGFloat = 4
+    static let backgroundCornerRadius: CGFloat = 10
+    static let backgroundFillOpacity: Double = 0.035
+    static let backgroundStrokeOpacity: Double = 0.08
+    static let backgroundStrokeWidth: CGFloat = 0.5
+
+    // Grid
+    static let gridLoadTickQuarter: Double = 25.0
+    static let gridLoadTickHalf: Double = 50.0
+    static let gridLoadTickThreeQuarter: Double = 75.0
+    static let gridLoadTicks: [Double] = [
+        0.0, gridLoadTickQuarter, gridLoadTickHalf, gridLoadTickThreeQuarter, loadAxisMax,
+    ]
+    static let gridFanTickHalf: Double = 0.5
+    static let gridFanTickFull: Double = 1.0
+    static let gridFanTicks: [Double] = [0.0, gridFanTickHalf, gridFanTickFull]
+    static let gridLineWidth: CGFloat = 1
+    static let gridLabelYOffset: CGFloat = 12
+    static let gridLabelXOffset: CGFloat = 6
+    static let gridColorOpacity: Double = 0.05
+
+    // Axis scale
+    static let loadAxisMax: Double = 100
+
+    // Curve drawing
+    static let minimumPointsForCurve: Int = 2
+    static let curveInterpolationSteps: Int = 80
+    static let curveStrokeWidth: CGFloat = 3
+
+    // Drag ripple
+    static let dragRippleDecay: Double = 0.6
+}
+
 struct LoadAssistCurveEditor: View {
     @Binding var points: [CurvePoint]
     let minimumPointSpacing: Double
@@ -30,8 +69,15 @@ struct LoadAssistCurveEditor: View {
                 ForEach(Array(points.enumerated()), id: \.element.id) { index, point in
                     Circle()
                         .fill(Color(nsColor: .textBackgroundColor))
-                        .frame(width: 10, height: 10)
-                        .overlay(Circle().stroke(accent, lineWidth: 2))
+                        .frame(
+                            width: LoadAssistCurveEditorConstants.controlPointDiameter,
+                            height: LoadAssistCurveEditorConstants.controlPointDiameter
+                        )
+                        .overlay(
+                            Circle().stroke(
+                                accent,
+                                lineWidth: LoadAssistCurveEditorConstants.controlPointStrokeWidth)
+                        )
                         .position(
                             dataToPixel(
                                 load: point.temperature, fanPercent: point.fanPercent, size: size)
@@ -40,14 +86,23 @@ struct LoadAssistCurveEditor: View {
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, LoadAssistCurveEditorConstants.editorVerticalPadding)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.primary.opacity(0.035))
+            RoundedRectangle(
+                cornerRadius: LoadAssistCurveEditorConstants.backgroundCornerRadius
+            )
+            .fill(
+                Color.primary.opacity(
+                    LoadAssistCurveEditorConstants.backgroundFillOpacity))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+            RoundedRectangle(
+                cornerRadius: LoadAssistCurveEditorConstants.backgroundCornerRadius
+            )
+            .stroke(
+                Color.primary.opacity(
+                    LoadAssistCurveEditorConstants.backgroundStrokeOpacity),
+                lineWidth: LoadAssistCurveEditorConstants.backgroundStrokeWidth)
         )
     }
 
@@ -55,7 +110,7 @@ struct LoadAssistCurveEditor: View {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 var point = pixelToData(value.location, size: size)
-                point.x = max(0, min(100, point.x))
+                point.x = max(0, min(LoadAssistCurveEditorConstants.loadAxisMax, point.x))
                 point.y = max(0, min(1, point.y))
 
                 if index == 0 || index == points.count - 1 {
@@ -83,14 +138,16 @@ struct LoadAssistCurveEditor: View {
         points[index].fanPercent = nextPercent
 
         for earlierIndex in stride(from: index - 1, through: 0, by: -1) {
-            let weight = pow(0.6, Double(index - earlierIndex - 1))
+            let weight = pow(
+                LoadAssistCurveEditorConstants.dragRippleDecay, Double(index - earlierIndex - 1))
             let desired = original[earlierIndex].fanPercent + delta * weight
             points[earlierIndex].fanPercent = max(
                 0, min(points[earlierIndex + 1].fanPercent, desired))
         }
 
         for laterIndex in (index + 1)..<points.count {
-            let weight = pow(0.6, Double(laterIndex - index - 1))
+            let weight = pow(
+                LoadAssistCurveEditorConstants.dragRippleDecay, Double(laterIndex - index - 1))
             let desired = original[laterIndex].fanPercent + delta * weight
             points[laterIndex].fanPercent = max(points[laterIndex - 1].fanPercent, min(1, desired))
         }
@@ -98,43 +155,61 @@ struct LoadAssistCurveEditor: View {
 
     private func drawGrid(context: GraphicsContext, size: CGSize) {
         let plotRect = plotFrame(size)
-        let gridColor = Color.primary.opacity(0.05)
-        for tick in [0.0, 25.0, 50.0, 75.0, 100.0] {
-            let x = plotRect.minX + plotRect.width * CGFloat(tick / 100)
+        let gridColor = Color.primary.opacity(LoadAssistCurveEditorConstants.gridColorOpacity)
+        for tick in LoadAssistCurveEditorConstants.gridLoadTicks {
+            let x =
+                plotRect.minX + plotRect.width
+                * CGFloat(
+                    tick / LoadAssistCurveEditorConstants.loadAxisMax)
             var vertical = Path()
             vertical.move(to: CGPoint(x: x, y: plotRect.minY))
             vertical.addLine(to: CGPoint(x: x, y: plotRect.maxY))
-            context.stroke(vertical, with: .color(gridColor), lineWidth: 1)
+            context.stroke(
+                vertical,
+                with: .color(gridColor),
+                lineWidth: LoadAssistCurveEditorConstants.gridLineWidth)
 
             let label = context.resolve(
                 Text("\(Int(tick))")
                     .font(.caption2)
             )
-            context.draw(label, at: CGPoint(x: x, y: plotRect.maxY + 12), anchor: .top)
+            context.draw(
+                label,
+                at: CGPoint(
+                    x: x, y: plotRect.maxY + LoadAssistCurveEditorConstants.gridLabelYOffset),
+                anchor: .top)
         }
 
-        for tick in [0.0, 0.5, 1.0] {
+        for tick in LoadAssistCurveEditorConstants.gridFanTicks {
             let y = plotRect.maxY - plotRect.height * CGFloat(tick)
             var horizontal = Path()
             horizontal.move(to: CGPoint(x: plotRect.minX, y: y))
             horizontal.addLine(to: CGPoint(x: plotRect.maxX, y: y))
-            context.stroke(horizontal, with: .color(gridColor), lineWidth: 1)
+            context.stroke(
+                horizontal,
+                with: .color(gridColor),
+                lineWidth: LoadAssistCurveEditorConstants.gridLineWidth)
 
             let label = context.resolve(
-                Text("\(Int(tick * 100))%")
+                Text("\(Int(tick * LoadAssistCurveEditorConstants.loadAxisMax))%")
                     .font(.caption2)
             )
-            context.draw(label, at: CGPoint(x: plotRect.minX - 6, y: y), anchor: .trailing)
+            context.draw(
+                label,
+                at: CGPoint(
+                    x: plotRect.minX - LoadAssistCurveEditorConstants.gridLabelXOffset,
+                    y: y),
+                anchor: .trailing)
         }
     }
 
     private func drawCurve(context: GraphicsContext, size: CGSize) {
-        guard points.count >= 2 else { return }
+        guard points.count >= LoadAssistCurveEditorConstants.minimumPointsForCurve else { return }
         let samples = CurveInterpolation.pathPoints(
             points: points,
             mode: .catmullRom,
-            tempRange: 0...100,
-            steps: 80)
+            tempRange: 0...LoadAssistCurveEditorConstants.loadAxisMax,
+            steps: LoadAssistCurveEditorConstants.curveInterpolationSteps)
 
         var path = Path()
         for (index, sample) in samples.enumerated() {
@@ -150,7 +225,10 @@ struct LoadAssistCurveEditor: View {
         context.stroke(
             path,
             with: .color(accent),
-            style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+            style: StrokeStyle(
+                lineWidth: LoadAssistCurveEditorConstants.curveStrokeWidth,
+                lineCap: .round,
+                lineJoin: .round)
         )
     }
 
@@ -165,13 +243,16 @@ struct LoadAssistCurveEditor: View {
     private func dataToPixel(load: Double, fanPercent: Double, size: CGSize) -> CGPoint {
         let rect = plotFrame(size)
         return CGPoint(
-            x: rect.minX + rect.width * CGFloat(load / 100),
+            x: rect.minX + rect.width
+                * CGFloat(
+                    load / LoadAssistCurveEditorConstants.loadAxisMax),
             y: rect.maxY - rect.height * CGFloat(fanPercent))
     }
 
     private func pixelToData(_ point: CGPoint, size: CGSize) -> (x: Double, y: Double) {
         let rect = plotFrame(size)
-        let x = Double((point.x - rect.minX) / rect.width) * 100
+        let x =
+            Double((point.x - rect.minX) / rect.width) * LoadAssistCurveEditorConstants.loadAxisMax
         let y = 1 - Double((point.y - rect.minY) / rect.height)
         return (x, y)
     }

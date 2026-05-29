@@ -11,6 +11,38 @@ import SwiftUI
 
 let generalSettingsLog = AppLog.make(category: "GeneralSettings")
 
+private enum GeneralSettingsConstants {
+    // Layout: accessory widths
+    static let activeControllersSummaryAccessoryWidth: CGFloat = 144
+    static let controllerRowMinimumLabelWidth: CGFloat = 72
+    static let controllerRowAccessoryWidth: CGFloat = 260
+    static let statusRowAccessoryWidth: CGFloat = 112
+
+    // Layout: spacing
+    static let rowHStackSpacing: CGFloat = 8
+    static let accessoryHStackSpacing: CGFloat = 6
+    static let controllerRowVStackSpacing: CGFloat = 2
+    static let helperActionSpacing: CGFloat = 6
+    static let helperActionButtonHStackSpacing: CGFloat = 6
+
+    // Layout: indicator dot
+    static let indicatorDotSize: CGFloat = 8
+    static let indicatorDotVStackSpacing: CGFloat = 2
+
+    // Layout: controller row
+    static let controllerRowVerticalPadding: CGFloat = 2
+
+    // Layout: progress view scale
+    static let progressViewScale: CGFloat = 0.7
+
+    // Monitoring
+    static let ownershipRefreshIntervalSeconds: Double = 5.0
+
+    // Age formatting
+    static let ageJustNowThresholdSeconds: Double = 1.0
+    static let secondsPerMinute: Double = 60
+}
+
 /// General display preferences. Stored in UserDefaults.standard because they
 /// only affect the GUI and do not need to be visible to the agent.
 struct GeneralSettingsView: View {
@@ -126,7 +158,9 @@ struct GeneralSettingsView: View {
         if active {
             agentClient.start()
             installState.startMonitoring(agentClient: agentClient)
-            ownershipStatus.startMonitoring(agentClient: agentClient, intervalSeconds: 5.0)
+            ownershipStatus.startMonitoring(
+                agentClient: agentClient,
+                intervalSeconds: GeneralSettingsConstants.ownershipRefreshIntervalSeconds)
         } else {
             installState.stopMonitoring()
             ownershipStatus.stopMonitoring()
@@ -157,16 +191,18 @@ struct GeneralSettingsView: View {
     }
 
     var activeControllersSummary: some View {
-        SettingsAccessoryRow(accessoryWidth: 144) {
+        SettingsAccessoryRow(
+            accessoryWidth: GeneralSettingsConstants.activeControllersSummaryAccessoryWidth
+        ) {
             Text("Active Controllers")
                 .fontWeight(.semibold)
                 .lineLimit(1)
         } accessory: {
-            HStack(spacing: 6) {
+            HStack(spacing: GeneralSettingsConstants.accessoryHStackSpacing) {
                 if ownershipStatus.isMonitoring, !ownershipStatus.hasLoaded {
                     ProgressView()
                         .controlSize(.small)
-                        .scaleEffect(0.7)
+                        .scaleEffect(GeneralSettingsConstants.progressViewScale)
                 }
                 Text(activeControllersStatusText)
                     .font(.caption)
@@ -213,12 +249,17 @@ struct GeneralSettingsView: View {
 
     @ViewBuilder
     func activeControllerRow(_ row: AgentOwnershipEntry) -> some View {
-        SettingsAccessoryRow(minimumLabelWidth: 72, accessoryWidth: 260) {
+        SettingsAccessoryRow(
+            minimumLabelWidth: GeneralSettingsConstants.controllerRowMinimumLabelWidth,
+            accessoryWidth: GeneralSettingsConstants.controllerRowAccessoryWidth
+        ) {
             Text("Fan \(row.fanIndex)")
                 .font(.caption)
                 .foregroundStyle(.primary)
         } accessory: {
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(
+                alignment: .trailing, spacing: GeneralSettingsConstants.controllerRowVStackSpacing
+            ) {
                 Text(controllerDisplayName(row.clientName))
                     .font(.caption)
                     .foregroundStyle(.primary)
@@ -231,7 +272,7 @@ struct GeneralSettingsView: View {
                     .lineLimit(1)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, GeneralSettingsConstants.controllerRowVerticalPadding)
     }
 
     var activeControllersFooterText: String {
@@ -251,9 +292,9 @@ extension GeneralSettingsView {
     }
 
     private func formatAge(_ seconds: TimeInterval) -> String {
-        if seconds < 1.0 { return "just now" }
-        if seconds < 60 { return "\(Int(seconds))s ago" }
-        let minutes = Int(seconds / 60)
+        if seconds < GeneralSettingsConstants.ageJustNowThresholdSeconds { return "just now" }
+        if seconds < GeneralSettingsConstants.secondsPerMinute { return "\(Int(seconds))s ago" }
+        let minutes = Int(seconds / GeneralSettingsConstants.secondsPerMinute)
         return "\(minutes)m ago"
     }
 
@@ -263,12 +304,18 @@ extension GeneralSettingsView {
         status: String,
         state: ServiceRowState
     ) -> some View {
-        SettingsAccessoryRow(accessoryWidth: 112) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+        SettingsAccessoryRow(accessoryWidth: GeneralSettingsConstants.statusRowAccessoryWidth) {
+            HStack(
+                alignment: .firstTextBaseline, spacing: GeneralSettingsConstants.rowHStackSpacing
+            ) {
                 Circle()
                     .fill(state.color)
-                    .frame(width: 8, height: 8)
-                VStack(alignment: .leading, spacing: 2) {
+                    .frame(
+                        width: GeneralSettingsConstants.indicatorDotSize,
+                        height: GeneralSettingsConstants.indicatorDotSize)
+                VStack(
+                    alignment: .leading, spacing: GeneralSettingsConstants.indicatorDotVStackSpacing
+                ) {
                     Text(title)
                         .font(.body)
                     Text(subtitle)
@@ -299,16 +346,16 @@ extension GeneralSettingsView {
             || !installState.helperEnabled
             || !installState.helperReachable
         if showsHelperRepairAction {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: GeneralSettingsConstants.helperActionSpacing) {
                 Button {
                     generalSettingsLog.info("general_settings.helper.install.tapped")
                     installState.registerHelperDaemon(agentClient: agentClient)
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: GeneralSettingsConstants.helperActionButtonHStackSpacing) {
                         if installState.isRegisteringHelper {
                             ProgressView()
                                 .controlSize(.small)
-                                .scaleEffect(0.7)
+                                .scaleEffect(GeneralSettingsConstants.progressViewScale)
                         }
                         Text(helperActionTitle)
                     }
@@ -327,12 +374,18 @@ extension GeneralSettingsView {
     }
 
     private var agentRow: some View {
-        SettingsAccessoryRow(accessoryWidth: 112) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+        SettingsAccessoryRow(accessoryWidth: GeneralSettingsConstants.statusRowAccessoryWidth) {
+            HStack(
+                alignment: .firstTextBaseline, spacing: GeneralSettingsConstants.rowHStackSpacing
+            ) {
                 Circle()
                     .fill(agentRowState.color)
-                    .frame(width: 8, height: 8)
-                VStack(alignment: .leading, spacing: 2) {
+                    .frame(
+                        width: GeneralSettingsConstants.indicatorDotSize,
+                        height: GeneralSettingsConstants.indicatorDotSize)
+                VStack(
+                    alignment: .leading, spacing: GeneralSettingsConstants.indicatorDotVStackSpacing
+                ) {
                     Text(generatedAgentDisplayName)
                         .font(.body)
                     Text(generatedAgentBundleID)
@@ -341,11 +394,11 @@ extension GeneralSettingsView {
                 }
             }
         } accessory: {
-            HStack(spacing: 6) {
+            HStack(spacing: GeneralSettingsConstants.accessoryHStackSpacing) {
                 if installState.isRegisteringAgent {
                     ProgressView()
                         .controlSize(.small)
-                        .scaleEffect(0.7)
+                        .scaleEffect(GeneralSettingsConstants.progressViewScale)
                 }
                 Text(agentStatusText)
                     .font(.caption)
@@ -392,11 +445,11 @@ extension GeneralSettingsView {
                 generalSettingsLog.info("general_settings.agent.install.tapped")
                 installState.registerAgent()
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: GeneralSettingsConstants.helperActionButtonHStackSpacing) {
                     if installState.isRegisteringAgent {
                         ProgressView()
                             .controlSize(.small)
-                            .scaleEffect(0.7)
+                            .scaleEffect(GeneralSettingsConstants.progressViewScale)
                     }
                     Text(installState.isRegisteringAgent ? "Installing" : "Install")
                 }

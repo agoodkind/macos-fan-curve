@@ -16,6 +16,11 @@
     private let frameLog = AppLog.make(category: "FrameProfiler")
     private let frameSignposter = AppLog.signposter(category: "FrameProfiler")
 
+    private enum FrameProfilerConstants {
+        static let nanosecondsPerMillisecond: Double = 1_000_000
+        static let nanosecondsPerSecond: UInt64 = 1_000_000_000
+    }
+
     /// Lightweight display-cadence profiler for Xcode/Instruments debug sessions.
     ///
     /// Enable from the Xcode scheme with either:
@@ -115,17 +120,21 @@
                 previousTickNs = nowNs
             }
 
-            let frameTimeMs = Double(nowNs - previousTickNs) / 1_000_000
+            let frameTimeMs =
+                Double(nowNs - previousTickNs)
+                / FrameProfilerConstants.nanosecondsPerMillisecond
             previousTickNs = nowNs
             frameCount += 1
 
             let elapsedNs = nowNs - windowStartNs
-            guard elapsedNs >= 1_000_000_000 else {
+            guard elapsedNs >= FrameProfilerConstants.nanosecondsPerSecond else {
                 lock.unlock()
                 return
             }
 
-            let fps = Double(frameCount) / (Double(elapsedNs) / 1_000_000_000)
+            let fps =
+                Double(frameCount)
+                / (Double(elapsedNs) / Double(FrameProfilerConstants.nanosecondsPerSecond))
             frameCount = 0
             windowStartNs = nowNs
             lock.unlock()

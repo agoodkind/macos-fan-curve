@@ -12,6 +12,10 @@ import Foundation
 
 private let fanCurveModelLog = AppLog.make(category: "FanCurveModel")
 
+private enum FanCurveModelConstants {
+    static let minimumStoredCurvePoints: Int = 2
+}
+
 /// Conservative default for Overdrive's 100% target when no probe result
 /// has been written yet. Firmware accepts it on M4 Max and M5 Max.
 private let overdriveTargetRPMDefault: Float = 10_000
@@ -114,7 +118,7 @@ class FanCurveModel: ObservableObject {
         }
         do {
             let points = try JSONDecoder().decode([CurvePoint].self, from: data)
-            guard points.count >= 2 else {
+            guard points.count >= FanCurveModelConstants.minimumStoredCurvePoints else {
                 fanCurveModelLog.notice("curve.load.invalid reason=too-few-points recovery=default")
                 return []
             }

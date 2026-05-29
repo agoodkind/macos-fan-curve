@@ -22,6 +22,23 @@ enum SettingsFormComponents {
     )
 }
 
+private enum SettingsFormComponentsConstants {
+    static let accessoryRowDefaultMinLabelWidth: CGFloat = 180
+    static let accessoryRowDefaultSpacing: CGFloat = 12
+    static let keyValueRowSpacing: CGFloat = 12
+    static let keyValueLabelWidth: CGFloat = 112
+    static let dangerDisclosureTitleSpacing: CGFloat = 12
+    static let disclosureDefaultContentSpacing: CGFloat = 8
+    static let disclosureChevronExpandedRotation: Double = 90
+    static let disclosureContentTopPadding: CGFloat = 10
+    static let disclosureContentCollapseOffset: CGFloat = -4
+    static let accessoryRowLabelLayoutPriority: Double = 2
+    static let keyValueRowValueLineLimit: Int = 2
+    static let keyValueRowValueLayoutPriority: Double = 2
+    static let titleCaptionSpacing: CGFloat = 2
+    static let titleCaptionIconSpacing: CGFloat = 6
+}
+
 struct SettingsFormContainer<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
@@ -45,6 +62,51 @@ struct SettingsDescription: View {
     }
 }
 
+/// A title stacked over a secondary caption, the shared label block used by the
+/// slider, toggle, and danger-toggle rows. An optional leading icon lets it also
+/// back the inline toggle-description layout.
+struct SettingsTitleCaption: View {
+    let title: String
+    let caption: String
+    let iconSystemName: String?
+    let iconColor: Color
+
+    init(
+        title: String,
+        caption: String,
+        iconSystemName: String? = nil,
+        iconColor: Color = Color(nsColor: .systemOrange)
+    ) {
+        self.title = title
+        self.caption = caption
+        self.iconSystemName = iconSystemName
+        self.iconColor = iconColor
+    }
+
+    var body: some View {
+        if let iconSystemName {
+            HStack(
+                alignment: .firstTextBaseline,
+                spacing: SettingsFormComponentsConstants.titleCaptionIconSpacing
+            ) {
+                Image(systemName: iconSystemName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(iconColor)
+                labelStack
+            }
+        } else {
+            labelStack
+        }
+    }
+
+    private var labelStack: some View {
+        VStack(alignment: .leading, spacing: SettingsFormComponentsConstants.titleCaptionSpacing) {
+            Text(title)
+            SettingsDescription(text: caption)
+        }
+    }
+}
+
 struct SettingsAccessoryRow<Label: View, Accessory: View>: View {
     let minimumLabelWidth: CGFloat
     let accessoryWidth: CGFloat?
@@ -53,9 +115,10 @@ struct SettingsAccessoryRow<Label: View, Accessory: View>: View {
     @ViewBuilder let accessory: () -> Accessory
 
     init(
-        minimumLabelWidth: CGFloat = 180,
+        minimumLabelWidth: CGFloat = SettingsFormComponentsConstants
+            .accessoryRowDefaultMinLabelWidth,
         accessoryWidth: CGFloat? = nil,
-        spacing: CGFloat = 12,
+        spacing: CGFloat = SettingsFormComponentsConstants.accessoryRowDefaultSpacing,
         @ViewBuilder label: @escaping () -> Label,
         @ViewBuilder accessory: @escaping () -> Accessory
     ) {
@@ -71,7 +134,7 @@ struct SettingsAccessoryRow<Label: View, Accessory: View>: View {
             label()
                 .frame(minWidth: minimumLabelWidth, maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
-                .layoutPriority(2)
+                .layoutPriority(SettingsFormComponentsConstants.accessoryRowLabelLayoutPriority)
 
             accessoryContainer
                 .layoutPriority(1)
@@ -96,21 +159,26 @@ struct SettingsKeyValueRow: View {
     let value: String
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(
+            alignment: .firstTextBaseline,
+            spacing: SettingsFormComponentsConstants.keyValueRowSpacing
+        ) {
             Text(label)
                 .fontWeight(.semibold)
                 .foregroundStyle(.primary)
-                .frame(width: 112, alignment: .leading)
+                .frame(
+                    width: SettingsFormComponentsConstants.keyValueLabelWidth, alignment: .leading
+                )
                 .lineLimit(1)
                 .truncationMode(.tail)
 
             Text(value)
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
+                .lineLimit(SettingsFormComponentsConstants.keyValueRowValueLineLimit)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .trailing)
-                .layoutPriority(2)
+                .layoutPriority(SettingsFormComponentsConstants.keyValueRowValueLayoutPriority)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .font(.caption)
@@ -136,7 +204,10 @@ struct SettingsDangerDisclosure<Content: View>: View {
 
     var body: some View {
         SettingsAnimatedDisclosure(isExpanded: $isExpanded) {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(
+                alignment: .center,
+                spacing: SettingsFormComponentsConstants.dangerDisclosureTitleSpacing
+            ) {
                 Text(title)
                     .fontWeight(.semibold)
                     .lineLimit(1)
@@ -164,7 +235,7 @@ struct SettingsAnimatedDisclosure<Label: View, Content: View>: View {
 
     init(
         isExpanded: Binding<Bool>,
-        contentSpacing: CGFloat = 8,
+        contentSpacing: CGFloat = SettingsFormComponentsConstants.disclosureDefaultContentSpacing,
         @ViewBuilder label: @escaping () -> Label,
         @ViewBuilder content: @escaping () -> Content
     ) {
@@ -184,7 +255,12 @@ struct SettingsAnimatedDisclosure<Label: View, Content: View>: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.primary)
                         .frame(width: SettingsFormComponents.disclosureChevronWidth)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .rotationEffect(
+                            .degrees(
+                                isExpanded
+                                    ? SettingsFormComponentsConstants
+                                        .disclosureChevronExpandedRotation : 0)
+                        )
                         .animation(SettingsFormComponents.disclosureAnimation, value: isExpanded)
                         .accessibilityHidden(true)
 
@@ -203,7 +279,7 @@ struct SettingsAnimatedDisclosure<Label: View, Content: View>: View {
                     content()
                 }
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 10)
+                .padding(.top, SettingsFormComponentsConstants.disclosureContentTopPadding)
                 .padding(.leading, SettingsFormComponents.disclosureContentLeadingPadding)
                 .readSettingsDisclosureContentHeight { height in
                     updateMeasuredContentHeight(height)
@@ -211,7 +287,10 @@ struct SettingsAnimatedDisclosure<Label: View, Content: View>: View {
                 .frame(height: disclosureContentFrameHeight, alignment: .top)
                 .clipped()
                 .opacity(contentIsVisible ? 1 : 0)
-                .offset(y: contentIsVisible ? 0 : -4)
+                .offset(
+                    y: contentIsVisible
+                        ? 0 : SettingsFormComponentsConstants.disclosureContentCollapseOffset
+                )
                 .animation(SettingsFormComponents.disclosureAnimation, value: contentIsVisible)
             }
         }

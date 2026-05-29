@@ -15,6 +15,7 @@ enum LoadAssistStore {
     private static let migrationVersion = 1
     private static let defaultThreshold = 70.0
     private static let defaultFloorPercent = 60.0
+    private static let rampLeadIn = 15.0
     static let loadRange: ClosedRange<Double> = 0...100
 
     static func migrateLegacyIfNeeded(defaults: UserDefaults) {
@@ -101,7 +102,7 @@ enum LoadAssistStore {
     }
 
     static func defaultPoints(threshold: Double, floorPercent: Double) -> [CurvePoint] {
-        let rampStart = max(loadRange.lowerBound, threshold - 15)
+        let rampStart = max(loadRange.lowerBound, threshold - rampLeadIn)
         let clampedThreshold = min(loadRange.upperBound, max(loadRange.lowerBound, threshold))
         let floor = max(0.0, min(1.0, floorPercent / 100.0))
         return normalizedPoints([

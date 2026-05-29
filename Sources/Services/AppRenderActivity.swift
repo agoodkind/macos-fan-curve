@@ -12,6 +12,10 @@ import SwiftUI
 
 private let appRenderActivityLog = AppLog.make(category: "AppRenderActivity")
 
+private enum AppRenderActivityConstants {
+    static let fallbackDisplayFramesPerSecond: Int = 60
+}
+
 enum AppRenderMode: Equatable, Hashable {
     case backgroundVisible
     case interactive
@@ -37,7 +41,11 @@ enum AppRenderMode: Equatable, Hashable {
     }
 
     private static var maximumDisplayFramesPerSecond: Int {
-        max(60, NSScreen.screens.map(\.maximumFramesPerSecond).max() ?? 60)
+        max(
+            AppRenderActivityConstants.fallbackDisplayFramesPerSecond,
+            NSScreen.screens.map(\.maximumFramesPerSecond).max()
+                ?? AppRenderActivityConstants.fallbackDisplayFramesPerSecond
+        )
     }
 
     var frameProfilerSchedule: PeriodicTimelineSchedule {

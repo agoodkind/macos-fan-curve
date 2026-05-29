@@ -11,6 +11,11 @@ import SwiftUI
 
 private let settingsViewLog = AppLog.make(category: "SettingsView")
 
+private enum PresetRowConstants {
+    static let accessoryWidth: CGFloat = 18
+    static let titleSubtitleSpacing: CGFloat = 2
+}
+
 /// Curve behavior settings. These live in the shared suite because the Agent
 /// reads the same values when evaluating the curve in the background.
 struct ProfilesSettingsView: View {
@@ -44,8 +49,8 @@ struct ProfilesSettingsView: View {
         Button {
             curveModel.replaceCurve(preset.curvePoints())
         } label: {
-            SettingsAccessoryRow(accessoryWidth: 18) {
-                VStack(alignment: .leading, spacing: 2) {
+            SettingsAccessoryRow(accessoryWidth: PresetRowConstants.accessoryWidth) {
+                VStack(alignment: .leading, spacing: PresetRowConstants.titleSubtitleSpacing) {
                     Text(preset.name)
                         .font(.body)
                         .foregroundStyle(.primary)

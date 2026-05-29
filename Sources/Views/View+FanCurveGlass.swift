@@ -8,6 +8,13 @@
 
 import SwiftUI
 
+private enum FanCurveGlassConstants {
+    static let cardCornerRadius: CGFloat = 12
+    static let outlineStrokeOpacity: Double = 0.08
+    static let pillStrokeOpacity: Double = 0.08
+    static let pillStrokeLineWidth: CGFloat = 0.5
+}
+
 /// Conditional Liquid Glass helpers. On macOS 26+ surfaces render with
 /// .glassEffect, which gives the translucent layered look introduced
 /// with Liquid Glass. On older macOS the fallback uses a solid fill so
@@ -35,22 +42,30 @@ extension View {
     /// Glass-backed card for larger panels. Adds an outline stroke so the
     /// surface reads as a container on both versions.
     @ViewBuilder
-    func fancurveGlassCard(cornerRadius: CGFloat = 12) -> some View {
+    func fancurveGlassCard(
+        cornerRadius: CGFloat = FanCurveGlassConstants.cardCornerRadius
+    ) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius)
         #if compiler(>=6.2)
             if #available(macOS 26.0, *) {
                 self
                     .glassEffect(in: shape)
-                    .overlay(shape.stroke(Color.primary.opacity(0.08)))
+                    .overlay(
+                        shape.stroke(
+                            Color.primary.opacity(FanCurveGlassConstants.outlineStrokeOpacity)))
             } else {
                 self
                     .background(shape.fill(Color(nsColor: .textBackgroundColor)))
-                    .overlay(shape.stroke(Color.primary.opacity(0.08)))
+                    .overlay(
+                        shape.stroke(
+                            Color.primary.opacity(FanCurveGlassConstants.outlineStrokeOpacity)))
             }
         #else
             self
                 .background(shape.fill(Color(nsColor: .textBackgroundColor)))
-                .overlay(shape.stroke(Color.primary.opacity(0.08)))
+                .overlay(
+                    shape.stroke(Color.primary.opacity(FanCurveGlassConstants.outlineStrokeOpacity))
+                )
         #endif
     }
 
@@ -58,8 +73,8 @@ extension View {
     func fancurveGlassPill<S: Shape>(
         in shape: S,
         fallbackFill: Color = Color(nsColor: .windowBackgroundColor),
-        stroke: Color = Color.primary.opacity(0.08),
-        lineWidth: CGFloat = 0.5
+        stroke: Color = Color.primary.opacity(FanCurveGlassConstants.pillStrokeOpacity),
+        lineWidth: CGFloat = FanCurveGlassConstants.pillStrokeLineWidth
     ) -> some View {
         self
             .fancurveGlass(in: shape, fallbackFill: fallbackFill)

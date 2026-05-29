@@ -96,6 +96,8 @@ for file in swiftFiles(at: root) {
     let lines = contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
     let fileName = URL(fileURLWithPath: file).lastPathComponent
     let isSettingsComponents = fileName == "SettingsFormComponents.swift"
+    let isSliderRowFile = fileName == "SettingsSliderRow.swift"
+    let isDangerBadgeFile = fileName == "SettingsDangerStatusBadge.swift"
 
     if contents.contains("SettingsResponsiveRow") {
         violations.append(
@@ -107,7 +109,7 @@ for file in swiftFiles(at: root) {
         )
     }
 
-    if isSettingsComponents,
+    if isSliderRowFile,
         let sliderRange = contents.range(of: "struct SettingsSliderRow"),
         let toggleRange = contents.range(of: "struct SettingsToggleDescriptionRow"),
         sliderRange.lowerBound < toggleRange.lowerBound
@@ -125,7 +127,7 @@ for file in swiftFiles(at: root) {
 
         if !sliderBlock.contains("private var sliderControl: some View")
             || !sliderBlock.contains("SettingsFullWidthSlider(")
-            || !sliderBlock.contains(".frame(height: settingsSliderControlHeight)")
+            || !sliderBlock.contains(".frame(height: SettingsFormComponents.sliderControlHeight)")
         {
             violations.append(
                 Violation(
@@ -149,16 +151,16 @@ for file in swiftFiles(at: root) {
 
     if isSettingsComponents {
         if !contents.contains("struct SettingsAnimatedDisclosure<Label: View, Content: View>: View")
-            || !contents.contains("settingsDisclosureChevronWidth")
-            || !contents.contains("settingsDisclosureTitleSpacing")
-            || !contents.contains("settingsDisclosureContentLeadingPadding")
-            || !contents.contains("withAnimation(settingsDisclosureAnimation)")
+            || !contents.contains("disclosureChevronWidth")
+            || !contents.contains("disclosureTitleSpacing")
+            || !contents.contains("disclosureContentLeadingPadding")
+            || !contents.contains("withAnimation(SettingsFormComponents.disclosureAnimation)")
             || !contents.contains(".contentShape(Rectangle())")
             || !contents.contains("transaction.animation = nil")
             || !contents.contains(".opacity(contentIsVisible ? 1 : 0)")
-            || !contents.contains(".offset(y: contentIsVisible ? 0 : -4)")
+            || !contents.contains("disclosureContentCollapseOffset")
             || !contents.contains("readSettingsDisclosureContentHeight")
-            || !contents.contains("struct SettingsDisclosureContentHeightPreferenceKey: PreferenceKey")
+            || !contents.contains("struct SettingsDisclosureHeightKey: PreferenceKey")
             || !contents.contains(".frame(height: disclosureContentFrameHeight, alignment: .top)")
             || !contents.contains("private var disclosureContentFrameHeight: CGFloat?")
             || !contents.contains("private func updateMeasuredContentHeight(_ height: CGFloat)")
@@ -176,7 +178,7 @@ for file in swiftFiles(at: root) {
         if let dangerDisclosureBlock = sourceBlock(
             in: contents,
             from: "struct SettingsDangerDisclosure",
-            to: "private struct SettingsDangerStatusBadge"
+            to: "struct SettingsAnimatedDisclosure"
         ) {
             if dangerDisclosureBlock.contains("let description")
                 || dangerDisclosureBlock.contains("SettingsDescription")
@@ -214,18 +216,30 @@ for file in swiftFiles(at: root) {
                 Violation(
                     file: file,
                     line: 1,
-                    message: "SettingsDangerDisclosure must appear before SettingsDangerStatusBadge"
+                    message: "SettingsDangerDisclosure must be defined in SettingsFormComponents.swift"
                 )
             )
         }
+    }
 
+    if isDangerBadgeFile, !contents.contains("struct SettingsDangerStatusBadge: View") {
+        violations.append(
+            Violation(
+                file: file,
+                line: 1,
+                message: "SettingsDangerStatusBadge must be defined in SettingsDangerStatusBadge.swift"
+            )
+        )
+    }
+
+    if isSliderRowFile {
         if let dangerToggleBlock = sourceBlock(
             in: contents,
             from: "struct SettingsDangerToggleRow",
             to: "struct SettingsSliderScaleLabels"
         ) {
             if !dangerToggleBlock.contains("SettingsAccessoryRow(")
-                || !dangerToggleBlock.contains("accessoryWidth: settingsSwitchAccessoryWidth")
+                || !dangerToggleBlock.contains("switchAccessoryWidth")
                 || !dangerToggleBlock.contains(".labelsHidden()")
             {
                 violations.append(
@@ -401,7 +415,7 @@ for file in swiftFiles(at: root) {
             )
         }
 
-        if matches(line, #"Slider\s*\("#), !isSettingsComponents {
+        if matches(line, #"\bSlider\s*\("#), !isSettingsComponents {
             violations.append(
                 Violation(
                     file: file,

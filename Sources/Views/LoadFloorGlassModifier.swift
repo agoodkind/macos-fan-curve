@@ -8,15 +8,38 @@
 
 import SwiftUI
 
+private enum LoadFloorGlassConstants {
+    static let activeFillOpacity: Double = 0.18
+    static let inactiveFillOpacity: Double = 0.08
+    static let activeStrokeOpacity: Double = 0.7
+    static let inactiveStrokeOpacity: Double = 0.4
+    static let strokeLineWidth: CGFloat = 1.0
+}
+
 struct LoadFloorGlassModifier: ViewModifier {
     let color: Color
     let active: Bool
 
     func body(content: Content) -> some View {
         content
-            .background(Capsule().fill(color.opacity(active ? 0.18 : 0.08)))
+            .background(
+                Capsule().fill(
+                    color.opacity(
+                        active
+                            ? LoadFloorGlassConstants.activeFillOpacity
+                            : LoadFloorGlassConstants.inactiveFillOpacity
+                    )
+                )
+            )
             .overlay(
-                Capsule().stroke(color.opacity(active ? 0.7 : 0.4), lineWidth: 1.0)
+                Capsule().stroke(
+                    color.opacity(
+                        active
+                            ? LoadFloorGlassConstants.activeStrokeOpacity
+                            : LoadFloorGlassConstants.inactiveStrokeOpacity
+                    ),
+                    lineWidth: LoadFloorGlassConstants.strokeLineWidth
+                )
             )
     }
 }

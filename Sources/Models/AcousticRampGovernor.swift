@@ -8,6 +8,20 @@
 
 import Foundation
 
+private enum AcousticRampGovernorConstants {
+    static let defaultQuietRiseRPMPerSecond: Float = 16
+    static let defaultWarmRiseRPMPerSecond: Float = 24
+    static let defaultHotRiseRPMPerSecond: Float = 38
+    static let defaultQuietFallRPMPerSecond: Float = 18
+    static let defaultThermalDebtMinFallRPMPerSecond: Float = 8
+    static let defaultWarmTemperatureC: Double = 80
+    static let defaultHotTemperatureC: Double = 86
+    static let defaultRisingFastTrendCPerTick: Double = 0.14
+    static let defaultRisingSlowTrendCPerTick: Double = 0.06
+    static let defaultMinimumSnapRPMDelta: Float = 35
+    static let maxElapsedSeconds: TimeInterval = 10
+}
+
 struct AcousticRampGovernor: Sendable {
     struct Policy: Sendable {
         let quietRiseRPMPerSecond: Float
@@ -22,16 +36,17 @@ struct AcousticRampGovernor: Sendable {
         let minimumSnapRPMDelta: Float
 
         static let fanCurveDefault = Policy(
-            quietRiseRPMPerSecond: 16,
-            warmRiseRPMPerSecond: 24,
-            hotRiseRPMPerSecond: 38,
-            quietFallRPMPerSecond: 18,
-            thermalDebtMinimumFallRPMPerSecond: 8,
-            warmTemperatureC: 80,
-            hotTemperatureC: 86,
-            risingFastTrendCPerTick: 0.14,
-            risingSlowTrendCPerTick: 0.06,
-            minimumSnapRPMDelta: 35)
+            quietRiseRPMPerSecond: AcousticRampGovernorConstants.defaultQuietRiseRPMPerSecond,
+            warmRiseRPMPerSecond: AcousticRampGovernorConstants.defaultWarmRiseRPMPerSecond,
+            hotRiseRPMPerSecond: AcousticRampGovernorConstants.defaultHotRiseRPMPerSecond,
+            quietFallRPMPerSecond: AcousticRampGovernorConstants.defaultQuietFallRPMPerSecond,
+            thermalDebtMinimumFallRPMPerSecond: AcousticRampGovernorConstants
+                .defaultThermalDebtMinFallRPMPerSecond,
+            warmTemperatureC: AcousticRampGovernorConstants.defaultWarmTemperatureC,
+            hotTemperatureC: AcousticRampGovernorConstants.defaultHotTemperatureC,
+            risingFastTrendCPerTick: AcousticRampGovernorConstants.defaultRisingFastTrendCPerTick,
+            risingSlowTrendCPerTick: AcousticRampGovernorConstants.defaultRisingSlowTrendCPerTick,
+            minimumSnapRPMDelta: AcousticRampGovernorConstants.defaultMinimumSnapRPMDelta)
 
         func scalingRPMRates(by responseMultiplier: FanResponseMultiplier) -> Policy {
             let multiplier = Float(responseMultiplier.rawValue)
@@ -163,6 +178,6 @@ struct AcousticRampGovernor: Sendable {
     }
 
     private func normalizedElapsedSeconds(_ elapsedSeconds: TimeInterval) -> TimeInterval {
-        max(0, min(10, elapsedSeconds))
+        max(0, min(AcousticRampGovernorConstants.maxElapsedSeconds, elapsedSeconds))
     }
 }

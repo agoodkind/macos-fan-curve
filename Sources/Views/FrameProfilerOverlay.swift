@@ -9,6 +9,14 @@
 #if DEBUG
     import SwiftUI
 
+    private enum FrameProfilerOverlayConstants {
+        static let labelFontSize: CGFloat = 11
+        static let labelHorizontalPadding: CGFloat = 8
+        static let labelVerticalPadding: CGFloat = 5
+        static let labelBackgroundOpacity: Double = 0.72
+        static let millisecondsPerSecond: Double = 1_000
+    }
+
     struct FrameProfilerOverlay: View {
         let renderMode: AppRenderMode
 
@@ -44,11 +52,19 @@
 
         private func labelView(date: Date) -> some View {
             Text(label)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .font(
+                    .system(
+                        size: FrameProfilerOverlayConstants.labelFontSize,
+                        weight: .medium,
+                        design: .monospaced)
+                )
                 .foregroundStyle(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(.black.opacity(0.72), in: Capsule())
+                .padding(.horizontal, FrameProfilerOverlayConstants.labelHorizontalPadding)
+                .padding(.vertical, FrameProfilerOverlayConstants.labelVerticalPadding)
+                .background(
+                    .black.opacity(FrameProfilerOverlayConstants.labelBackgroundOpacity),
+                    in: Capsule()
+                )
                 .allowsHitTesting(false)
                 .onAppear {
                     sampleFrame(at: date)
@@ -64,7 +80,9 @@
 
         private func sampleFrame(at date: Date) {
             if let lastFrameDate {
-                frameMilliseconds = date.timeIntervalSince(lastFrameDate) * 1_000
+                frameMilliseconds =
+                    date.timeIntervalSince(lastFrameDate)
+                    * FrameProfilerOverlayConstants.millisecondsPerSecond
             }
             lastFrameDate = date
 

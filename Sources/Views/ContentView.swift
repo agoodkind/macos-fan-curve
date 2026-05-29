@@ -11,6 +11,44 @@ import SwiftUI
 
 private let contentViewLog = AppLog.make(category: "ContentView")
 
+// MARK: - Constants
+
+private enum ContentViewConstants {
+    // Main window geometry
+    static let windowMinWidth: CGFloat = 820
+    static let windowIdealWidth: CGFloat = 980
+    static let windowHeight: CGFloat = 540
+
+    // Dashboard transition animation
+    static let dashboardTransitionDuration: TimeInterval = 0.18
+    static let dashboardTransitionScale: CGFloat = 0.985
+
+    // Default sidebar width (persisted via AppStorage)
+    static let sidebarWidthDefault: Double = 240
+
+    // Frame profiler overlay padding
+    static let frameProfilerOverlayPadding: CGFloat = 10
+}
+
+private enum LiveDashboardConstants {
+    // Sidebar resize constraints
+    static let sidebarMinWidth: Double = 200
+    static let sidebarMaxWidth: Double = 400
+
+    // Fan curve editor inset
+    static let curveEditorPadding: CGFloat = 16
+
+    // Sidebar splitter hit-area width and divider opacity
+    static let splitterHitAreaWidth: CGFloat = 10
+    static let splitterDividerOpacity: Double = 0.15
+}
+
+private enum PausedDashboardConstants {
+    // Pause icon size and spacing
+    static let pauseIconSize: CGFloat = 36
+    static let contentSpacing: CGFloat = 10
+}
+
 struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject var agentClient: FanCurveAgentClient
@@ -18,10 +56,12 @@ struct ContentView: View {
     @StateObject private var installState = InstallationState()
     @StateObject private var renderActivity = AppRenderActivity()
 
-    @AppStorage("sidebarWidth") private var sidebarWidth: Double = 240
+    @AppStorage("sidebarWidth") private var sidebarWidth: Double = ContentViewConstants
+        .sidebarWidthDefault
 
-    private let mainWindowHeight: CGFloat = 540
-    private let dashboardTransitionAnimation = Animation.easeInOut(duration: 0.18)
+    private let mainWindowHeight: CGFloat = ContentViewConstants.windowHeight
+    private let dashboardTransitionAnimation = Animation.easeInOut(
+        duration: ContentViewConstants.dashboardTransitionDuration)
     private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
 
     @AppStorage(SharedConfigKeys.boostEnabled, store: suite)
@@ -36,8 +76,8 @@ struct ContentView: View {
             }
         }
         .frame(
-            minWidth: 820,
-            idealWidth: 980,
+            minWidth: ContentViewConstants.windowMinWidth,
+            idealWidth: ContentViewConstants.windowIdealWidth,
             maxWidth: .infinity,
             minHeight: mainWindowHeight,
             idealHeight: mainWindowHeight,
@@ -54,7 +94,7 @@ struct ContentView: View {
                                 .allowsHitTesting(false)
 
                             FrameProfilerOverlay(renderMode: renderActivity.mode)
-                                .padding(10)
+                                .padding(ContentViewConstants.frameProfilerOverlayPadding)
                         }
                     }
                 }
@@ -121,14 +161,16 @@ struct ContentView: View {
                 .transition(
                     .asymmetric(
                         insertion: .opacity,
-                        removal: .opacity.combined(with: .scale(scale: 0.985))
+                        removal: .opacity.combined(
+                            with: .scale(scale: ContentViewConstants.dashboardTransitionScale))
                     )
                 )
             } else {
                 PausedDashboardView()
                     .transition(
                         .asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.985)),
+                            insertion: .opacity.combined(
+                                with: .scale(scale: ContentViewConstants.dashboardTransitionScale)),
                             removal: .opacity
                         )
                     )
@@ -178,8 +220,8 @@ private struct LiveDashboardContent: View {
 
     @State private var dragStartWidth: Double?
 
-    private let minSidebarWidth: Double = 200
-    private let maxSidebarWidth: Double = 400
+    private let minSidebarWidth: Double = LiveDashboardConstants.sidebarMinWidth
+    private let maxSidebarWidth: Double = LiveDashboardConstants.sidebarMaxWidth
 
     var body: some View {
         HStack(spacing: 0) {
@@ -189,7 +231,7 @@ private struct LiveDashboardContent: View {
                 renderMode: renderMode,
                 presentation: presentation
             )
-            .padding(16)
+            .padding(LiveDashboardConstants.curveEditorPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .layoutPriority(1)
 
@@ -229,8 +271,8 @@ private struct LiveDashboardContent: View {
             Rectangle()
                 .fill(Color.clear)
                 .contentShape(Rectangle())
-                .frame(width: 10)
-            Divider().opacity(0.15)
+                .frame(width: LiveDashboardConstants.splitterHitAreaWidth)
+            Divider().opacity(LiveDashboardConstants.splitterDividerOpacity)
         }
         .onHover { hovering in
             if hovering {
@@ -256,9 +298,9 @@ private struct LiveDashboardContent: View {
 
 private struct PausedDashboardView: View {
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: PausedDashboardConstants.contentSpacing) {
             Image(systemName: "pause.circle")
-                .font(.system(size: 36, weight: .regular))
+                .font(.system(size: PausedDashboardConstants.pauseIconSize, weight: .regular))
                 .foregroundStyle(.secondary)
 
             Text("Dashboard Paused")

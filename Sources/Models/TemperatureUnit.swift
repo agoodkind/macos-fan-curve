@@ -8,6 +8,15 @@
 
 import Foundation
 
+// MARK: - Constants
+
+private enum TemperatureUnitConstants {
+    // Celsius to Fahrenheit conversion: celsius * (numerator / denominator) + offset
+    static let celsiusToFahrenheitNumerator: Double = 9.0
+    static let celsiusToFahrenheitDenominator: Double = 5.0
+    static let fahrenheitOffset: Double = 32.0
+}
+
 /// User-facing temperature unit preference.
 /// Values persist in UserDefaults.standard under the key 'temperatureUnit'.
 enum TemperatureUnit: String, CaseIterable, Identifiable {
@@ -34,7 +43,11 @@ enum TemperatureUnit: String, CaseIterable, Identifiable {
     func convert(fromCelsius celsius: Double) -> Double {
         switch self {
         case .celsius: return celsius
-        case .fahrenheit: return celsius * 9.0 / 5.0 + 32.0
+        case .fahrenheit:
+            return celsius
+                * TemperatureUnitConstants.celsiusToFahrenheitNumerator
+                / TemperatureUnitConstants.celsiusToFahrenheitDenominator
+                + TemperatureUnitConstants.fahrenheitOffset
         }
     }
 }

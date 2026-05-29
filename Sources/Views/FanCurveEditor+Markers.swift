@@ -8,6 +8,59 @@
 
 import SwiftUI
 
+// MARK: - Marker layout and style constants
+
+private enum MarkerConstants {
+    // Fan Now dot (filled orange dot with crosshair)
+    static let fanDot: CGFloat = 10
+    static let fanFillOn: Double = 1.0
+    static let fanFillOff: Double = 0.52
+    static let fanShadowOn: Double = 0.5
+    static let fanShadowOff: Double = 0.16
+    static let fanShadowRadOn: CGFloat = 6
+    static let fanShadowRadOff: CGFloat = 2
+
+    // Thermal Demand dot (hollow orange dot, no crosshair)
+    static let demandDot: CGFloat = 9
+    static let demandBg: Double = 0.96
+    static let demandStroke: Double = 0.58
+    static let demandStrokeW: CGFloat = 1.4
+    static let demandShadow: Double = 0.12
+    static let demandShadowRad: CGFloat = 2
+
+    // Crosshair guide stroke (Fan Now guides)
+    static let crossOn: Double = 0.25
+    static let crossOff: Double = 0.18
+    static let crossDashOn: CGFloat = 4
+    static let crossDashOff: CGFloat = 4
+
+    // Demand leash stroke
+    static let leashOn: Double = 0.24
+    static let leashOff: Double = 0.2
+    static let leashDashOn: CGFloat = 2
+    static let leashDashOff: CGFloat = 3
+
+    // Demand position vertical clamp inset from plot edges
+    static let demandPositionEdgeInset: CGFloat = 10
+
+    // Reference temperature for the zero-percent Y coordinate (°C)
+    static let zeroPercentReferenceTemperatureC: Double = 20
+
+    // Legend pill
+    static let legendItemSpacing: CGFloat = 12
+    static let legendDotDiameter: CGFloat = 8
+    static let legendDotSpacing: CGFloat = 5
+    static let legendDotStrokeLineWidth: CGFloat = 1.25
+    static let legendPillHorizontalPadding: CGFloat = 10
+    static let legendPillVerticalPadding: CGFloat = 6
+    static let legendPillBackgroundOpacity: Double = 0.92
+    static let legendTopPadding: CGFloat = 10
+    static let legendTrailingPadding: CGFloat = 12
+
+    // Shared opacity used in both the legend and the marker ring
+    static let inactiveSecondaryOpacity: Double = 0.52
+}
+
 extension FanCurveEditor {
     func currentPositionOverlay(
         size: CGSize,
@@ -27,43 +80,65 @@ extension FanCurveEditor {
     }
 
     func runtimeMarkerOverlay(geometry: RuntimeMarkerOverlay.Geometry) -> some View {
-        let markerColor =
-            presentation.usesActiveMarkerStyling
-            ? Color(nsColor: .systemOrange)
-            : Color.secondary
+        let active = presentation.usesActiveMarkerStyling
+        let markerColor = active ? Color(nsColor: .systemOrange) : Color.secondary
+        let crossOpacity = active ? MarkerConstants.crossOn : MarkerConstants.crossOff
+        let leashOpacity = active ? MarkerConstants.leashOn : MarkerConstants.leashOff
+        let crossColor = markerColor.opacity(crossOpacity)
+        let leashColor = markerColor.opacity(leashOpacity)
         return ZStack(alignment: .topLeading) {
             FanNowGuidesShape(geometry: geometry)
                 .stroke(
-                    markerColor.opacity(presentation.usesActiveMarkerStyling ? 0.25 : 0.18),
-                    style: StrokeStyle(lineWidth: 1, dash: [4, 4])
+                    crossColor,
+                    style: StrokeStyle(
+                        lineWidth: 1,
+                        dash: [MarkerConstants.crossDashOn, MarkerConstants.crossDashOff]
+                    )
                 )
 
             DemandLeashShape(geometry: geometry)
                 .stroke(
-                    markerColor.opacity(presentation.usesActiveMarkerStyling ? 0.24 : 0.2),
-                    style: StrokeStyle(lineWidth: 1, dash: [2, 3])
+                    leashColor,
+                    style: StrokeStyle(
+                        lineWidth: 1,
+                        dash: [MarkerConstants.leashDashOn, MarkerConstants.leashDashOff]
+                    )
                 )
 
-            Circle()
-                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.96))
-                .overlay(
-                    Circle().stroke(markerColor.opacity(0.58), lineWidth: 1.4)
-                )
-                .frame(width: 9, height: 9)
-                .shadow(color: markerColor.opacity(0.12), radius: 2)
-                .position(geometry.demandPosition)
-
-            Circle()
-                .fill(markerColor.opacity(presentation.usesActiveMarkerStyling ? 1.0 : 0.52))
-                .frame(width: 10, height: 10)
-                .shadow(
-                    color: markerColor.opacity(presentation.usesActiveMarkerStyling ? 0.5 : 0.16),
-                    radius: presentation.usesActiveMarkerStyling ? 6 : 2
-                )
-                .position(geometry.fanPosition)
+            thermalDemandDot(markerColor: markerColor).position(geometry.demandPosition)
+            fanNowDot(markerColor: markerColor, active: active).position(geometry.fanPosition)
         }
         .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
         .allowsHitTesting(false)
+    }
+
+    private func thermalDemandDot(markerColor: Color) -> some View {
+        Circle()
+            .fill(Color(nsColor: .windowBackgroundColor).opacity(MarkerConstants.demandBg))
+            .overlay(
+                Circle().stroke(
+                    markerColor.opacity(MarkerConstants.demandStroke),
+                    lineWidth: MarkerConstants.demandStrokeW
+                )
+            )
+            .frame(width: MarkerConstants.demandDot, height: MarkerConstants.demandDot)
+            .shadow(
+                color: markerColor.opacity(MarkerConstants.demandShadow),
+                radius: MarkerConstants.demandShadowRad
+            )
+    }
+
+    private func fanNowDot(markerColor: Color, active: Bool) -> some View {
+        let fillOpacity = active ? MarkerConstants.fanFillOn : MarkerConstants.fanFillOff
+        return Circle()
+            .fill(markerColor.opacity(fillOpacity))
+            .frame(width: MarkerConstants.fanDot, height: MarkerConstants.fanDot)
+            .shadow(
+                color: markerColor.opacity(
+                    active ? MarkerConstants.fanShadowOn : MarkerConstants.fanShadowOff
+                ),
+                radius: active ? MarkerConstants.fanShadowRadOn : MarkerConstants.fanShadowRadOff
+            )
     }
 
     func runtimeMarkerGeometry(
@@ -88,14 +163,24 @@ extension FanCurveEditor {
         )
         let clampedDemandPosition = CGPoint(
             x: demandPosition.x,
-            y: max(topPad + 10, min(size.height - bottomPad - 10, demandPosition.y))
+            y: max(
+                topPad + MarkerConstants.demandPositionEdgeInset,
+                min(
+                    size.height - bottomPad - MarkerConstants.demandPositionEdgeInset,
+                    demandPosition.y
+                )
+            )
         )
 
         return RuntimeMarkerOverlay.Geometry(
             size: size,
             fanPosition: fanPosition,
             demandPosition: clampedDemandPosition,
-            zeroY: dataToPixel(temp: 20, percent: 0, in: size).y,
+            zeroY: dataToPixel(
+                temp: MarkerConstants.zeroPercentReferenceTemperatureC,
+                percent: 0,
+                in: size
+            ).y,
             plotLeft: leftPad
         )
     }
@@ -220,44 +305,52 @@ extension FanCurveEditor {
         VStack {
             HStack {
                 Spacer()
-                HStack(spacing: 12) {
+                HStack(spacing: MarkerConstants.legendItemSpacing) {
                     legendItem(
                         fill: presentation.usesActiveMarkerStyling
                             ? Color(nsColor: .systemOrange)
-                            : Color.secondary.opacity(0.52),
+                            : Color.secondary.opacity(MarkerConstants.inactiveSecondaryOpacity),
                         stroke: nil,
                         label: "Fan Now"
                     )
                     legendItem(
-                        fill: Color(nsColor: .windowBackgroundColor).opacity(0.96),
+                        fill: Color(nsColor: .windowBackgroundColor)
+                            .opacity(MarkerConstants.demandBg),
                         stroke: presentation.usesActiveMarkerStyling
-                            ? Color(nsColor: .systemOrange).opacity(0.58)
-                            : Color.secondary.opacity(0.58),
+                            ? Color(nsColor: .systemOrange).opacity(MarkerConstants.demandStroke)
+                            : Color.secondary.opacity(MarkerConstants.demandStroke),
                         label: "Thermal Demand"
                     )
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.horizontal, MarkerConstants.legendPillHorizontalPadding)
+                .padding(.vertical, MarkerConstants.legendPillVerticalPadding)
                 .fancurveGlassPill(
                     in: Capsule(),
-                    fallbackFill: Color(nsColor: .windowBackgroundColor).opacity(0.92)
+                    fallbackFill: Color(nsColor: .windowBackgroundColor)
+                        .opacity(MarkerConstants.legendPillBackgroundOpacity)
                 )
             }
             Spacer()
         }
-        .padding(.top, 10)
-        .padding(.trailing, 12)
+        .padding(.top, MarkerConstants.legendTopPadding)
+        .padding(.trailing, MarkerConstants.legendTrailingPadding)
         .allowsHitTesting(false)
     }
 
     func legendItem(fill: Color, stroke: Color?, label: String) -> some View {
-        HStack(spacing: 5) {
+        HStack(spacing: MarkerConstants.legendDotSpacing) {
             Circle()
                 .fill(fill)
                 .overlay(
-                    Circle().stroke(stroke ?? .clear, lineWidth: stroke == nil ? 0 : 1.25)
+                    Circle().stroke(
+                        stroke ?? .clear,
+                        lineWidth: stroke == nil ? 0 : MarkerConstants.legendDotStrokeLineWidth
+                    )
                 )
-                .frame(width: 8, height: 8)
+                .frame(
+                    width: MarkerConstants.legendDotDiameter,
+                    height: MarkerConstants.legendDotDiameter
+                )
             Text(label)
                 .font(.system(.caption2, design: .rounded).weight(.medium))
                 .foregroundStyle(.secondary)

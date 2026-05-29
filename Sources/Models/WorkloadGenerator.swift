@@ -16,6 +16,18 @@ import os.signpost
 
 private let signposter = AppLog.signposter(category: "WorkloadGenerator")
 
+// MARK: - Constants
+
+private enum WorkloadGeneratorConstants {
+    // CPU stress: minimum cores hashed and per-core scratch buffer size in bytes
+    static let minimumStressCores: Int = 2
+    static let cpuBufferBytes: Int = 4_096
+    static let randomByteUpperBound: UInt8 = 255
+
+    // GPU stress: square matrix edge length for repeated multiplies
+    static let matrixDimension: Int = 1_024
+}
+
 /// Drives CPU and GPU under load so a fan curve sampler can observe how
 /// thermalmonitord responds across the thermal band. Use `start` to begin,
 /// `stop` to halt. Safe to call multiple times.
@@ -57,11 +69,16 @@ final class WorkloadGenerator: ObservableObject {
     nonisolated private static func runCPUStress(cancellation: StressCancellation) {
         let state = signposter.beginInterval("cpu.stress")
         defer { signposter.endInterval("cpu.stress", state) }
-        let cores = max(2, ProcessInfo.processInfo.activeProcessorCount)
+        let cores = max(
+            WorkloadGeneratorConstants.minimumStressCores,
+            ProcessInfo.processInfo.activeProcessorCount)
         DispatchQueue.concurrentPerform(iterations: cores) { _ in
-            var buffer = [UInt8](repeating: 0, count: 4_096)
+            var buffer = [UInt8](repeating: 0, count: WorkloadGeneratorConstants.cpuBufferBytes)
             while !cancellation.isCancelled {
-                for byteIndex in 0..<buffer.count { buffer[byteIndex] = UInt8.random(in: 0...255) }
+                for byteIndex in 0..<buffer.count {
+                    buffer[byteIndex] = UInt8.random(
+                        in: 0...WorkloadGeneratorConstants.randomByteUpperBound)
+                }
                 _ = SHA256.hash(data: buffer)
             }
         }
@@ -77,7 +94,7 @@ final class WorkloadGenerator: ObservableObject {
             let queue = device.makeCommandQueue()
         else { return }
 
-        let matrixDimension = 1_024
+        let matrixDimension = WorkloadGeneratorConstants.matrixDimension
         let bytes = matrixDimension * matrixDimension * MemoryLayout<Float>.stride
         guard
             let bufferA = device.makeBuffer(length: bytes, options: .storageModeShared),

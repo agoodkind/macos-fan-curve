@@ -8,6 +8,55 @@
 
 import Foundation
 
+private enum DemandConstants {
+    // Controller mode tolerance: observed vs committed percent band that determines ramp direction
+    static let controllerModeTolerance: Double = 0.006
+
+    // dt clamping bounds for conditioning time step
+    static let dtMinSeconds: Double = 0.001
+    static let dtMaxSeconds: Double = 5.0
+
+    // Acceleration-limited convergence threshold: treat as reached when residual is below this
+    static let convergenceThreshold: Double = 0.0001
+
+    // Kinematic stopping-velocity coefficient: v = sqrt(2 * a * distance)
+    static let stoppingVelocityCoefficient: Double = 2
+
+    // Thermal debt: comfort-over-temp parameters (slow temp above which heat contribution begins)
+    static let comfortOverTempBaselineC: Double = 58.0
+    static let comfortOverTempRangeC: Double = 22.0
+
+    // Thermal debt: rise pressure parameters (fast-minus-slow delta threshold and normalizer)
+    static let risePressureDeltaThresholdC: Double = 0.25
+    static let risePressureNormalizerC: Double = 3.0
+
+    // Thermal debt: fast trend pressure parameters (trend threshold and gain factor)
+    static let fastTrendPressureThreshold: Double = 0.04
+    static let fastTrendPressureGain: Double = 2.8
+
+    // Thermal debt: sustained load pressure parameters (load threshold, normalizer, and weight)
+    static let sustainedLoadThresholdPercent: Double = 45.0
+    static let sustainedLoadNormalizerPercent: Double = 55.0
+    static let sustainedLoadWeight: Double = 0.35
+
+    // Thermal debt: band escalation contribution when fan stepped up
+    static let bandEscalationPressure: Double = 0.06
+
+    // Thermal debt: stable-cooling detection thresholds
+    static let stableCoolingFastTrendMax: Double = 0.01
+    static let stableCoolingSlowTrendMax: Double = -0.02
+    static let stableCoolingBaselineTolerance: Double = 0.001
+
+    // Thermal debt: low-load detection threshold and pressure contribution
+    static let lowLoadThresholdPercent: Double = 25.0
+    static let lowLoadPressureContribution: Double = 0.4
+
+    // Thermal debt: cool-temperature detection thresholds and pressure contribution
+    static let coolTempSlowThresholdC: Double = 52.0
+    static let coolTempRawThresholdC: Double = 55.0
+    static let coolTempPressureContribution: Double = 0.35
+}
+
 extension AgentController {
     func bandControlledState(
         input: AgentControllerDemandTypes.BandControlInput
@@ -18,9 +67,9 @@ extension AgentController {
         let committedPercent = max(0, min(1, input.conditionedDemandPercent))
         let observedPercent = input.observedFanPercent ?? committedPercent
 
-        if observedPercent < committedPercent - 0.006 {
+        if observedPercent < committedPercent - DemandConstants.controllerModeTolerance {
             controllerMode = .rampingUp
-        } else if observedPercent > committedPercent + 0.006 {
+        } else if observedPercent > committedPercent + DemandConstants.controllerModeTolerance {
             controllerMode = .rampingDown
         } else {
             controllerMode = .holding
@@ -98,7 +147,9 @@ extension AgentController {
             return (targetPercent, rawTemperatureC)
         }
 
-        let dt = max(0.001, min(5.0, now.timeIntervalSince(lastTime)))
+        let dt = max(
+            DemandConstants.dtMinSeconds,
+            min(DemandConstants.dtMaxSeconds, now.timeIntervalSince(lastTime)))
         let maxPercentVelocity =
             targetPercent >= currentPercent
             ? demandNormalRiseVelocityPerSecond
@@ -148,7 +199,8 @@ extension AgentController {
         let direction = delta > 0 ? 1.0 : -1.0
         let clampedMaxVelocity = max(0, input.maxVelocity)
         let clampedAcceleration = max(0, input.maxAcceleration)
-        let stoppingVelocity = sqrt(2 * clampedAcceleration * abs(delta))
+        let stoppingVelocity = sqrt(
+            DemandConstants.stoppingVelocityCoefficient * clampedAcceleration * abs(delta))
         let desiredVelocity = direction * min(clampedMaxVelocity, stoppingVelocity)
         let nextVelocity = limitedStep(
             current: input.velocity,
@@ -159,7 +211,7 @@ extension AgentController {
 
         let reachedTarget =
             (input.target - nextValue).sign != delta.sign
-            || abs(input.target - nextValue) < 0.0001
+            || abs(input.target - nextValue) < DemandConstants.convergenceThreshold
         if reachedTarget {
             return (input.target, 0)
         }
@@ -173,21 +225,36 @@ extension AgentController {
     }
 
     func updateThermalDebt(input: AgentControllerDemandTypes.ThermalDebtInput) {
-        let comfortOverTemp = max(0, input.slowTemperatureC - 58.0) / 22.0
-        let risePressure = max(0, input.fastTemperatureC - input.slowTemperatureC - 0.25) / 3.0
-        let fastTrendPressure = max(0, input.fastTrend - 0.04) * 2.8
-        let sustainedLoadPressure = max(0, input.cpuLoad - 45.0) / 55.0 * 0.35
-        let bandEscalationPressure = input.steppedUp ? 0.06 : 0.0
+        let comfortOverTemp =
+            max(0, input.slowTemperatureC - DemandConstants.comfortOverTempBaselineC)
+            / DemandConstants.comfortOverTempRangeC
+        let risePressure =
+            max(
+                0,
+                input.fastTemperatureC - input.slowTemperatureC
+                    - DemandConstants.risePressureDeltaThresholdC)
+            / DemandConstants.risePressureNormalizerC
+        let fastTrendPressure =
+            max(0, input.fastTrend - DemandConstants.fastTrendPressureThreshold)
+            * DemandConstants.fastTrendPressureGain
+        let sustainedLoadPressure =
+            max(0, input.cpuLoad - DemandConstants.sustainedLoadThresholdPercent)
+            / DemandConstants.sustainedLoadNormalizerPercent * DemandConstants.sustainedLoadWeight
+        let bandEscalationPressure = input.steppedUp ? DemandConstants.bandEscalationPressure : 0.0
 
         let stableCooling =
-            input.fastTrend <= 0.01
-            && input.slowTrend <= -0.02
-            && input.rawBaselinePercent <= input.committedPercent + 0.001
+            input.fastTrend <= DemandConstants.stableCoolingFastTrendMax
+            && input.slowTrend <= DemandConstants.stableCoolingSlowTrendMax
+            && input.rawBaselinePercent <= input.committedPercent
+                + DemandConstants.stableCoolingBaselineTolerance
         let coolingPressure = stableCooling ? 1.0 : 0.0
-        let lowLoadPressure = input.cpuLoad < 25.0 ? 0.4 : 0.0
+        let lowLoadPressure =
+            input.cpuLoad < DemandConstants.lowLoadThresholdPercent
+            ? DemandConstants.lowLoadPressureContribution : 0.0
         let coolTempPressure =
-            input.slowTemperatureC < 52.0
-                && input.rawTemperatureC < 55.0 ? 0.35 : 0.0
+            input.slowTemperatureC < DemandConstants.coolTempSlowThresholdC
+                && input.rawTemperatureC < DemandConstants.coolTempRawThresholdC
+            ? DemandConstants.coolTempPressureContribution : 0.0
 
         let heatContribution =
             comfortOverTemp

@@ -13,17 +13,9 @@ import ServiceManagement
 
 private let log = AppLog.make(category: "InstallationState")
 
-struct AgentServiceMutationResult: Sendable {
-    let statusBefore: String
-    let statusAfterUnregister: String?
-    let statusAfterRegister: String?
-    let errorDescription: String?
-}
-
-struct HelperServiceMutationResult: Sendable {
-    let statusBefore: String
-    let statusAfterRegister: String?
-    let errorDescription: String?
+private enum InstallationStateConstants {
+    static let agentLiveFreshnessWindow: TimeInterval = 10
+    static let monitoringPollInterval: TimeInterval = 2.0
 }
 
 /// Tracks whether the privileged helper and background agent are installed
@@ -89,7 +81,9 @@ final class InstallationState: ObservableObject {
     var agentLive: Bool {
         guard agentEnabled else { return false }
         let lastTick = Date(timeIntervalSince1970: agentLastTickEpoch)
-        return agentLastTickEpoch > 0 && Date().timeIntervalSince(lastTick) < 10
+        return agentLastTickEpoch > 0
+            && Date().timeIntervalSince(lastTick)
+                < InstallationStateConstants.agentLiveFreshnessWindow
     }
 
     var agentSnapshotCompatible: Bool {
@@ -100,7 +94,10 @@ final class InstallationState: ObservableObject {
     func startMonitoring(agentClient: FanCurveAgentClient) {
         Task { await refresh(agentClient: agentClient) }
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(
+            withTimeInterval: InstallationStateConstants.monitoringPollInterval,
+            repeats: true
+        ) { [weak self] _ in
             Task { @MainActor in
                 if let self {
                     await self.refresh(agentClient: agentClient)

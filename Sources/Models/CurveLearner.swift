@@ -14,6 +14,27 @@ import os.signpost
 private let log = AppLog.make(category: "CurveLearner")
 private let signposter = AppLog.signposter(category: "CurveLearner")
 
+// MARK: - Constants
+
+private enum CurveLearnerConstants {
+    // Temperature bucketing used when fitting the learned curve
+    static let bucketSizeC: Double = 5
+    static let lowerTempC: Double = 30
+    static let upperTempC: Double = 100
+
+    // Minimum samples required in a bucket before its median is trusted
+    static let minBucketSamples: Int = 3
+
+    // Percentile of the trimmed probe samples used as the sustained plateau
+    static let sustainedPercentile: Double = 0.9
+
+    // Divisor selecting the middle element of a sorted bucket as its median
+    static let medianMidpointDivisor: Int = 2
+
+    // Divisor selecting the second half of probe samples to drop the ramp-up
+    static let probeSecondHalfDivisor: Int = 2
+}
+
 /// Result of a max-RPM probe. Records the highest actual RPM the fan
 /// sustained while we commanded a very high target, and how confident
 /// we are that the reading represents a true plateau.
@@ -59,17 +80,6 @@ final class CurveLearner: ObservableObject {
 
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
-        }
-    }
-
-    func cancel() {
-        timer?.invalidate()
-        timer = nil
-        isSampling = false
-        samples.removeAll()
-        if let state = sweepSignpostState {
-            signposter.endInterval("learn.sweep", state)
-            sweepSignpostState = nil
         }
     }
 
@@ -196,9 +206,9 @@ final class CurveLearner: ObservableObject {
     /// Enforce monotonic non-decreasing so later buckets do not drop below
     /// earlier ones. Interpolate across empty buckets from their neighbors.
     private func fitCurve() -> [CurvePoint] {
-        let bucketSize: Double = 5
-        let lower: Double = 30
-        let upper: Double = 100
+        let bucketSize = CurveLearnerConstants.bucketSizeC
+        let lower = CurveLearnerConstants.lowerTempC
+        let upper = CurveLearnerConstants.upperTempC
 
         var bucketValues: [Double: [Double]] = [:]
         for sample in samples {
@@ -254,11 +264,14 @@ final class CurveLearner: ObservableObject {
     ) -> [Double: Double] {
         var bucketMedian: [Double: Double] = [:]
         for temp in temperatures {
-            guard let values = bucketValues[temp], values.count >= 3 else {
+            guard let values = bucketValues[temp],
+                values.count >= CurveLearnerConstants.minBucketSamples
+            else {
                 continue
             }
             let sorted = values.sorted()
-            bucketMedian[temp] = sorted[sorted.count / 2]
+            bucketMedian[temp] =
+                sorted[sorted.count / CurveLearnerConstants.medianMidpointDivisor]
         }
         return bucketMedian
     }
@@ -354,13 +367,17 @@ final class CurveLearner: ObservableObject {
 
         // Use the 90th percentile of the second half of samples as a robust
         // estimate of the sustained plateau. Ignores the initial ramp-up.
-        let trimmed = Array(probeSamples.dropFirst(max(0, probeSamples.count / 2)))
+        let trimmed = Array(
+            probeSamples.dropFirst(
+                max(0, probeSamples.count / CurveLearnerConstants.probeSecondHalfDivisor)))
         let sustained: Float
         if trimmed.isEmpty {
             sustained = 0
         } else {
             let sorted = trimmed.sorted()
-            let idx = min(sorted.count - 1, Int(Double(sorted.count) * 0.9))
+            let idx = min(
+                sorted.count - 1,
+                Int(Double(sorted.count) * CurveLearnerConstants.sustainedPercentile))
             sustained = sorted[idx]
         }
 
@@ -373,6 +390,19 @@ final class CurveLearner: ObservableObject {
         if sustained > 0 {
             sharedDefaults().set(
                 Double(sustained), forKey: SharedConfigKeys.overdriveTargetRPMMeasured)
+        }
+    }
+}
+
+extension CurveLearner {
+    func cancel() {
+        timer?.invalidate()
+        timer = nil
+        isSampling = false
+        samples.removeAll()
+        if let state = sweepSignpostState {
+            signposter.endInterval("learn.sweep", state)
+            sweepSignpostState = nil
         }
     }
 }

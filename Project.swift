@@ -202,6 +202,7 @@ let project = Project(
                 "Sources/App/L10n.swift",
                 "Sources/Models/**",
                 "Sources/Services/FanCurveAgentClient.swift",
+                "Sources/Services/DevToggleOverride.swift",
                 "Sources/Common/**",
                 .generated("Derived/Generated/FanCurveAgent/Config.generated.swift"),
             ],

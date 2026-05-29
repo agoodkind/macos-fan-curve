@@ -11,6 +11,28 @@ import Foundation
 
 private let fanResponseLog = AppLog.make(category: "FanResponse")
 
+// MARK: - Constants
+
+private enum FanResponseConstants {
+    // Slope thresholds used to normalize curve steepness into a response value
+    static let gentleSlopePercentPerC: Double = 0.002
+    static let fastSlopePercentPerC: Double = 0.03
+
+    // Ramp multiplier coefficients for below-balanced and above-balanced ranges
+    static let rampLowBase: Double = 0.55
+    static let rampLowFactor: Double = 0.45
+    static let rampHighFactor: Double = 0.6
+
+    // Bias multiplier coefficients for below-balanced and above-balanced ranges
+    static let biasLowBase: Double = 0.75
+    static let biasLowFactor: Double = 0.25
+    static let biasHighFactor: Double = 0.25
+
+    // Output clamp bounds applied to every FanResponseMultiplier
+    static let multiplierMin: Double = 0.45
+    static let multiplierMax: Double = 1.8
+}
+
 struct FanResponse: Sendable, Equatable {
     static let defaultValue: Double = 0.5
     static let defaultInferFromGraph = true
@@ -63,11 +85,10 @@ struct FanResponse: Sendable, Equatable {
     }
 
     static func responseValue(forSlopePercentPerC slopePercentPerC: Double) -> FanResponse {
-        let gentleSlopePercentPerC = 0.002
-        let fastSlopePercentPerC = 0.03
         let normalized =
-            (abs(slopePercentPerC) - gentleSlopePercentPerC)
-            / (fastSlopePercentPerC - gentleSlopePercentPerC)
+            (abs(slopePercentPerC) - FanResponseConstants.gentleSlopePercentPerC)
+            / (FanResponseConstants.fastSlopePercentPerC
+                - FanResponseConstants.gentleSlopePercentPerC)
         return FanResponse(value: normalized)
     }
 
@@ -79,22 +100,22 @@ struct FanResponse: Sendable, Equatable {
         let clampedValue = clampedValue(value)
         if clampedValue <= defaultValue {
             let progress = clampedValue / defaultValue
-            return 0.55 + progress * 0.45
+            return FanResponseConstants.rampLowBase + progress * FanResponseConstants.rampLowFactor
         }
 
         let progress = (clampedValue - defaultValue) / defaultValue
-        return 1.0 + progress * 0.6
+        return 1.0 + progress * FanResponseConstants.rampHighFactor
     }
 
     private static func biasMultiplier(for value: Double) -> Double {
         let clampedValue = clampedValue(value)
         if clampedValue <= defaultValue {
             let progress = clampedValue / defaultValue
-            return 0.75 + progress * 0.25
+            return FanResponseConstants.biasLowBase + progress * FanResponseConstants.biasLowFactor
         }
 
         let progress = (clampedValue - defaultValue) / defaultValue
-        return 1.0 + progress * 0.25
+        return 1.0 + progress * FanResponseConstants.biasHighFactor
     }
 }
 
@@ -102,6 +123,7 @@ struct FanResponseMultiplier: Sendable, Equatable {
     let rawValue: Double
 
     init(_ rawValue: Double) {
-        self.rawValue = max(0.45, min(1.8, rawValue))
+        self.rawValue = max(
+            FanResponseConstants.multiplierMin, min(FanResponseConstants.multiplierMax, rawValue))
     }
 }

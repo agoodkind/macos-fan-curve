@@ -12,6 +12,11 @@ import SwiftUI
 
 private let settingsViewLog = AppLog.make(category: "SettingsView")
 
+private enum SettingsWindowConstants {
+    static let minWidth: CGFloat = 520
+    static let minHeight: CGFloat = 460
+}
+
 /// Root Settings window. Uses the macOS Settings scene (Cmd-comma).
 /// Three tabs ordered by how often a user reaches for them. Profiles is
 /// the hero since it holds the curve itself. General covers everything
@@ -35,7 +40,9 @@ struct SettingsView: View {
                 AboutSettingsView()
             }
         }
-        .frame(minWidth: 520, minHeight: 460)
+        .frame(
+            minWidth: SettingsWindowConstants.minWidth, minHeight: SettingsWindowConstants.minHeight
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WindowRenderActivityAttachment(activity: renderActivity))
         .onAppear {

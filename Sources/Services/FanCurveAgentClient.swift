@@ -11,6 +11,10 @@ import Foundation
 
 private let fanCurveAgentClientLog = AppLog.make(category: "FanCurveAgentClient")
 
+private enum FanCurveAgentClientConstants {
+    static let snapshotFreshnessWindow: TimeInterval = 5
+}
+
 private final class AgentVoidReplyResumer: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Void, Error>?
@@ -394,7 +398,8 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
 extension FanCurveAgentClient {
     var isFresh: Bool {
         guard let snapshot else { return false }
-        return Date().timeIntervalSince(snapshot.timestamp) < 5
+        return Date().timeIntervalSince(snapshot.timestamp)
+            < FanCurveAgentClientConstants.snapshotFreshnessWindow
     }
 
     var governingTemperature: Double { snapshot?.governingTemperatureC ?? 0 }
@@ -418,22 +423,6 @@ extension FanCurveAgentClient {
 }
 
 #if DEBUG
-
-    /// Tri-state override for a simulated boolean control, used so a live toggle
-    /// can override a scenario's natural value without an optional boolean.
-    enum DevToggleOverride {
-        case inherit
-        case off
-        case on
-
-        func value(default fallback: Bool) -> Bool {
-            switch self {
-            case .inherit: return fallback
-            case .on: return true
-            case .off: return false
-            }
-        }
-    }
 
     extension FanCurveAgentClient {
         var isDevSimulating: Bool { devScenario != nil }

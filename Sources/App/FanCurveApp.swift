@@ -11,6 +11,19 @@ import SwiftUI
 
 private let log = AppLog.make(category: "AgentMain")
 
+private enum WindowConstants {
+    static let mainWindowWidth: CGFloat = 980
+    static let mainWindowHeight: CGFloat = 540
+
+    static let aboutWindowMinWidth: CGFloat = 560
+    static let aboutWindowIdealWidth: CGFloat = 620
+    static let aboutWindowMinHeight: CGFloat = 420
+    static let aboutWindowIdealHeight: CGFloat = 500
+
+    static let settingsWindowWidth: CGFloat = 720
+    static let settingsWindowHeight: CGFloat = 620
+}
+
 @main
 struct FanCurveApp: App {
     @StateObject private var agentClient = FanCurveAgentClient()
@@ -47,7 +60,9 @@ struct FanCurveApp: App {
                     handleTermination()
                 }
         }
-        .defaultSize(width: 980, height: 540)
+        .defaultSize(
+            width: WindowConstants.mainWindowWidth, height: WindowConstants.mainWindowHeight
+        )
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .appSettings) {
@@ -91,9 +106,17 @@ struct FanCurveApp: App {
         Window("About Fan Curve", id: "about") {
             AboutContentView()
                 .environmentObject(appUpdater)
-                .frame(minWidth: 560, idealWidth: 620, minHeight: 420, idealHeight: 500)
+                .frame(
+                    minWidth: WindowConstants.aboutWindowMinWidth,
+                    idealWidth: WindowConstants.aboutWindowIdealWidth,
+                    minHeight: WindowConstants.aboutWindowMinHeight,
+                    idealHeight: WindowConstants.aboutWindowIdealHeight
+                )
         }
-        .defaultSize(width: 620, height: 500)
+        .defaultSize(
+            width: WindowConstants.aboutWindowIdealWidth,
+            height: WindowConstants.aboutWindowIdealHeight
+        )
         .windowResizability(.contentSize)
 
         Window("Settings", id: "settings") {
@@ -102,7 +125,9 @@ struct FanCurveApp: App {
                 .environmentObject(curveModel)
                 .environmentObject(appUpdater)
         }
-        .defaultSize(width: 720, height: 620)
+        .defaultSize(
+            width: WindowConstants.settingsWindowWidth, height: WindowConstants.settingsWindowHeight
+        )
         .windowResizability(.contentMinSize)
     }
 

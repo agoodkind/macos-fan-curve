@@ -11,6 +11,12 @@ import SwiftUI
 
 private let loadAssistModuleLog = AppLog.make(category: "LoadAssistModule")
 
+private enum LoadAssistModuleConstants {
+    static let curveEditorHeight: CGFloat = 168
+    static let fanPercentScale = 100.0
+    static let contentVStackSpacing: CGFloat = 10
+}
+
 struct LoadAssistModuleView: View {
     let kind: LoadAssistKind
 
@@ -21,7 +27,7 @@ struct LoadAssistModuleView: View {
     private let minimumPointSpacing = 4.0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: LoadAssistModuleConstants.contentVStackSpacing) {
             SettingsToggleDescriptionRow(
                 title: kind.title,
                 description: loadAssistDescription,
@@ -30,7 +36,7 @@ struct LoadAssistModuleView: View {
 
             if enabled {
                 LoadAssistCurveEditor(points: $points, minimumPointSpacing: minimumPointSpacing)
-                    .frame(height: 168)
+                    .frame(height: LoadAssistModuleConstants.curveEditorHeight)
 
                 SettingsKeyValueRow(label: "Load %", value: "Minimum Fan %")
 
@@ -68,7 +74,8 @@ struct LoadAssistModuleView: View {
     }
 
     private var floorSummary: String {
-        let floorPercent = Int((points.last?.fanPercent ?? 0) * 100)
+        let floorPercent = Int(
+            (points.last?.fanPercent ?? 0) * LoadAssistModuleConstants.fanPercentScale)
         return "Current floor \(floorPercent)%"
     }
 

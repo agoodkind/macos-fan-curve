@@ -11,6 +11,10 @@ import SwiftUI
 
 private let sensorDashboardSidebarSetupLog = AppLog.make(category: "SensorDashboardSidebar")
 
+private enum SensorDashboardSidebarSetupConstants {
+    static let checkingStatusRowSpacing: CGFloat = 8
+}
+
 extension SensorDashboardSidebar {
     var setupButton: some View {
         Group {
@@ -28,7 +32,7 @@ extension SensorDashboardSidebar {
                 )
                 .help(setupHelp)
             } else if installState.step == .checking {
-                HStack(spacing: 8) {
+                HStack(spacing: SensorDashboardSidebarSetupConstants.checkingStatusRowSpacing) {
                     ProgressView()
                         .controlSize(.small)
                     Text("Checking setup")

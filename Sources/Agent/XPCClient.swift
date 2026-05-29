@@ -21,6 +21,10 @@ import SMCFanXPCClient
 
 private let log = AppLog.make(category: "XPCClient")
 
+private enum XPCClientConstants {
+    static let maxPlausibleTemperatureC: Float = 150
+}
+
 enum XPCClientError: LocalizedError {
     case unavailable(String)
 
@@ -239,7 +243,7 @@ class XPCClient: ObservableObject, @unchecked Sendable {
         for key in tempKeys {
             do {
                 let value = try await self.readKey(key)
-                if value > 0, value < 150 {
+                if value > 0, value < XPCClientConstants.maxPlausibleTemperatureC {
                     temps[key] = value
                 }
             } catch {

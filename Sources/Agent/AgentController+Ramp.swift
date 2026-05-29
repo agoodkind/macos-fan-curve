@@ -8,6 +8,10 @@
 
 import Foundation
 
+private enum RampLogConstants {
+    static let millisecondsPerSecond: Double = 1_000
+}
+
 struct RampCommandState {
     let rpm: Float
     let timestamp: Date
@@ -120,7 +124,7 @@ extension AgentController {
     ) {
         guard decision.limited else { return }
         agentControllerLog.info(
-            "agent.fan.ramp_governor fan=\(fanIndex, privacy: .public) requestedRPM=\(Int(decision.requestedRPM), privacy: .public) commandedRPM=\(Int(decision.commandedRPM), privacy: .public) baselineRPM=\(Int(decision.baselineRPM), privacy: .public) actualRPM=\(Int(currentFan.actualRPM), privacy: .public) elapsedMs=\(Int(decision.elapsedSeconds * 1_000), privacy: .public) rateRPMPerSecond=\(Int(decision.rateRPMPerSecond), privacy: .public) responseMultiplier=\(Int(fanResponseMultiplier.rawValue * 100), privacy: .public)% tempC=\(Int(currentTemperatureC), privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% mode=\(controllerMode.rawValue, privacy: .public)"
+            "agent.fan.ramp_governor fan=\(fanIndex, privacy: .public) requestedRPM=\(Int(decision.requestedRPM), privacy: .public) commandedRPM=\(Int(decision.commandedRPM), privacy: .public) baselineRPM=\(Int(decision.baselineRPM), privacy: .public) actualRPM=\(Int(currentFan.actualRPM), privacy: .public) elapsedMs=\(Int(decision.elapsedSeconds * RampLogConstants.millisecondsPerSecond), privacy: .public) rateRPMPerSecond=\(Int(decision.rateRPMPerSecond), privacy: .public) responseMultiplier=\(Int(fanResponseMultiplier.rawValue * 100), privacy: .public)% tempC=\(Int(currentTemperatureC), privacy: .public) debt=\(Int(thermalDebt * 100), privacy: .public)% mode=\(controllerMode.rawValue, privacy: .public)"
         )
     }
 }
