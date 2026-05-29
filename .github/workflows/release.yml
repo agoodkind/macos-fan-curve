@@ -180,7 +180,11 @@ jobs:
           CURRENT_PROJECT_VERSION: ${{ steps.meta.outputs.build_version }}
           SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         run: |
+          # Release packaging only compiles, signs, and bundles. Lint and audit
+          # run in the PR workflow, so skip build-check here (it also avoids the
+          # swiftcheck-extra tool, whose sources are not fetched on a clean runner).
           make release-assets \
+            BUILD_CHECKS=false \
             MARKETING_VERSION="$MARKETING_VERSION" \
             CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
             SPARKLE_FEED_URL="https://goodkind.io/fancurve/appcast.xml" \
