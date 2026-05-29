@@ -2,7 +2,7 @@
 
 ![FanCurve app icon](Sources/App/Assets.xcassets/AppIcon.appiconset/AppIcon-128@2x.png)
 
-Quiet fan control for Apple Silicon Macs.
+Advanced fan control for Apple Silicon Macs
 
 [Download](https://github.com/agoodkind/macos-fan-curve/releases) · [MIT License](LICENSE)
 
