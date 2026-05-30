@@ -1,9 +1,21 @@
 name: Deploy Appcast
 
+# Deploys the Sparkle appcast to the Cloudflare worker.
+# Triggers:
+#   - workflow_run: fires after the Release workflow completes. This is the path that
+#     runs for normal releases, since the release is created with the bot GITHUB_TOKEN,
+#     which cannot fire a `release:` event.
+#   - release (published): covers releases cut manually / outside the Release workflow.
+#   - workflow_dispatch: manual redeploy of a given tag.
 on:
   release:
     types:
       - published
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       release_tag:
@@ -12,18 +24,52 @@ on:
         type: string
 
 env:
-  XCODE_VERSION: "16.4"
+  XCODE_VERSION: "latest-stable"
 
 jobs:
   deploy-appcast:
-    runs-on: macos-15
+    # On the workflow_run path, only deploy when the Release run succeeded.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: macos-latest
     permissions:
       contents: read
-    env:
-      RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_EVENT_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_TAG: ${{ inputs.release_tag }}
+          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "$EVENT_NAME" in
+            release)
+                tag="$RELEASE_EVENT_TAG"
+                ;;
+            workflow_dispatch)
+                tag="$DISPATCH_TAG"
+                ;;
+            workflow_run)
+                tag="$(git tag --points-at "$RUN_HEAD_SHA" | head -n 1)"
+                ;;
+            *)
+                tag=""
+                ;;
+          esac
+
+          if [[ -z "$tag" ]]; then
+              echo "Could not resolve a release tag for event '$EVENT_NAME'" >&2
+              exit 1
+          fi
+
+          printf 'RELEASE_TAG=%s\n' "$tag" >> "$GITHUB_ENV"
 
       - uses: ./.github/actions/setup-build-env
         with:

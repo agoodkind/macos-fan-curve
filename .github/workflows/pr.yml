@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  XCODE_VERSION: "16.4"
+  XCODE_VERSION: "latest-stable"
   # The swift-makefile bootstrap fetches swift.mk via `gh api` on every make
   # invocation; without a token gh fails and the fetch silently writes an empty
   # swift.mk, so the build target never loads. Authenticate the public fetch.
@@ -21,7 +21,7 @@ env:
 
 jobs:
   verify:
-    runs-on: macos-15
+    runs-on: macos-latest
     permissions:
       contents: read
 
