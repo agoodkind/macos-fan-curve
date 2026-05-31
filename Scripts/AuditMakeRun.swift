@@ -20,45 +20,58 @@ do {
     let contents = try String(contentsOfFile: makefile, encoding: .utf8)
     let lines = contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
 
-    let forbiddenTokens = ["install-app", "restart-agent", "sync-agent-plist", "launchctl", "/Applications", "pkill"]
-    let body: String
+    // `make run` builds the Debug app, which deploys to /Applications, and launches
+    // that one canonical copy. It must not register login items by hand.
+    let forbiddenTokens = ["install-app", "restart-agent", "sync-agent-plist", "launchctl", "pkill"]
 
-    if let commandLine = lines.first(where: { $0.hasPrefix("SWIFT_RUN_CMD :=") }) {
-        body = String(commandLine.drop(while: { $0 != "=" }).dropFirst()).trimmingCharacters(in: .whitespaces)
-    } else {
-        var runBody: [String] = []
-        var inRun = false
-        for line in lines {
-            if line.hasPrefix("run:") {
-                inRun = true
-                runBody.append(line)
-                continue
-            }
-            if inRun, line.first?.isWhitespace == false, line.contains(":") {
-                break
-            }
-            if inRun {
-                runBody.append(line)
-            }
+    var runBody: [String] = []
+    var inRun = false
+    for line in lines {
+        if line.hasPrefix("run:") {
+            inRun = true
+            runBody.append(line)
+            continue
         }
-
-        guard let declaration = runBody.first, declaration.range(of: #"^run:\s+app(\s|$)"#, options: .regularExpression) != nil
-        else {
-            try fail("run-audit failed: make run must depend on app and launch Products/$(APP_BUNDLE_NAME).app")
+        if inRun, let first = line.first, first.isWhitespace == false, line.contains(":") {
+            break
         }
-        body = runBody.joined(separator: "\n")
+        if inRun {
+            runBody.append(line)
+        }
     }
+
+    guard let declaration = runBody.first,
+        declaration.range(of: #"^run:"#, options: .regularExpression) != nil
+    else {
+        try fail("run-audit failed: Makefile must define a 'run' target")
+    }
+    let body = runBody.joined(separator: "\n")
 
     for token in forbiddenTokens where body.contains(token) {
         try fail("run-audit failed: make run must not reference '\(token)'")
+    }
+
+    guard body.contains("CONFIGURATION=Debug"), body.contains("app-local") else {
+        try fail("run-audit failed: make run must build the Debug configuration via app-local")
+    }
+
+    guard body.contains(#"cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)""#) else {
+        try fail(#"run-audit failed: make run must deploy the build to /Applications with cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)""#)
     }
 
     guard body.contains(#"Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)""#) else {
         try fail("run-audit failed: make run must terminate existing app UI processes by bundle identifier")
     }
 
-    guard body.contains(#"open "$(APP_DEST)""#) else {
-        try fail("run-audit failed: make run must open the staged app path with open \"$(APP_DEST)\"")
+    guard body.contains(#"open "$(INSTALL_APP_DEST)""#) else {
+        try fail(#"run-audit failed: make run must launch the canonical app with open "$(INSTALL_APP_DEST)""#)
+    }
+
+    let installDestDefinition = lines.first {
+        $0.range(of: #"^INSTALL_APP_DEST\s*[?:]?=.*"#, options: .regularExpression) != nil
+    }
+    guard let installDest = installDestDefinition, installDest.contains("/Applications/") else {
+        try fail("run-audit failed: INSTALL_APP_DEST must resolve under /Applications")
     }
 
     print("run-audit: ok")

@@ -36,7 +36,6 @@ XCODE_PRODUCTS_DIR = $(BUILD_DIR)/Build/Products/$(CONFIGURATION)
 APP_SOURCE = $(XCODE_PRODUCTS_DIR)/$(APP_BUNDLE_NAME).app
 APP_DEST = $(PRODUCTS_DIR)/$(APP_BUNDLE_NAME).app
 LEGACY_APP_DEST = $(PRODUCTS_DIR)/$(APP_NAME).app
-INSTALL_USER_APP_DEST ?= $(HOME)/Applications/$(APP_BUNDLE_NAME).app
 INSTALL_APP_DEST ?= /Applications/$(APP_BUNDLE_NAME).app
 AGENT_LABEL ?= io.goodkind.fancurveagent
 AGENT_PLIST_NAME ?= agent-launchd.plist
@@ -54,13 +53,16 @@ XCODE_BUILD_SETTINGS = CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" DEVELOPMENT_TE
 HELPER_BUILD_SETTINGS = CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" OWNER_APP_BUNDLE_ID="$(APP_BUNDLE_ID)" HELPER_APP_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" HELPER_DAEMON_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)"
 
 SWIFT_MK_MODULES := swift-build.mk
+# This project defines its own `run` (Debug build deployed to /Applications). The
+# swift-build.mk module skips its generic `run` when this is set, avoiding a Make
+# "overriding commands" warning. Takes effect once the guard is synced into .make/.
+SWIFT_MK_OWN_RUN := 1
 SWIFT_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 app-local
 SWIFT_TEST_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 test-local
 SWIFT_GENERATE_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 generate-project
 SWIFT_CLEAN_CMD := rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) FanCurveApp.xcworkspace FanCurveApp.xcodeproj
 SWIFT_ANALYZE_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 xcode-analyze swiftlint-analyze
 SWIFT_LOG_AUDIT_CMD := Scripts/AuditLogging.swift Sources
-SWIFT_RUN_CMD := Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)" && open "$(APP_DEST)"
 SWIFT_FORMAT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTLINT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTCHECK_EXTRA_TARGETS := $(SWIFT_FORMAT_FILES)
@@ -68,7 +70,7 @@ PERIPHERY_ARGS = scan --config "$(SWIFT_MK_PERIPHERY_CONFIG)" --project FanCurve
 
 include bootstrap.mk
 
-.PHONY: all install-dependencies install-analysis-tools app app-local run-debug project-build install-user install-app run-installed dmg release-assets prepare-sparkle-updates sparkle-appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons helper-artifacts
+.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates sparkle-appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons helper-artifacts
 
 all: app
 
@@ -129,25 +131,23 @@ app-local: project-build
 
 app: build
 
-# Debug-configuration build and launch. The dev state-simulation menu and the
-# FANCURVE_DEV_SCENARIO flag are compiled only into Debug builds, so this is the
-# run path used to exercise simulated states.
-run-debug:
+# Build the Debug app, deploy it to /Applications, and launch it.
+# /Applications/Fan Curve.app is the single canonical location the SMAppService daemon
+# and login-item agent register from. Xcode builds to DerivedData and the Play button
+# runs that copy for debugging; the canonical install lives at /Applications. The dev
+# state-simulation menu and the FANCURVE_DEV_SCENARIO flag are compiled only into Debug
+# builds, so this is also the simulated-state path.
+run:
 	$(MAKE) SWIFT_MK_SKIP_FETCH=1 CONFIGURATION=Debug app-local
+	@rm -rf "$(INSTALL_APP_DEST)"
+	@cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)"
 	@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
-	@open "$(APP_DEST)"
+	@open "$(INSTALL_APP_DEST)"
 
-install-user: app
-	@mkdir -p "$(HOME)/Applications"
-	@rm -rf "$(INSTALL_USER_APP_DEST)"
-	@cp -R "$(APP_DEST)" "$(INSTALL_USER_APP_DEST)"
-
+# Install the Release build to the canonical /Applications location.
 install-app: app
 	@rm -rf "$(INSTALL_APP_DEST)"
 	@cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)"
-
-run-installed: install-user
-	@open -na "$(INSTALL_USER_APP_DEST)"
 
 dmg: app
 	@mkdir -p "$(PRODUCTS_DIR)"

@@ -72,7 +72,7 @@ extension InstallationState {
         guard agentStatus != .enabled, agentStatus != .requiresApproval else {
             return agentStatus
         }
-        guard isLocalStagedBundle(path: appBundlePath) else {
+        guard isDeveloperManagedBuild else {
             return agentStatus
         }
         guard applyInBackground, storedFingerprint != nil else {
@@ -119,10 +119,10 @@ extension InstallationState {
         guard #available(macOS 13.0, *) else { return }
 
         let appBundlePath = Bundle.main.bundleURL.path
-        let stagedBundle = isLocalStagedBundle(path: appBundlePath)
+        let developerManaged = isDeveloperManagedBuild
         let bundledHash = BuildFingerprint.bundledAgentHash
         guard bundledAgentHashIsAvailable(bundledHash) else { return }
-        logRefreshContextIfNeeded(appBundlePath: appBundlePath, stagedBundle: stagedBundle)
+        logRefreshContextIfNeeded(appBundlePath: appBundlePath, developerManaged: developerManaged)
         guard
             runningAgentHashIsAvailable(
                 context: context,
@@ -150,7 +150,7 @@ extension InstallationState {
             result: result,
             context: context,
             appBundlePath: appBundlePath,
-            stagedBundle: stagedBundle,
+            developerManaged: developerManaged,
             bundledHash: bundledHash
         )
     }
@@ -165,10 +165,10 @@ extension InstallationState {
         return true
     }
 
-    func logRefreshContextIfNeeded(appBundlePath: String, stagedBundle: Bool) {
-        guard !stagedBundle else { return }
+    func logRefreshContextIfNeeded(appBundlePath: String, developerManaged: Bool) {
+        guard !developerManaged else { return }
         installationStateAgentLifecycleLog.notice(
-            "agent.refresh.context appPath=\(appBundlePath, privacy: .public) mode=non-staged-bundle"
+            "agent.refresh.context appPath=\(appBundlePath, privacy: .public) mode=unmanaged-build"
         )
     }
 
@@ -254,11 +254,11 @@ extension InstallationState {
         result: AgentServiceMutationResult,
         context: AgentRefreshContext,
         appBundlePath: String,
-        stagedBundle: Bool,
+        developerManaged: Bool,
         bundledHash: String
     ) {
         installationStateAgentLifecycleLog.notice(
-            "agent.refresh.needed appPath=\(appBundlePath, privacy: .public) stagedBundle=\(stagedBundle, privacy: .public) status=\(result.statusBefore, privacy: .public) runningHash=\(context.runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public) snapshotSchema=\(context.snapshotSchemaVersion ?? -1, privacy: .public) expectedSchema=\(AgentSnapshot.currentSchemaVersion, privacy: .public) schemaMismatch=\(context.snapshotSchemaMismatch, privacy: .public)"
+            "agent.refresh.needed appPath=\(appBundlePath, privacy: .public) developerManaged=\(developerManaged, privacy: .public) status=\(result.statusBefore, privacy: .public) runningHash=\(context.runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public) snapshotSchema=\(context.snapshotSchemaVersion ?? -1, privacy: .public) expectedSchema=\(AgentSnapshot.currentSchemaVersion, privacy: .public) schemaMismatch=\(context.snapshotSchemaMismatch, privacy: .public)"
         )
 
         if let statusAfterUnregister = result.statusAfterUnregister {
@@ -307,8 +307,18 @@ extension InstallationState {
         )
     }
 
-    func isLocalStagedBundle(path: String) -> Bool {
-        path.hasSuffix("/Products/FanCurve.app") || path.hasSuffix("/Products/Fan Curve.app")
+    /// A Debug build installed at the canonical `/Applications` path manages agent
+    /// registration automatically, so each `make run` reflects in the running agent
+    /// without a manual System Settings round-trip. A Debug build launched from anywhere
+    /// else, such as Xcode's DerivedData via the Play button, does not, so debugging
+    /// cannot re-register the agent from a second path. Release builds leave registration
+    /// to explicit user approval.
+    var isDeveloperManagedBuild: Bool {
+        #if DEBUG
+            return Bundle.main.bundleURL.deletingLastPathComponent().path == "/Applications"
+        #else
+            return false
+        #endif
     }
 
     func shouldRetryRefresh(for bundledHash: String, now: Date) -> Bool {

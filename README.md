@@ -42,6 +42,8 @@ make build
 make run
 ```
 
+`make run` builds the Debug app, installs it to `/Applications/Fan Curve.app`, and launches it. That is the single location the background agent and privileged helper register from, so the app always runs from there. Xcode's Play button runs the DerivedData build for debugging; attach Xcode to the running `/Applications/Fan Curve.app` process to debug the app, or to the background agent process the same way. The privileged helper is a root daemon.
+
 ## Contributing
 
 Bug reports and pull requests are welcome. Run `make verify` before opening a PR. If your change touches the fan control loop, read `AGENTS.md` first. It documents the runtime semantics that must be preserved.

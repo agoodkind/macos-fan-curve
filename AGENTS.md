@@ -72,21 +72,20 @@ These instructions are strict project rules for all automated coding agents work
 - Use `make install-dependencies` to resolve Tuist dependencies.
 - Use `make generate-project` to regenerate `FanCurveApp.xcworkspace`.
 - Use `make build` for normal compilation. This runs icon generation, regenerates the Tuist workspace, and builds with the repository's configured `xcodebuild` path.
-- Use `make app` for the standard local app artifact. It builds and stages `Products/FanCurve.app`.
-- Use `make run` to launch the local app artifact. Do not launch from derived data manually.
-- Use `make install-user` to copy the app into `~/Applications`.
-- Use `make install-app` only when an explicit `/Applications` install is required.
-- Use `make run-installed` only when testing the user-installed app path.
-- Do not make `make run` copy into `/Applications` or manually restart the login agent. The app owns `SMAppService` registration and refresh.
+- `/Applications/Fan Curve.app` is the single canonical run, debug, and install location. The `SMAppService` daemon and login-item agent register from that one path, so the app runs from there and nowhere else. Do not introduce a second run or install location.
+- Use `make app` for the Release app artifact. It builds Release into `build/` and stages `Products/Fan Curve.app` for `make dmg` and packaging.
+- Use `make run` for local development. It builds the Debug configuration, copies the build to `/Applications/Fan Curve.app`, and launches that copy.
+- Use `make install-app` to install the Release build to `/Applications/Fan Curve.app`.
+- Xcode builds to DerivedData and the Play button runs that copy for debugging. To debug the running app, run `make run` and attach Xcode (lldb) to the `/Applications/Fan Curve.app` process; the Debug build carries `com.apple.security.get-task-allow`, so the attach succeeds. The background agent is a separate process you attach to the same way. The privileged helper is a hardened-runtime root `LaunchDaemon` and is not a normal Xcode attach target. A Debug build launched from DerivedData does not register login items, so it cannot create a second registration path.
 - Use `make launch-agent-audit` for launch agent, login item, bundle, or install path changes.
 - Use `make run-audit` after touching `Makefile` run, install, launch, login item, or agent behavior.
 - Use `make verify` before handing off launch agent, login item, bundle, install path, or run path changes. It runs the required project-specific guard checks plus tests.
 - Use `make test` for tests.
 - Use `make dmg` or `make release-assets` for distributable artifacts.
-- Keep derived data and products on the configured Makefile paths: `build/` and `Products/`.
+- Keep derived data in `build/` and the Release staging artifact in `Products/`. `make run` deploys the Debug build to `/Applications/Fan Curve.app`.
 - Do not hand-edit generated Xcode project or workspace files as source of truth.
 - Before handing off a code change, run the narrowest Make target that proves the change. Use `make test` when behavior changed, `make build` when compilation is the proof, and `make log-audit` when logging changed.
-- After making a code change, also run `make run` before handing off so the local app artifact is built, staged, and launched from the canonical path. Report the `make run` result to the user.
+- After making a code change, also run `make run` before handing off so the Debug app is built, deployed to `/Applications/Fan Curve.app`, and launched. Report the `make run` result to the user.
 - If a required verification cannot be run, state the exact command that was skipped and why.
 
 ## Completion Evidence
@@ -99,7 +98,7 @@ These instructions are strict project rules for all automated coding agents work
 ## Launch Agent And Install Path Guardrails
 
 - `SMAppService.agent(plistName:)` owns login item registration. Do not manually bootstrap, bootout, kickstart, or copy launch agent plists as part of the normal `make run` path.
-- `make run` must build/stage `Products/FanCurve.app` and open that app. It must not install into `/Applications`, copy into `~/Library/LaunchAgents`, or call `launchctl`.
+- `make run` builds the Debug configuration, copies it to `/Applications/Fan Curve.app`, and opens that app. It must not copy into `~/Library/LaunchAgents` or call `launchctl`; `SMAppService` owns login-item registration.
 - The app-bundled launch agent plist is generated from `Templates/Plists/agent-launchd.plist.template` by `Scripts/generate-config.sh`; do not duplicate plist generation logic in the Makefile.
 - The bundled launch agent plist must use `BundleProgram` with the exact executable casing `Contents/MacOS/FanCurveAgent`.
 - If an installed app or login item is stale, fix the app bundle generation and registration flow. Do not patch a stale user-level plist as the source of truth.
@@ -108,7 +107,7 @@ These instructions are strict project rules for all automated coding agents work
 ## Common LLM Failure Paths
 
 - Do not bypass canonical Make targets with direct `tuist`, `xcodebuild`, Swift compiler, app launch, or packaging commands when a Make target exists.
-- Do not "fix" app execution by launching from DerivedData or by opening a manually discovered `.app` path.
-- Do not "fix" login item issues by lowercasing executable names, hardcoding app paths, or copying generated plists into user LaunchAgents.
+- Do not "fix" app execution by opening a manually discovered `.app` path. The one canonical runtime path is `/Applications/Fan Curve.app`, produced by `make run`; Xcode's Play button runs the DerivedData copy only for debugging.
+- Do not "fix" login item issues by lowercasing executable names or by copying generated plists into user LaunchAgents.
 - Do not weaken analyzer, formatter, logging, or audit rules to make a handoff pass unless the rule is demonstrably wrong for the project and the change is explicitly called out.
 - Do not mark a speculative root cause as fact. State what was inspected, what failed, and what command proves the fix.
