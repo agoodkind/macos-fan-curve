@@ -150,10 +150,17 @@ run-installed: install-user
 	@open -na "$(INSTALL_USER_APP_DEST)"
 
 dmg: app
-	@mkdir -p "$(PRODUCTS_DIR)" "$(DMG_STAGING_DIR)"
-	@rm -rf "$(DMG_STAGING_DIR)/$(APP_BUNDLE_NAME).app" "$(DMG_STAGING_DIR)/Applications" "$(DMG_PATH)"
+	@mkdir -p "$(PRODUCTS_DIR)"
+	@rm -rf "$(DMG_STAGING_DIR)" "$(DMG_PATH)"
+	@mkdir -p "$(DMG_STAGING_DIR)"
 	@cp -R "$(APP_DEST)" "$(DMG_STAGING_DIR)/"
 	@ln -s /Applications "$(DMG_STAGING_DIR)/Applications"
+	@staged_count="$$(find "$(DMG_STAGING_DIR)" -maxdepth 1 -name '*.app' | wc -l | tr -d ' ')"; \
+	if [ "$$staged_count" != "1" ] || [ ! -d "$(DMG_STAGING_DIR)/$(APP_BUNDLE_NAME).app" ]; then \
+		echo "dmg staging error: expected exactly one app bundle ($(APP_BUNDLE_NAME).app) in $(DMG_STAGING_DIR), found $$staged_count:"; \
+		find "$(DMG_STAGING_DIR)" -maxdepth 1 -name '*.app'; \
+		exit 1; \
+	fi
 	hdiutil create -volname "$(DMG_VOLUME_NAME)" \
 		-srcfolder "$(DMG_STAGING_DIR)" \
 		-fs HFS+ \
