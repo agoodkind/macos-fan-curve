@@ -2,7 +2,7 @@
 //  DevOverrides.swift
 //  FanCurve
 //
-//  Copyright © 2026
+//  Copyright © 2026, all rights reserved.
 //
 
 import AppLog

@@ -3,7 +3,7 @@
 //  FanCurve
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-15.
-//  Copyright © 2026
+//  Copyright © 2026, all rights reserved.
 //
 //  Fan control client for the FanCurve agent. Delegates to the upstream
 //  `SMCFanXPCClient` from macos-smc-fan. Priority arbitration is handled

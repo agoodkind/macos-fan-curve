@@ -3,7 +3,7 @@
 //  FanCurve
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-21.
-//  Copyright © 2026
+//  Copyright © 2026, all rights reserved.
 //
 //  Observable wrapper around FanCurveAgent XPC ownership reads for the
 //  Settings surface. The poller only runs while its owning view is visible.

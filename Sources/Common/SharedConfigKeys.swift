@@ -3,7 +3,7 @@
 //  FanCurve
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-29.
-//  Copyright © 2026
+//  Copyright © 2026, all rights reserved.
 //
 
 enum SharedConfigKeys {
