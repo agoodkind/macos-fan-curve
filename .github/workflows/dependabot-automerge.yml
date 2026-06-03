@@ -16,6 +16,11 @@ jobs:
       pull-requests: write
 
     steps:
+      # gh pr merge --delete-branch shells out to git to clean up the local
+      # branch, so it needs a checkout; without one it aborts with
+      # "fatal: not a git repository" before the merge happens.
+      - uses: actions/checkout@v6
+
       - name: Merge passing Dependabot pull request
         env:
           GH_TOKEN: ${{ github.token }}
