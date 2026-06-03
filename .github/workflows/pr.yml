@@ -62,7 +62,7 @@ jobs:
         run: make verify HELPER_REPO="${{ github.workspace }}/.ci/macos-smc-fan" CODE_SIGN_IDENTITY="-"
 
       - name: Lint project
-        run: make lint
+        run: make lint HELPER_REPO="${{ github.workspace }}/.ci/macos-smc-fan" CODE_SIGN_IDENTITY="-"
 
       - name: Build project
         run: make build HELPER_REPO="${{ github.workspace }}/.ci/macos-smc-fan" CODE_SIGN_IDENTITY="-"
