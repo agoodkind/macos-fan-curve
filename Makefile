@@ -58,6 +58,11 @@ SWIFT_MK_MODULES := swift-build.mk
 # "overriding commands" warning. Takes effect once the guard is synced into .make/.
 SWIFT_MK_OWN_RUN := 1
 SWIFT_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 app-local
+# The project-build recipe writes its index store under BUILD_DIR, so the
+# dead-code gate reads from there. A clean build before the scan keeps the index
+# free of stale units from earlier incremental builds.
+SWIFT_MK_DERIVED_DATA := $(BUILD_DIR)
+SWIFT_DEADCODE_BUILD_CMD := rm -rf "$(BUILD_DIR)" && $(MAKE) SWIFT_MK_SKIP_FETCH=1 CONFIGURATION=Debug app-local
 SWIFT_TEST_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 test-local
 SWIFT_GENERATE_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 generate-project
 SWIFT_CLEAN_CMD := rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) FanCurveApp.xcworkspace FanCurveApp.xcodeproj
@@ -66,7 +71,6 @@ SWIFT_LOG_AUDIT_CMD := Scripts/AuditLogging.swift Sources
 SWIFT_FORMAT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTLINT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTCHECK_EXTRA_TARGETS := $(SWIFT_FORMAT_FILES)
-PERIPHERY_ARGS = scan --config "$(SWIFT_MK_PERIPHERY_CONFIG)" --project FanCurveApp.xcworkspace --schemes FanCurve --schemes FanCurveAgent --exclude-targets FanCurveModels --exclude-targets ModelTests --retain-public --retain-objc-accessible --retain-codable-properties --clean-build --disable-update-check --format xcode --strict -- SMC_FAN_HELPER_APP="$(HELPER_APP_SOURCE)"
 
 include bootstrap.mk
 
