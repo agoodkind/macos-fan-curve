@@ -37,7 +37,6 @@
             static let percentTempUpperBoundC: Double = 110
 
             // Fan RPM
-            static let fanBaseRPM: Float = 2_300
             static let fanRPMWaveRange: Double = 5_500
             static let fanMinRPM: Float = 2_300
             static let fanMaxRPM: Float = 7_800

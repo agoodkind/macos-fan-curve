@@ -30,6 +30,7 @@ private enum EventArtifactConstants {
 /// is created with 0o700 so other users on the box cannot read tick data.
 final class EventArtifactWriter: @unchecked Sendable {
     struct Event: Codable, Sendable {
+        // periphery:ignore - serialized schema-version stamp for persisted event artifacts
         let schemaVersion: Int
         let ts: Date
         let kind: String
