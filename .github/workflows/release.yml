@@ -89,55 +89,17 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Install signing certificate
-        env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
-          BUILD_CERTIFICATE_BASE64_PART1: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64_PART1 }}
-          BUILD_CERTIFICATE_BASE64_PART2: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64_PART2 }}
-          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
-          APPLE_CODE_SIGN_IDENTITY: ${{ env.APPLE_CODE_SIGN_IDENTITY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          certificate_path="$RUNNER_TEMP/build_certificate.p12"
-          keychain_path="$RUNNER_TEMP/build.keychain-db"
-          keychain_password="${KEYCHAIN_PASSWORD:-$P12_PASSWORD}"
-
-          if [[ -n "${BUILD_CERTIFICATE_BASE64:-}" ]]; then
-              printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
-          else
-              printf '%s%s' "$BUILD_CERTIFICATE_BASE64_PART1" "$BUILD_CERTIFICATE_BASE64_PART2" | base64 --decode > "$certificate_path"
-          fi
-
-          openssl pkcs12 -in "$certificate_path" -nokeys -passin pass:"$P12_PASSWORD" >/dev/null
-
-          security create-keychain -p "$keychain_password" "$keychain_path"
-          security set-keychain-settings -lut 21600 "$keychain_path"
-          security unlock-keychain -p "$keychain_password" "$keychain_path"
-          security import "$certificate_path" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain_path"
-          security list-keychains -d user -s "$keychain_path"
-
-          developer_id_identity_sha1="$(
-              security find-identity -v -p codesigning "$keychain_path" \
-                  | awk -v identity="\"$APPLE_CODE_SIGN_IDENTITY\"" 'index($0, identity) { print $2; exit }'
-          )"
-
-          if [[ -z "$developer_id_identity_sha1" ]]; then
-              echo "Developer ID Application signing identity was not found in imported keychain" >&2
-              exit 1
-          fi
-
-          {
-              printf 'DEVELOPER_ID_SIGN_IDENTITY_SHA1=%s\n' "$developer_id_identity_sha1"
-              printf 'DMG_SIGN_IDENTITY=%s\n' "$developer_id_identity_sha1"
-          } >> "$GITHUB_ENV"
+        id: signing_cert
+        uses: agoodkind/swift-makefile/.github/actions/import-signing-cert@main
+        with:
+          p12-base64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          identity-name: ${{ env.APPLE_CODE_SIGN_IDENTITY }}
 
       - name: Write CI xcconfig
         env:
           APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
-          CODE_SIGN_IDENTITY: ${{ env.DEVELOPER_ID_SIGN_IDENTITY_SHA1 }}
+          CODE_SIGN_IDENTITY: ${{ steps.signing_cert.outputs.identity-sha1 }}
           SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         shell: bash
         run: |
@@ -159,7 +121,7 @@ jobs:
       - name: Write helper CI xcconfig
         env:
           APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
-          CODE_SIGN_IDENTITY: ${{ env.DEVELOPER_ID_SIGN_IDENTITY_SHA1 }}
+          CODE_SIGN_IDENTITY: ${{ steps.signing_cert.outputs.identity-sha1 }}
         shell: bash
         run: |
           set -euo pipefail
@@ -242,53 +204,12 @@ jobs:
           path: Products
 
       - name: Notarize and staple DMG
-        env:
-          APPLE_NOTARY_KEY_ID: ${{ env.APPLE_NOTARY_KEY_ID }}
-          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
-          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-          BUILD_VERSION: ${{ needs.build.outputs.build_version }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          key_path="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
-          submit_output_path="$RUNNER_TEMP/notarytool-submit.json"
-          log_output_path="$RUNNER_TEMP/notarytool.log"
-
-          : > "$submit_output_path"
-          : > "$log_output_path"
-          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$key_path"
-
-          set +e
-          xcrun notarytool submit "Products/FanCurve-${BUILD_VERSION}.dmg" \
-            --key "$key_path" \
-            --key-id "$APPLE_NOTARY_KEY_ID" \
-            --issuer "$APPLE_NOTARY_ISSUER_ID" \
-            --wait \
-            --output-format json > "$submit_output_path"
-          submit_exit_code=$?
-          set -e
-
-          submission_id="$(plutil -extract id raw -o - "$submit_output_path" 2>/dev/null || true)"
-          submission_status="$(plutil -extract status raw -o - "$submit_output_path" 2>/dev/null || true)"
-
-          if [[ -n "$submission_id" ]]; then
-              xcrun notarytool log "$submission_id" \
-                --key "$key_path" \
-                --key-id "$APPLE_NOTARY_KEY_ID" \
-                --issuer "$APPLE_NOTARY_ISSUER_ID" > "$log_output_path" || true
-          fi
-
-          if [[ "$submit_exit_code" -ne 0 ]]; then
-              exit "$submit_exit_code"
-          fi
-
-          if [[ "$submission_status" != "Accepted" ]]; then
-              echo "Notary submission was not accepted: ${submission_status:-missing status}" >&2
-              exit 1
-          fi
-
-          xcrun stapler staple "Products/FanCurve-${BUILD_VERSION}.dmg"
+        uses: agoodkind/swift-makefile/.github/actions/notarize-staple@main
+        with:
+          artifact-path: Products/FanCurve-${{ needs.build.outputs.build_version }}.dmg
+          notary-key-base64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+          notary-key-id: ${{ env.APPLE_NOTARY_KEY_ID }}
+          notary-issuer-id: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
 
       - name: Attest stapled DMG provenance
         uses: actions/attest@v4.1.0
@@ -300,15 +221,6 @@ jobs:
         with:
           subject-path: Products/FanCurve-${{ needs.build.outputs.build_version }}.dmg
           sbom-path: Products/FanCurve-${{ needs.build.outputs.build_version }}.spdx.json
-
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: notary-diagnostics-${{ needs.build.outputs.tag }}
-          path: |
-            ${{ runner.temp }}/notarytool-submit.json
-            ${{ runner.temp }}/notarytool.log
-          if-no-files-found: error
 
       - uses: actions/upload-artifact@v7
         with:
