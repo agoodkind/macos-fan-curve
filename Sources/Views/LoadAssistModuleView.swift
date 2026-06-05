@@ -13,7 +13,6 @@ private let loadAssistModuleLog = AppLog.make(category: "LoadAssistModule")
 
 private enum LoadAssistModuleConstants {
     static let curveEditorHeight: CGFloat = 168
-    static let fanPercentScale = 100.0
     static let contentVStackSpacing: CGFloat = 10
 }
 
@@ -24,7 +23,6 @@ struct LoadAssistModuleView: View {
     @State private var points: [CurvePoint] = []
 
     private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
-    private let minimumPointSpacing = 4.0
 
     var body: some View {
         VStack(alignment: .leading, spacing: LoadAssistModuleConstants.contentVStackSpacing) {
@@ -35,12 +33,13 @@ struct LoadAssistModuleView: View {
             )
 
             if enabled {
-                LoadAssistCurveEditor(points: $points, minimumPointSpacing: minimumPointSpacing)
+                LoadAssistCurveEditor(points: $points)
                     .frame(height: LoadAssistModuleConstants.curveEditorHeight)
 
-                SettingsKeyValueRow(label: "Load %", value: "Minimum Fan %")
-
-                SettingsKeyValueRow(label: activationSummary, value: floorSummary)
+                Text(chartExplanation)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Button("Reset \(kind.shortTitle) Assist Curve") {
                     points = LoadAssistStore.defaultPoints()
@@ -65,18 +64,16 @@ struct LoadAssistModuleView: View {
     }
 
     private var loadAssistDescription: String {
-        "\(kind.shortTitle) load can raise the curve to a minimum fan floor without changing the main temperature graph."
+        switch kind {
+        case .cpu:
+            return "Keep the fan from dropping too low during CPU-heavy work."
+        case .gpu:
+            return "Keep the fan from dropping too low during graphics-heavy work."
+        }
     }
 
-    private var activationSummary: String {
-        let activation = Int(points.dropLast().last?.temperature ?? 0)
-        return "Starts ramping near \(activation)% load"
-    }
-
-    private var floorSummary: String {
-        let floorPercent = Int(
-            (points.last?.fanPercent ?? 0) * LoadAssistModuleConstants.fanPercentScale)
-        return "Current floor \(floorPercent)%"
+    private var chartExplanation: String {
+        "As \(kind.shortTitle) usage climbs, Fan Curve keeps the fan above the shaded line."
     }
 
     private func load() {

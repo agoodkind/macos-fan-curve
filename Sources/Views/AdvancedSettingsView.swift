@@ -90,8 +90,6 @@ struct AdvancedSettingsView: View {
             LoadAssistModuleView(kind: .gpu)
         } header: {
             Text("Load Assist")
-        } footer: {
-            SettingsDescription(text: loadAssistFooterText)
         }
     }
 
@@ -190,12 +188,6 @@ struct AdvancedSettingsView: View {
             get: { value.wrappedValue },
             set: { value.wrappedValue = $0.rounded() }
         )
-    }
-
-    private var loadAssistFooterText: String {
-        "Each assist curve maps load percent to a minimum fan floor. "
-            + "The agent evaluates the temperature curve, CPU assist, and GPU assist, "
-            + "then applies whichever result is highest."
     }
 
     private var inferFanResponseDescription: String {

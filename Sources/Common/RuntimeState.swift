@@ -288,27 +288,34 @@ struct RuntimeState: Codable, Sendable, Equatable {
             backgroundAgent: inputs.setup.backgroundAgent,
             helper: inputs.setup.helper
         )
-        let snapshot = inputs.snapshot
-        let telemetry = snapshot.map(RuntimeTelemetry.init(snapshot:))
-        let health = resolveHealth(
+        let agentSnapshot = inputs.snapshot
+        let runtimeTelemetry = agentSnapshot.map(RuntimeTelemetry.init(snapshot:))
+        let runtimeHealth = resolveHealth(
             inputs: RuntimeHealthInputs(
                 setupState: setupState,
-                telemetry: telemetry,
+                telemetry: runtimeTelemetry,
                 now: inputs.now,
                 freshnessInterval: inputs.freshnessInterval,
                 agentReportedFailure: inputs.agentReportedFailure,
                 ownershipPreempted: inputs.ownershipPreempted
             )
         )
-        let control = ControlState.resolve(
+        let controlState = ControlState.resolve(
             setupState: setupState,
-            curveActive: snapshot?.curveActive ?? false,
-            boostEnabled: snapshot?.boostEnabled ?? false,
-            ownershipPreempted: health == .ownershipPreempted
+            curveActive: agentSnapshot?.curveActive ?? false,
+            boostEnabled: agentSnapshot?.boostEnabled ?? false,
+            ownershipPreempted: runtimeHealth == .ownershipPreempted
         )
-        let telemetryState = TelemetryState.resolve(telemetry: telemetry, health: health)
+        let telemetryState = TelemetryState.resolve(
+            telemetry: runtimeTelemetry,
+            health: runtimeHealth
+        )
         return RuntimeState(
-            setup: setupState, control: control, telemetry: telemetryState, health: health)
+            setup: setupState,
+            control: controlState,
+            telemetry: telemetryState,
+            health: runtimeHealth
+        )
     }
 
     static func fromSharedDefaultsSnapshot(
@@ -333,19 +340,19 @@ struct RuntimeState: Codable, Sendable, Equatable {
         guard inputs.setupState.isReady else {
             return .degraded(reason: .setupIncomplete)
         }
-        guard let telemetry = inputs.telemetry else {
+        guard let currentTelemetry = inputs.telemetry else {
             return .degraded(reason: .snapshotUnavailable)
         }
         if inputs.ownershipPreempted {
             return .ownershipPreempted
         }
-        if !telemetry.helperReachable {
+        if !currentTelemetry.helperReachable {
             return .degraded(reason: .helperUnavailable)
         }
         if inputs.agentReportedFailure {
             return .degraded(reason: .agentReportedFailure)
         }
-        if inputs.now.timeIntervalSince(telemetry.timestamp) >= inputs.freshnessInterval {
+        if inputs.now.timeIntervalSince(currentTelemetry.timestamp) >= inputs.freshnessInterval {
             return .stale
         }
         return .healthy

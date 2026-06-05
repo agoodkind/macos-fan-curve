@@ -29,7 +29,6 @@ enum SharedConfigKeys {
     static let interpolationMode = "interpolationMode"
     static let loadAssistMigrationVersion = "loadAssistMigrationVersion"
     static let loadFloorEnabled = "loadFloorEnabled"
-    static let loadFloorPercent = "loadFloorPercent"
     static let loadFloorThreshold = "loadFloorThreshold"
     static let overdriveEnabled = "overdriveEnabled"
     static let overdriveTargetRPMMeasured = "overdriveTargetRPMMeasured"

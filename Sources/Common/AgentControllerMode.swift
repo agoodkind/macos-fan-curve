@@ -39,11 +39,11 @@ enum AgentControllerMode: Codable, Sendable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        let rawValue = try container.decode(String.self)
-        guard let mode = Self(rawValue: rawValue) else {
+        let decodedRawValue = try container.decode(String.self)
+        guard let mode = Self(rawValue: decodedRawValue) else {
             throw DecodingError.dataCorruptedError(
                 in: container,
-                debugDescription: "Unknown controller mode: \(rawValue)"
+                debugDescription: "Unknown controller mode: \(decodedRawValue)"
             )
         }
         self = mode

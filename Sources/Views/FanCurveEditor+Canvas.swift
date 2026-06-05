@@ -11,37 +11,8 @@ import SwiftUI
 // MARK: - Canvas Drawing Constants
 
 private enum CanvasConstants {
-    // Grid opacity levels
-    static let gridLineOpacity: Double = 0.05
-    static let minorGridLineOpacity: Double = 0.025
-    static let majorGridLineOpacity: Double = 0.065
-
-    // Grid line widths
-    static let minorGridLineWidth: CGFloat = 0.5
-    static let majorGridLineWidth: CGFloat = 0.65
-
     // Percent axis stride
     static let percentGridStride: Double = 0.2
-
-    // Reference temperature used only for Y-pixel lookup (value unused for domain logic)
-    static let yAxisReferenceTempC: Double = 20
-
-    // Y-axis label layout
-    static let yLabelXOff: CGFloat = 30
-    static let rpmLabelFontSize: CGFloat = 9
-    static let rpmLabelOpacity: Double = 0.6
-    static let rpmLabelYOffset: CGFloat = 11
-
-    // X-axis temperature label layout
-    static let tempLabelFontSize: CGFloat = 10
-    static let tempLabelYOff: CGFloat = 14
-
-    // Axis title layout
-    static let axisTitleOpacity: Double = 0.8
-    static let xAxisTitleCenterDivisor: CGFloat = 2
-    static let xAxisTitleYInset: CGFloat = 12
-    static let yAxisTitleXInset: CGFloat = 48
-    static let yAxisTitleYInset: CGFloat = 24
 
     // Curve fill gradient opacities
     static let curveFillGradientStartOpacity: Double = 0.18
@@ -95,91 +66,73 @@ private enum CanvasConstants {
 }
 
 extension FanCurveEditor {
-    func drawGrid(context: GraphicsContext, size: CGSize) {
-        let gridColor = Color.primary.opacity(CanvasConstants.gridLineOpacity)
-        let minorGridColor = Color.primary.opacity(CanvasConstants.minorGridLineOpacity)
-        let majorGridColor = Color.primary.opacity(CanvasConstants.majorGridLineOpacity)
-        let labelColor = Color.secondary
-
-        let plotTop = topPad
-        let plotBottom = size.height - bottomPad
-
-        drawPercentGridlines(
-            context: context,
-            size: size,
-            gridColor: gridColor,
-            labelColor: labelColor
+    var dashboardXAxis: CurveGraphXAxis {
+        CurveGraphXAxis(
+            range: plotTempRange,
+            minorTicks: temperatureAxisScale.minorTickTemperaturesC,
+            majorTicks: temperatureAxisScale.majorTickTemperaturesC,
+            labeledTicks: labeledTemperatureTicks(),
+            title: "Temperature (\(unit.symbol))",
+            label: { temperature in
+                "\(self.displayTemp(temperature))\(self.unit.symbol)"
+            },
+            fractionForValue: { temperature in
+                self.temperatureAxisScale.fraction(for: temperature)
+            },
+            valueAtFraction: { fraction in
+                self.temperatureAxisScale.temperatureC(at: fraction)
+            }
         )
-
-        for temp in temperatureAxisScale.minorTickTemperaturesC
-        where !temperatureAxisScale.majorTickTemperaturesC.contains(temp) {
-            let x = dataToPixel(temp: temp, percent: 0, in: size).x
-            var line = Path()
-            line.move(to: CGPoint(x: x, y: plotTop))
-            line.addLine(to: CGPoint(x: x, y: plotBottom))
-            context.stroke(
-                line, with: .color(minorGridColor), lineWidth: CanvasConstants.minorGridLineWidth)
-        }
-
-        for temp in temperatureAxisScale.majorTickTemperaturesC {
-            let x = dataToPixel(temp: temp, percent: 0, in: size).x
-            var line = Path()
-            line.move(to: CGPoint(x: x, y: plotTop))
-            line.addLine(to: CGPoint(x: x, y: plotBottom))
-            context.stroke(
-                line, with: .color(majorGridColor), lineWidth: CanvasConstants.majorGridLineWidth)
-        }
-
-        for temp in labeledTemperatureTicks() {
-            let x = dataToPixel(temp: temp, percent: 0, in: size).x
-            let text = Text("\(displayTemp(temp))\(unit.symbol)")
-                .font(
-                    .system(size: CanvasConstants.tempLabelFontSize, design: .rounded).weight(
-                        .medium)
-                )
-                .foregroundColor(labelColor)
-            context.draw(
-                text,
-                at: CGPoint(x: x, y: plotBottom + CanvasConstants.tempLabelYOff),
-                anchor: .center)
-        }
     }
 
-    private func drawPercentGridlines(
-        context: GraphicsContext,
-        size: CGSize,
-        gridColor: Color,
-        labelColor: Color
-    ) {
-        let plotLeft = leftPad
-        let plotRight = size.width - rightPad
-        for pct in stride(from: 0.0, through: 1.0, by: CanvasConstants.percentGridStride) {
-            let y = dataToPixel(temp: CanvasConstants.yAxisReferenceTempC, percent: pct, in: size).y
-            var line = Path()
-            line.move(to: CGPoint(x: plotLeft, y: y))
-            line.addLine(to: CGPoint(x: plotRight, y: y))
-            context.stroke(
-                line, with: .color(gridColor), lineWidth: CanvasConstants.minorGridLineWidth)
+    var dashboardYAxis: CurveGraphYAxis {
+        CurveGraphYAxis(
+            ticks: Array(stride(from: 0.0, through: 1.0, by: CanvasConstants.percentGridStride)),
+            title: "Fan Speed (% / RPM)",
+            label: { percent in
+                "\(Int(percent * 100))%"
+            },
+            secondaryLabel: { percent in
+                let rpmRange = self.rpmRange
+                let rpm = Int(
+                    rpmRange.min + Float(percent) * (rpmRange.max - rpmRange.min)
+                )
+                return rpm.formatted()
+            }
+        )
+    }
 
-            let pctText = Text("\(Int(pct * 100))%")
-                .font(.system(.caption2, design: .rounded))
-                .foregroundColor(labelColor)
-            context.draw(
-                pctText,
-                at: CGPoint(x: plotLeft - CanvasConstants.yLabelXOff, y: y),
-                anchor: .center)
+    var activeCurveStyle: CurveGraphCurveStyle {
+        CurveGraphCurveStyle(
+            lineColor: curveColor,
+            lineWidth: CanvasConstants.curveMainLineWidth,
+            glowColor: curveColor.opacity(CanvasConstants.curveGlowOpacity),
+            glowLineWidth: CanvasConstants.curveGlowLineWidth,
+            fill: CurveGraphFillStyle(
+                startColor: curveColor.opacity(CanvasConstants.curveFillGradientStartOpacity),
+                endColor: curveColor.opacity(CanvasConstants.curveFillGradientEndOpacity)
+            )
+        )
+    }
 
-            let rpm = Int(rpmRange.min + Float(pct) * (rpmRange.max - rpmRange.min))
-            let rpmText = Text(rpm.formatted())
-                .font(.system(size: CanvasConstants.rpmLabelFontSize, design: .rounded))
-                .foregroundColor(labelColor.opacity(CanvasConstants.rpmLabelOpacity))
-            context.draw(
-                rpmText,
-                at: CGPoint(
-                    x: plotLeft - CanvasConstants.yLabelXOff,
-                    y: y + CanvasConstants.rpmLabelYOffset),
-                anchor: .center)
-        }
+    var inactiveCurveStyle: CurveGraphCurveStyle {
+        CurveGraphCurveStyle(
+            lineColor: Color.secondary.opacity(CanvasConstants.curveInactiveOpacity),
+            lineWidth: CanvasConstants.curveInactiveWidth,
+            glowColor: nil,
+            glowLineWidth: 0,
+            fill: nil
+        )
+    }
+
+    func drawGrid(context: GraphicsContext, size: CGSize) {
+        let renderer = CurveGraphRenderer(graph: graphContext(size: size))
+        renderer.drawGrid(
+            in: context,
+            xAxis: dashboardXAxis,
+            yAxis: dashboardYAxis,
+            style: .dashboard
+        )
     }
 
     func labeledTemperatureTicks() -> [Double] {
@@ -187,29 +140,8 @@ extension FanCurveEditor {
     }
 
     func drawAxisTitles(context: GraphicsContext, size: CGSize) {
-        let titleColor = Color.secondary.opacity(CanvasConstants.axisTitleOpacity)
-
-        let xTitle = Text("Temperature (\(unit.symbol))")
-            .font(.system(.caption2, design: .rounded).weight(.medium))
-            .foregroundColor(titleColor)
-        context.draw(
-            xTitle,
-            at: CGPoint(
-                x: (leftPad + size.width - rightPad) / CanvasConstants.xAxisTitleCenterDivisor,
-                y: size.height - CanvasConstants.xAxisTitleYInset),
-            anchor: .center
-        )
-
-        let yTitle = Text("Fan Speed (% / RPM)")
-            .font(.system(.caption2, design: .rounded).weight(.medium))
-            .foregroundColor(titleColor)
-        context.draw(
-            yTitle,
-            at: CGPoint(
-                x: leftPad - CanvasConstants.yAxisTitleXInset,
-                y: topPad - CanvasConstants.yAxisTitleYInset),
-            anchor: .leading
-        )
+        _ = context
+        _ = size
     }
 
     func drawCurve(context: GraphicsContext, size: CGSize) {
@@ -217,64 +149,29 @@ extension FanCurveEditor {
             drawGhostCurve(context: context, size: size, opacity: 1.0 - activePhase)
         }
 
-        let pixelPoints = curvePixelPoints(
-            points: model.controlPoints,
-            mode: model.interpolationMode,
-            size: size
+        let style = effectiveActive ? activeCurveStyle : inactiveCurveStyle
+        let renderer = CurveGraphRenderer(graph: graphContext(size: size))
+        renderer.drawCurve(
+            in: context,
+            series: CurveGraphSeries(
+                points: model.controlPoints,
+                mode: model.interpolationMode,
+                steps: CanvasConstants.curveInterpolationSteps,
+                axisScale: .fanCurveDefault
+            ),
+            style: style
         )
-        guard let firstPoint = pixelPoints.first, let lastPoint = pixelPoints.last else { return }
-        let zeroY = dataToPixel(temp: CanvasConstants.yAxisReferenceTempC, percent: 0, in: size).y
-
-        let line = curvePath(through: pixelPoints)
-        var fill = line
-        fill.addLine(to: CGPoint(x: lastPoint.x, y: zeroY))
-        fill.addLine(to: CGPoint(x: firstPoint.x, y: zeroY))
-        fill.closeSubpath()
-
-        if effectiveActive {
-            context.fill(
-                fill,
-                with: .linearGradient(
-                    Gradient(colors: [
-                        curveColor.opacity(CanvasConstants.curveFillGradientStartOpacity),
-                        curveColor.opacity(CanvasConstants.curveFillGradientEndOpacity),
-                    ]),
-                    startPoint: CGPoint(x: 0, y: topPad),
-                    endPoint: CGPoint(x: 0, y: size.height - bottomPad)
-                )
-            )
-
-            context.stroke(
-                line,
-                with: .color(curveColor.opacity(CanvasConstants.curveGlowOpacity)),
-                style: StrokeStyle(
-                    lineWidth: CanvasConstants.curveGlowLineWidth, lineCap: .round, lineJoin: .round
-                )
-            )
-            context.stroke(
-                line,
-                with: .color(curveColor),
-                style: StrokeStyle(
-                    lineWidth: CanvasConstants.curveMainLineWidth, lineCap: .round, lineJoin: .round
-                )
-            )
-        } else {
-            context.stroke(
-                line,
-                with: .color(Color.secondary.opacity(CanvasConstants.curveInactiveOpacity)),
-                style: StrokeStyle(
-                    lineWidth: CanvasConstants.curveInactiveWidth,
-                    lineCap: .round,
-                    lineJoin: .round)
-            )
-        }
     }
 
     func curvePath(through points: [CGPoint]) -> Path {
         var path = Path()
-        guard let first = points.first else { return path }
-        path.move(to: first)
-        for point in points.dropFirst() { path.addLine(to: point) }
+        guard let firstPoint = points.first else { return path }
+
+        path.move(to: firstPoint)
+        for point in points.dropFirst() {
+            path.addLine(to: point)
+        }
+
         return path
     }
 
@@ -299,29 +196,29 @@ extension FanCurveEditor {
         mode: InterpolationMode,
         size: CGSize
     ) -> [CGPoint] {
-        CurveInterpolation.pathPoints(
-            points: points,
-            mode: mode,
-            tempRange: plotTempRange,
-            steps: CanvasConstants.curveInterpolationSteps
+        CurveGraphRenderer(graph: graphContext(size: size)).curvePixelPoints(
+            series: CurveGraphSeries(
+                points: points,
+                mode: mode,
+                steps: CanvasConstants.curveInterpolationSteps,
+                axisScale: .fanCurveDefault
+            )
         )
-        .map { dataToPixel(temp: $0.temperature, percent: $0.fanPercent, in: size) }
     }
 
     func drawHoverLine(context: GraphicsContext, size: CGSize) {
         guard let mouse = mouseLocation else { return }
         guard draggedIndex == nil, hoveredIndex == nil else { return }
+        let graph = graphContext(size: size)
         let data = pixelToData(mouse, in: size)
         guard data.x >= plotTempRange.lowerBound, data.x <= plotTempRange.upperBound else { return }
 
         let percent = model.evaluate(at: data.x)
-        let position = dataToPixel(temp: data.x, percent: percent, in: size)
-        let plotTop = topPad
-        let plotBottom = size.height - bottomPad
+        let position = graph.point(x: data.x, y: percent)
 
         var verticalLine = Path()
-        verticalLine.move(to: CGPoint(x: position.x, y: plotTop))
-        verticalLine.addLine(to: CGPoint(x: position.x, y: plotBottom))
+        verticalLine.move(to: CGPoint(x: position.x, y: graph.plotTop))
+        verticalLine.addLine(to: CGPoint(x: position.x, y: graph.plotBottom))
         context.stroke(
             verticalLine,
             with: .color(Color.primary.opacity(CanvasConstants.hoverLineOpacity)),
@@ -347,8 +244,10 @@ extension FanCurveEditor {
                     points: CurvePresets.appleSilent.curvePoints(),
                     mode: .catmullRom
                 )
-                let anchor = dataToPixel(
-                    temp: CanvasConstants.overlayReferenceTempC, percent: ghostAt, in: size)
+                let anchor = graphContext(size: size).point(
+                    x: CanvasConstants.overlayReferenceTempC,
+                    y: ghostAt
+                )
                 let text = Text("System Default")
                     .font(.system(.caption2, design: .rounded).weight(.medium))
                     .foregroundColor(.secondary)

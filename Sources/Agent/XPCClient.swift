@@ -101,8 +101,8 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
     func getFanInfo(_ index: UInt) async throws -> FanInfo {
         do {
-            let client = try requireClient()
-            let info = try await client.getFanInfo(index)
+            let xpcClient = try requireClient()
+            let info = try await xpcClient.getFanInfo(index)
             self.markConnected()
             return toLocal(info)
         } catch {
@@ -120,11 +120,11 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
     func setFanRPM(_ index: UInt, rpm: Float, priority: Int?) async throws {
         do {
-            let client = try requireClient()
+            let xpcClient = try requireClient()
             if let priority {
-                try await client.setFanRPM(index, rpm: rpm, priority: priority)
+                try await xpcClient.setFanRPM(index, rpm: rpm, priority: priority)
             } else {
-                try await client.setFanRPM(index, rpm: rpm)
+                try await xpcClient.setFanRPM(index, rpm: rpm)
             }
             self.markConnected()
         } catch let err as SMCXPCConflictError {
@@ -151,11 +151,11 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
     func setFanAuto(_ index: UInt, priority: Int?) async throws {
         do {
-            let client = try requireClient()
+            let xpcClient = try requireClient()
             if let priority {
-                try await client.setFanAuto(index, priority: priority)
+                try await xpcClient.setFanAuto(index, priority: priority)
             } else {
-                try await client.setFanAuto(index)
+                try await xpcClient.setFanAuto(index)
             }
             self.markConnected()
         } catch let err as SMCXPCConflictError {
@@ -175,8 +175,8 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
     func readKey(_ key: String) async throws -> Float {
         do {
-            let client = try requireClient()
-            let value = try await client.readKey(key)
+            let xpcClient = try requireClient()
+            let value = try await xpcClient.readKey(key)
             self.markConnected()
             return value
         } catch {
@@ -190,8 +190,8 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
     func getOwnership() async throws -> [AgentOwnershipEntry] {
         do {
-            let client = try requireClient()
-            let entries = try await client.getOwnership()
+            let xpcClient = try requireClient()
+            let entries = try await xpcClient.getOwnership()
             self.markConnected()
             return entries.map { entry in
                 AgentOwnershipEntry(

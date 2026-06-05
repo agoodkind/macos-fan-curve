@@ -226,7 +226,8 @@ extension AgentController {
                 let assistFloor = CurveInterpolation.evaluate(
                     at: loadPercent,
                     points: sharedConfig.loadLoadAssistCurve(kind),
-                    mode: .linear
+                    mode: .catmullRom,
+                    axisScale: .linear(range: LoadAssistCurveColumns.xRange)
                 )
                 if assistFloor > rawBaselinePercent {
                     rawBaselinePercent = assistFloor

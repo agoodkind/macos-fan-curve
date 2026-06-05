@@ -32,6 +32,47 @@ private enum CurveInterpolationConstants {
     static let endpointThirdNeighborOffset: Int = 3
 }
 
+// MARK: - CurveInterpolationAxisHelpers
+
+private enum CurveInterpolationAxisHelpers {
+    static func resolvedAxisScale(
+        points: [CurvePoint],
+        preferredAxisScale: CurveAxisScale?
+    ) -> CurveAxisScale? {
+        if let preferredAxisScale {
+            return preferredAxisScale
+        }
+
+        let defaultScale = CurveAxisScale.fanCurveDefault
+        let range = defaultScale.range
+        let sorted = points.sorted { $0.temperature < $1.temperature }
+
+        guard
+            let firstPoint = sorted.first,
+            let lastPoint = sorted.last,
+            abs(firstPoint.temperature - range.lowerBound)
+                < CurveInterpolationConstants.axisSnapTolerance,
+            abs(lastPoint.temperature - range.upperBound)
+                < CurveInterpolationConstants.axisSnapTolerance
+        else { return nil }
+
+        return defaultScale
+    }
+
+    static func pathTemperature(
+        at fraction: Double,
+        in tempRange: ClosedRange<Double>,
+        mode: InterpolationMode,
+        axisScale: CurveAxisScale?
+    ) -> Double {
+        if mode == .catmullRom, let axisScale {
+            return axisScale.value(at: fraction)
+        }
+
+        return tempRange.lowerBound + fraction * (tempRange.upperBound - tempRange.lowerBound)
+    }
+}
+
 enum CurveInterpolation {
     private struct HermiteSegment {
         let currentFraction: Double
@@ -46,24 +87,28 @@ enum CurveInterpolation {
     static func evaluate(
         at temperature: Double,
         points: [CurvePoint],
-        mode: InterpolationMode
+        mode: InterpolationMode,
+        axisScale: CurveAxisScale? = nil
     ) -> Double {
         switch mode {
         case .linear: return linear(at: temperature, points: points)
-        case .catmullRom: return catmullRom(at: temperature, points: points)
+        case .catmullRom:
+            return catmullRom(at: temperature, points: points, axisScale: axisScale)
         }
     }
 
     static func localResponse(
         at temperature: Double,
         points: [CurvePoint],
-        mode: InterpolationMode
+        mode: InterpolationMode,
+        axisScale: CurveAxisScale? = nil
     ) -> FanResponse {
         FanResponse.responseValue(
             forSlopePercentPerC: localSlopePercentPerC(
                 at: temperature,
                 points: points,
-                mode: mode
+                mode: mode,
+                axisScale: axisScale
             )
         )
     }
@@ -71,7 +116,8 @@ enum CurveInterpolation {
     static func localSlopePercentPerC(
         at temperature: Double,
         points: [CurvePoint],
-        mode: InterpolationMode
+        mode: InterpolationMode,
+        axisScale: CurveAxisScale? = nil
     ) -> Double {
         let sorted = points.sorted { $0.temperature < $1.temperature }
         guard
@@ -96,8 +142,18 @@ enum CurveInterpolation {
         let temperatureDelta = highTemperature - lowTemperature
         guard abs(temperatureDelta) > CurveInterpolationConstants.divisionEpsilon else { return 0 }
 
-        let lowPercent = evaluate(at: lowTemperature, points: sorted, mode: mode)
-        let highPercent = evaluate(at: highTemperature, points: sorted, mode: mode)
+        let lowPercent = evaluate(
+            at: lowTemperature,
+            points: sorted,
+            mode: mode,
+            axisScale: axisScale
+        )
+        let highPercent = evaluate(
+            at: highTemperature,
+            points: sorted,
+            mode: mode,
+            axisScale: axisScale
+        )
         return abs(highPercent - lowPercent) / temperatureDelta
     }
 
@@ -123,16 +179,31 @@ enum CurveInterpolation {
 
     /// Shape-preserving Hermite interpolation keeps the persisted `catmullRom`
     /// mode smooth without allowing the curve to overshoot between controls.
-    static func catmullRom(at temperature: Double, points: [CurvePoint]) -> Double {
-        axisHermite(at: temperature, points: points)
+    static func catmullRom(
+        at temperature: Double,
+        points: [CurvePoint],
+        axisScale: CurveAxisScale? = nil
+    ) -> Double {
+        axisHermite(
+            at: temperature,
+            points: points,
+            axisScale: CurveInterpolationAxisHelpers.resolvedAxisScale(
+                points: points,
+                preferredAxisScale: axisScale
+            )
+        )
             ?? linear(at: temperature, points: points)
     }
 
-    private static func axisHermite(at temperature: Double, points: [CurvePoint]) -> Double? {
+    private static func axisHermite(
+        at temperature: Double,
+        points: [CurvePoint],
+        axisScale: CurveAxisScale?
+    ) -> Double? {
         guard !points.isEmpty else { return 0 }
+        guard let axisScale else { return nil }
         let sorted = points.sorted { $0.temperature < $1.temperature }
-        let scale = TemperatureAxisScale.fanCurveDefault
-        let range = scale.temperatureRangeC
+        let range = axisScale.range
         guard
             let firstPoint = sorted.first,
             let lastPoint = sorted.last,
@@ -145,10 +216,10 @@ enum CurveInterpolation {
         if temperature <= firstPoint.temperature { return max(0, firstPoint.fanPercent) }
         if temperature >= lastPoint.temperature { return min(1, lastPoint.fanPercent) }
 
-        let fractions = sorted.map { scale.fraction(for: $0.temperature) }
+        let fractions = sorted.map { axisScale.fraction(for: $0.temperature) }
         let percents = sorted.map { max(0, min(1, $0.fanPercent)) }
         let tangents = shapePreservingTangents(xs: fractions, ys: percents)
-        let currentFraction = scale.fraction(for: temperature)
+        let currentFraction = axisScale.fraction(for: temperature)
 
         for pointIndex in 0..<(sorted.count - 1) {
             let leftPoint = sorted[pointIndex]
@@ -283,40 +354,36 @@ enum CurveInterpolation {
         points: [CurvePoint],
         mode: InterpolationMode,
         tempRange: ClosedRange<Double>,
-        steps: Int = CurveInterpolationConstants.defaultPathSteps
+        steps: Int = CurveInterpolationConstants.defaultPathSteps,
+        axisScale: CurveAxisScale? = nil
     ) -> [(temperature: Double, fanPercent: Double)] {
         let sorted = points.sorted { $0.temperature < $1.temperature }
         guard !sorted.isEmpty else { return [] }
 
         var result: [(Double, Double)] = []
         let safeSteps = max(1, steps)
+        let resolvedAxisScale = CurveInterpolationAxisHelpers.resolvedAxisScale(
+            points: sorted,
+            preferredAxisScale: axisScale
+        )
 
         for stepIndex in 0...safeSteps {
             let fraction = Double(stepIndex) / Double(safeSteps)
-            let temp = pathTemperature(at: fraction, in: tempRange, mode: mode)
-            let percent = evaluate(at: temp, points: sorted, mode: mode)
+            let temp = CurveInterpolationAxisHelpers.pathTemperature(
+                at: fraction,
+                in: tempRange,
+                mode: mode,
+                axisScale: resolvedAxisScale
+            )
+            let percent = evaluate(
+                at: temp,
+                points: sorted,
+                mode: mode,
+                axisScale: resolvedAxisScale
+            )
             result.append((temp, percent))
         }
 
         return result
-    }
-
-    private static func pathTemperature(
-        at fraction: Double,
-        in tempRange: ClosedRange<Double>,
-        mode: InterpolationMode
-    ) -> Double {
-        let scale = TemperatureAxisScale.fanCurveDefault
-        let range = scale.temperatureRangeC
-        let matchesDefaultRange =
-            abs(tempRange.lowerBound - range.lowerBound)
-            < CurveInterpolationConstants.axisSnapTolerance
-            && abs(tempRange.upperBound - range.upperBound)
-                < CurveInterpolationConstants.axisSnapTolerance
-        if mode == .catmullRom, matchesDefaultRange {
-            return scale.temperatureC(at: fraction)
-        }
-
-        return tempRange.lowerBound + fraction * (tempRange.upperBound - tempRange.lowerBound)
     }
 }

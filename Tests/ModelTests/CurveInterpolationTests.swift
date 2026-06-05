@@ -141,7 +141,7 @@ final class CurveInterpolationTests: XCTestCase {
         expect(midShelf).to(beCloseTo(0.55, within: 0.001))
     }
 
-    func testCatmullRom_FallsBackToLinearOutsideFanTemperatureAxis() {
+    func testCatmullRom_FallsBackToLinearOutsideFanTemperatureAxisWithoutInjectedAxis() {
         let loadAssistPoints = [
             CurvePoint(temperature: 0, fanPercent: 0.1),
             CurvePoint(temperature: 100, fanPercent: 0.7),
@@ -149,6 +149,25 @@ final class CurveInterpolationTests: XCTestCase {
 
         let result = CurveInterpolation.catmullRom(at: 50, points: loadAssistPoints)
         expect(result).to(beCloseTo(0.4, within: 0.001))
+    }
+
+    func testCatmullRom_UsesInjectedLinearAxisForLoadAssistSmoothing() {
+        let loadAssistPoints = [
+            CurvePoint(temperature: 0, fanPercent: 0.0),
+            CurvePoint(temperature: 55, fanPercent: 0.0),
+            CurvePoint(temperature: 70, fanPercent: 0.6),
+            CurvePoint(temperature: 100, fanPercent: 0.6),
+        ]
+
+        let axisScale = CurveAxisScale.linear(range: LoadAssistCurveColumns.xRange)
+        let result = CurveInterpolation.catmullRom(
+            at: 62.5,
+            points: loadAssistPoints,
+            axisScale: axisScale
+        )
+
+        expect(result) > 0.0
+        expect(result) < 0.6
     }
 
     func testEvaluate_DispatchesCorrectly() {
@@ -200,5 +219,26 @@ final class CurveInterpolationTests: XCTestCase {
         let points = CurveInterpolation.pathPoints(
             points: testPoints, mode: .linear, tempRange: 20...110, steps: 50)
         expect(points.count) == 51
+    }
+
+    func testPathPoints_UseInjectedAxisForLoadAssistCurve() {
+        let loadAssistPoints = [
+            CurvePoint(temperature: 0, fanPercent: 0.0),
+            CurvePoint(temperature: 55, fanPercent: 0.0),
+            CurvePoint(temperature: 70, fanPercent: 0.6),
+            CurvePoint(temperature: 100, fanPercent: 0.6),
+        ]
+
+        let points = CurveInterpolation.pathPoints(
+            points: loadAssistPoints,
+            mode: .catmullRom,
+            tempRange: LoadAssistCurveColumns.xRange,
+            steps: 50,
+            axisScale: .linear(range: LoadAssistCurveColumns.xRange)
+        )
+
+        let midpoint = points[points.count / 2]
+        expect(midpoint.temperature).to(beCloseTo(50, within: 1.0))
+        expect(midpoint.fanPercent) < 0.6
     }
 }

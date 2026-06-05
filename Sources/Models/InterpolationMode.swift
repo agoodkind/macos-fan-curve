@@ -31,14 +31,14 @@ enum InterpolationMode: Codable, Sendable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        let rawValue = try container.decode(String.self)
-        guard let mode = Self(rawValue: rawValue) else {
+        let decodedRawValue = try container.decode(String.self)
+        guard let mode = Self(rawValue: decodedRawValue) else {
             interpolationModeLog.error(
-                "interpolation_mode.decode_failed raw=\(rawValue, privacy: .public) recovery=throw-data-corrupted"
+                "interpolation_mode.decode_failed raw=\(decodedRawValue, privacy: .public) recovery=throw-data-corrupted"
             )
             throw DecodingError.dataCorruptedError(
                 in: container,
-                debugDescription: "Unknown interpolation mode: \(rawValue)"
+                debugDescription: "Unknown interpolation mode: \(decodedRawValue)"
             )
         }
         self = mode
