@@ -47,11 +47,18 @@ private enum SensorDashboardSidebarConstants {
 
     // Timing
     static let nanosecondsPerSecond: Double = 1_000_000_000
+
+    // Load assist holding-state smoothing
+    static let holdingReleaseDelaySeconds: Double = 0.6
+    static let holdingCrossfadeDuration: Double = 0.3
 }
 
 struct SensorDashboardSidebar: View {
     @State private var pendingAction: SidebarPendingAction?
     @State private var pendingActionStartDate: Date?
+    @State private var displayedHolding: Set<LoadAssistKind> = []
+    @State private var holdingReleaseToken: [LoadAssistKind: Int] = [:]
+    @State private var maxFloorFraction: [LoadAssistKind: Double] = [:]
     @ObservedObject var runtime: FanCurveAgentClient
     @ObservedObject var curveModel: FanCurveModel
     @ObservedObject var installState: InstallationState
@@ -63,6 +70,8 @@ struct SensorDashboardSidebar: View {
     let overdriveEnabled: Bool
     let underdriveEnabled: Bool
     let presentation: DashboardPresentationState
+
+    private static let assistSuite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
 
     var fanControlReady: Bool {
         presentation.controlState == .fanControl
@@ -89,6 +98,19 @@ struct SensorDashboardSidebar: View {
         }
         .onChange(of: runtime.snapshot) { _ in
             reconcilePendingAction(reason: "runtime-snapshot-changed")
+        }
+        .onChange(of: runtime.activeAssistKinds) { _ in
+            syncDisplayedHolding(animated: true)
+        }
+        .onChange(of: cpuLoadAssistEnabled) { _ in
+            refreshMaxFloors()
+        }
+        .onChange(of: gpuLoadAssistEnabled) { _ in
+            refreshMaxFloors()
+        }
+        .onAppear {
+            syncDisplayedHolding(animated: false)
+            refreshMaxFloors()
         }
         .task(id: pendingAction) {
             guard let pendingAction else { return }
@@ -188,7 +210,7 @@ struct SensorDashboardSidebar: View {
     }
 
     private var usageSection: some View {
-        let assistStates = activeAssistStates
+        let assistStates = self.assistStates
         return VStack(spacing: SensorDashboardSidebarConstants.usageVStackSpacing) {
             usageBlock(
                 label: "CPU",
@@ -310,6 +332,73 @@ extension SensorDashboardSidebar {
 
     func hasPendingAction() -> Bool {
         pendingAction != nil
+    }
+
+    /// Maps the agent's raw `activeAssistKinds` into the debounced `displayedHolding`
+    /// set that drives the teal element. Turning on is immediate; turning off waits a
+    /// minimum dwell so the holding state cannot flicker frame-to-frame near the floor.
+    func syncDisplayedHolding(animated: Bool) {
+        for kind in LoadAssistKind.allCases {
+            let raw = runtime.activeAssistKinds.contains(kind)
+            let shown = displayedHolding.contains(kind)
+            if raw, !shown {
+                holdingReleaseToken[kind, default: 0] += 1
+                setDisplayedHolding(kind, to: true, animated: animated)
+            } else if !raw, shown {
+                holdingReleaseToken[kind, default: 0] += 1
+                let token = holdingReleaseToken[kind] ?? 0
+                DispatchQueue.main.asyncAfter(
+                    deadline: .now() + SensorDashboardSidebarConstants.holdingReleaseDelaySeconds
+                ) {
+                    guard self.holdingReleaseToken[kind] == token else { return }
+                    self.setDisplayedHolding(kind, to: false, animated: true)
+                }
+            }
+        }
+    }
+
+    func isDisplayedHolding(_ kind: LoadAssistKind) -> Bool {
+        displayedHolding.contains(kind)
+    }
+
+    func maxFloor(for kind: LoadAssistKind) -> Double {
+        maxFloorFraction[kind] ?? 0
+    }
+
+    /// Caches each assist's max configured floor: the curve's fan percent at full load.
+    /// Reuses the same interpolation the agent uses so the tick shares one mapping.
+    func refreshMaxFloors() {
+        var result: [LoadAssistKind: Double] = [:]
+        for kind in LoadAssistKind.allCases {
+            let points = LoadAssistStore.loadPoints(kind, defaults: Self.assistSuite)
+            let value = CurveInterpolation.evaluate(
+                at: LoadAssistCurveColumns.xRange.upperBound,
+                points: points,
+                mode: .catmullRom,
+                axisScale: .linear(range: LoadAssistCurveColumns.xRange)
+            )
+            result[kind] = max(0, min(1, value))
+        }
+        maxFloorFraction = result
+    }
+
+    private func setDisplayedHolding(_ kind: LoadAssistKind, to value: Bool, animated: Bool) {
+        let mutate = {
+            if value {
+                self.displayedHolding.insert(kind)
+            } else {
+                self.displayedHolding.remove(kind)
+            }
+        }
+        if animated {
+            withAnimation(
+                .easeInOut(duration: SensorDashboardSidebarConstants.holdingCrossfadeDuration)
+            ) {
+                mutate()
+            }
+        } else {
+            mutate()
+        }
     }
 
     var fanControlToggleBusy: Bool {

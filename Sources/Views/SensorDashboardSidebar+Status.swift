@@ -22,16 +22,13 @@ private enum SidebarStatusConstants {
     static let statusHStackSpacing: CGFloat = 8
     static let statusDetailLineLimit = 3
 
-    // Assist floor thresholds (fractional, range 0 to 1)
-    static let assistFloorActivationMargin: Double = 0.005
-    static let assistFloorFilterTolerance: Double = 0.001
-
     // Assist caption row
     static let assistCaptionHStackSpacing: CGFloat = 6
     static let assistCaptionIconSize: CGFloat = 11
     static let assistCaptionHorizontalPadding: CGFloat = 10
     static let assistCaptionVerticalPadding: CGFloat = 5
-    static let assistCaptionLineLimit = 2
+    static let assistCaptionLineLimit = 1
+    static let assistCaptionMinimumScaleFactor: Double = 0.85
 
     // Percent scale factor (fractional to whole number)
     static let percentScale: Double = 100
@@ -174,53 +171,58 @@ extension SensorDashboardSidebar {
         }
     }
 
-    var activeAssistStates: [ActiveAssistState] {
+    var assistStates: [ActiveAssistState] {
         guard fanControlReady, presentation.showsRuntimeStats, curveModel.isActive, !boost else {
             return []
         }
-        let curveReferenceTemp = runtime.rawPressureTemperature ?? runtime.governingTemperature
-        let basePercent = curveModel.evaluate(at: curveReferenceTemp)
-        var candidates: [ActiveAssistState] = []
         let floorPercent = runtime.assistFloorPercent ?? 0
+        var states: [ActiveAssistState] = []
         for kind in LoadAssistKind.allCases {
             let enabled = kind == .cpu ? cpuLoadAssistEnabled : gpuLoadAssistEnabled
             guard enabled else { continue }
-            let load = kind == .cpu ? runtime.cpuLoadPercent : runtime.gpuLoadPercent
-            guard runtime.activeAssistKinds.contains(kind),
-                floorPercent > basePercent + SidebarStatusConstants.assistFloorActivationMargin
-            else { continue }
-            candidates.append(
-                ActiveAssistState(kind: kind, loadPercent: load, floorPercent: floorPercent))
+            states.append(
+                ActiveAssistState(
+                    kind: kind,
+                    isHolding: isDisplayedHolding(kind),
+                    floorPercent: floorPercent,
+                    maxFloorFraction: maxFloor(for: kind)
+                ))
         }
-        guard let maxFloor = candidates.map(\.floorPercent).max() else { return [] }
-        return candidates.filter { candidate in
-            let tolerance = SidebarStatusConstants.assistFloorFilterTolerance
-            return abs(candidate.floorPercent - maxFloor) < tolerance
-        }
+        return states
     }
 
     func loadAssistCaption(_ assist: ActiveAssistState) -> some View {
         let color = Color(nsColor: .systemTeal)
         let floor = Int((assist.floorPercent * SidebarStatusConstants.percentScale).rounded())
-        let load = Int(assist.loadPercent.rounded())
-        let text = "\(assist.kind.shortTitle) assist holding minimum \(floor)% at \(load)% load"
+        let text = "\(assist.kind.title) Enabled"
+        let usageWord = assist.kind == .gpu ? "graphics" : "CPU"
+        let help =
+            assist.isHolding
+            ? "\(assist.kind.title) is keeping the fan at \(floor)% while \(usageWord) usage is high."
+            : "\(assist.kind.title) raises the fan when \(usageWord) usage climbs."
 
-        return HStack(alignment: .top, spacing: SidebarStatusConstants.assistCaptionHStackSpacing) {
-            Image(systemName: "arrow.up.forward.circle.fill")
-                .font(.system(size: SidebarStatusConstants.assistCaptionIconSize))
+        return HStack(
+            alignment: .center, spacing: SidebarStatusConstants.assistCaptionHStackSpacing
+        ) {
+            ZStack {
+                Image(systemName: "arrow.up.forward.circle")
+                    .opacity(assist.isHolding ? 0 : 1)
+                Image(systemName: "arrow.up.forward.circle.fill")
+                    .opacity(assist.isHolding ? 1 : 0)
+            }
+            .font(.system(size: SidebarStatusConstants.assistCaptionIconSize))
             Text(text)
                 .font(.caption)
                 .lineLimit(SidebarStatusConstants.assistCaptionLineLimit)
+                .minimumScaleFactor(SidebarStatusConstants.assistCaptionMinimumScaleFactor)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .foregroundStyle(color)
         .padding(.horizontal, SidebarStatusConstants.assistCaptionHorizontalPadding)
         .padding(.vertical, SidebarStatusConstants.assistCaptionVerticalPadding)
-        .modifier(LoadFloorGlassModifier(color: color, active: true))
-        .help(
-            "\(assist.kind.title) is active and is currently raising the effective minimum fan floor to \(floor)%."
-        )
+        .modifier(LoadFloorGlassModifier(color: color, active: assist.isHolding))
+        .help(help)
     }
 
     func runtimeLoadValue(_ value: Double) -> Double? {
