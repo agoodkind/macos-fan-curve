@@ -10,14 +10,14 @@ import Combine
 import Foundation
 
 struct FanReading: Identifiable, Sendable {
-    let id: Int
-    let actualRPM: Float
-    let minRPM: Float
-    let maxRPM: Float
+  let id: Int
+  let actualRPM: Float
+  let minRPM: Float
+  let maxRPM: Float
 }
 
 class SensorState: ObservableObject {
-    @Published var governingTemperature: Double = 0
-    @Published var fans: [FanReading] = []
-    @Published var lastUpdate: Date?
+  @Published var governingTemperature: Double = 0
+  @Published var fans: [FanReading] = []
+  @Published var lastUpdate: Date?
 }

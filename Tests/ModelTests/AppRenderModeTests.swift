@@ -12,24 +12,24 @@ import XCTest
 @testable import FanCurveModels
 
 final class AppRenderModeTests: XCTestCase {
-    func testInteractiveModeShowsLiveDashboard() {
-        expect(AppRenderMode.interactive.showsLiveDashboard) == true
-    }
+  func testInteractiveModeShowsLiveDashboard() {
+    expect(AppRenderMode.interactive.showsLiveDashboard) == true
+  }
 
-    func testBackgroundVisibleModeHidesLiveDashboard() {
-        expect(AppRenderMode.backgroundVisible.showsLiveDashboard) == false
-    }
+  func testBackgroundVisibleModeHidesLiveDashboard() {
+    expect(AppRenderMode.backgroundVisible.showsLiveDashboard) == false
+  }
 
-    func testOccludedModeHidesLiveDashboard() {
-        expect(AppRenderMode.occluded.showsLiveDashboard) == false
-    }
+  func testOccludedModeHidesLiveDashboard() {
+    expect(AppRenderMode.occluded.showsLiveDashboard) == false
+  }
 
-    func testVisibleModesAllowLiveAnimation() {
-        expect(AppRenderMode.interactive.allowsLiveAnimation) == true
-        expect(AppRenderMode.backgroundVisible.allowsLiveAnimation) == true
-    }
+  func testVisibleModesAllowLiveAnimation() {
+    expect(AppRenderMode.interactive.allowsLiveAnimation) == true
+    expect(AppRenderMode.backgroundVisible.allowsLiveAnimation) == true
+  }
 
-    func testOccludedModeSuppressesLiveAnimation() {
-        expect(AppRenderMode.occluded.allowsLiveAnimation) == false
-    }
+  func testOccludedModeSuppressesLiveAnimation() {
+    expect(AppRenderMode.occluded.allowsLiveAnimation) == false
+  }
 }

@@ -18,190 +18,190 @@ private let learnResultPublisherLog = AppLog.make(category: "LearnResultPublishe
 /// The maintainer can evolve this into a proper data file once the
 /// community starts submitting results.
 enum LearnResultPublisher {
-    private struct CurvePayloadPoint: Encodable {
-        let temperature: Double
-        let fanPercent: Double
+  private struct CurvePayloadPoint: Encodable {
+    let temperature: Double
+    let fanPercent: Double
 
-        enum CodingKeys: String, CodingKey {
-            case temperature = "t"
-            case fanPercent = "p"
-        }
+    enum CodingKeys: String, CodingKey {
+      case temperature = "t"
+      case fanPercent = "p"
     }
+  }
 
-    private struct ProbePayload: Encodable {
-        let fan: Int
-        let commanded: Float
-        let sustained: Float
-        let samples: Int
+  private struct ProbePayload: Encodable {
+    let fan: Int
+    let commanded: Float
+    let sustained: Float
+    let samples: Int
+  }
+
+  private struct LearnPayload: Encodable {
+    let model: String
+    let os: String
+    let samples: Int
+    let minTemp: Double
+    let maxTemp: Double
+    let curve: [CurvePayloadPoint]
+    let probe: ProbePayload?
+  }
+
+  private static let repository = "agoodkind/macos-fan-curve"
+
+  static func publish(
+    curve: [CurvePoint],
+    minTemp: Double,
+    maxTemp: Double,
+    sampleCount: Int,
+    probe: ProbeResult?
+  ) throws {
+    let body = buildBody(
+      curve: curve,
+      minTemp: minTemp,
+      maxTemp: maxTemp,
+      sampleCount: sampleCount,
+      probe: probe)
+    let title = "Learn results from \(hardwareModel())"
+
+    guard var components = URLComponents(string: "https://github.com/\(repository)/issues/new")
+    else {
+      throw PublishError.invalidURL
     }
+    components.queryItems = [
+      URLQueryItem(name: "title", value: title),
+      URLQueryItem(name: "labels", value: "learn-curve"),
+      URLQueryItem(name: "body", value: body),
+    ]
 
-    private struct LearnPayload: Encodable {
-        let model: String
-        let os: String
-        let samples: Int
-        let minTemp: Double
-        let maxTemp: Double
-        let curve: [CurvePayloadPoint]
-        let probe: ProbePayload?
+    guard let url = components.url else {
+      throw PublishError.invalidURL
     }
+    learnResultPublisherLog.notice("learn.publish.open_url destination=github-issue")
+    NSWorkspace.shared.open(url)
+  }
 
-    private static let repository = "agoodkind/macos-fan-curve"
-
-    static func publish(
-        curve: [CurvePoint],
-        minTemp: Double,
-        maxTemp: Double,
-        sampleCount: Int,
-        probe: ProbeResult?
-    ) throws {
-        let body = buildBody(
-            curve: curve,
-            minTemp: minTemp,
-            maxTemp: maxTemp,
-            sampleCount: sampleCount,
-            probe: probe)
-        let title = "Learn results from \(hardwareModel())"
-
-        guard var components = URLComponents(string: "https://github.com/\(repository)/issues/new")
-        else {
-            throw PublishError.invalidURL
-        }
-        components.queryItems = [
-            URLQueryItem(name: "title", value: title),
-            URLQueryItem(name: "labels", value: "learn-curve"),
-            URLQueryItem(name: "body", value: body),
-        ]
-
-        guard let url = components.url else {
-            throw PublishError.invalidURL
-        }
-        learnResultPublisherLog.notice("learn.publish.open_url destination=github-issue")
-        NSWorkspace.shared.open(url)
+  private static func buildBody(
+    curve: [CurvePoint],
+    minTemp: Double,
+    maxTemp: Double,
+    sampleCount: Int,
+    probe: ProbeResult?
+  ) -> String {
+    var lines: [String] = []
+    lines.append("## Machine")
+    lines.append("")
+    lines.append("- Model: \(hardwareModel())")
+    lines.append("- macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)")
+    lines.append("")
+    lines.append("## Sampling")
+    lines.append("")
+    lines.append("- Temperature range: \(Int(minTemp))°C to \(Int(maxTemp))°C")
+    lines.append("- Samples collected: \(sampleCount)")
+    lines.append("")
+    lines.append("## Curve")
+    lines.append("")
+    lines.append("| Temp (°C) | Fan % |")
+    lines.append("|---:|---:|")
+    for point in curve {
+      lines.append(
+        String(
+          format: "| %d | %.0f |",
+          Int(point.temperature),
+          point.fanPercent * 100))
     }
-
-    private static func buildBody(
-        curve: [CurvePoint],
-        minTemp: Double,
-        maxTemp: Double,
-        sampleCount: Int,
-        probe: ProbeResult?
-    ) -> String {
-        var lines: [String] = []
-        lines.append("## Machine")
-        lines.append("")
-        lines.append("- Model: \(hardwareModel())")
-        lines.append("- macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)")
-        lines.append("")
-        lines.append("## Sampling")
-        lines.append("")
-        lines.append("- Temperature range: \(Int(minTemp))°C to \(Int(maxTemp))°C")
-        lines.append("- Samples collected: \(sampleCount)")
-        lines.append("")
-        lines.append("## Curve")
-        lines.append("")
-        lines.append("| Temp (°C) | Fan % |")
-        lines.append("|---:|---:|")
-        for point in curve {
-            lines.append(
-                String(
-                    format: "| %d | %.0f |",
-                    Int(point.temperature),
-                    point.fanPercent * 100))
-        }
-        lines.append("")
-        if let probe {
-            lines.append("## Max RPM probe")
-            lines.append("")
-            lines.append("- Fan index: \(probe.fanIndex)")
-            lines.append("- Commanded: \(Int(probe.commandedRPM)) RPM")
-            lines.append("- Sustained: \(Int(probe.sustainedRPM)) RPM")
-            lines.append("- Samples: \(probe.sampleCount)")
-            lines.append("")
-        }
-        lines.append("## Raw JSON")
-        lines.append("")
-        lines.append("```json")
-        lines.append(
-            jsonPayload(
-                curve: curve,
-                minTemp: minTemp,
-                maxTemp: maxTemp,
-                sampleCount: sampleCount,
-                probe: probe))
-        lines.append("```")
-        return lines.joined(separator: "\n")
+    lines.append("")
+    if let probe {
+      lines.append("## Max RPM probe")
+      lines.append("")
+      lines.append("- Fan index: \(probe.fanIndex)")
+      lines.append("- Commanded: \(Int(probe.commandedRPM)) RPM")
+      lines.append("- Sustained: \(Int(probe.sustainedRPM)) RPM")
+      lines.append("- Samples: \(probe.sampleCount)")
+      lines.append("")
     }
+    lines.append("## Raw JSON")
+    lines.append("")
+    lines.append("```json")
+    lines.append(
+      jsonPayload(
+        curve: curve,
+        minTemp: minTemp,
+        maxTemp: maxTemp,
+        sampleCount: sampleCount,
+        probe: probe))
+    lines.append("```")
+    return lines.joined(separator: "\n")
+  }
 
-    private static func jsonPayload(
-        curve: [CurvePoint],
-        minTemp: Double,
-        maxTemp: Double,
-        sampleCount: Int,
-        probe: ProbeResult?
-    ) -> String {
-        let payload = LearnPayload(
-            model: hardwareModel(),
-            os: ProcessInfo.processInfo.operatingSystemVersionString,
-            samples: sampleCount,
-            minTemp: minTemp,
-            maxTemp: maxTemp,
-            curve: curve.map { point in
-                CurvePayloadPoint(
-                    temperature: point.temperature,
-                    fanPercent: point.fanPercent
-                )
-            },
-            probe: probe.map { probeResult in
-                ProbePayload(
-                    fan: Int(probeResult.fanIndex),
-                    commanded: probeResult.commandedRPM,
-                    sustained: probeResult.sustainedRPM,
-                    samples: probeResult.sampleCount
-                )
-            }
+  private static func jsonPayload(
+    curve: [CurvePoint],
+    minTemp: Double,
+    maxTemp: Double,
+    sampleCount: Int,
+    probe: ProbeResult?
+  ) -> String {
+    let payload = LearnPayload(
+      model: hardwareModel(),
+      os: ProcessInfo.processInfo.operatingSystemVersionString,
+      samples: sampleCount,
+      minTemp: minTemp,
+      maxTemp: maxTemp,
+      curve: curve.map { point in
+        CurvePayloadPoint(
+          temperature: point.temperature,
+          fanPercent: point.fanPercent
         )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+      },
+      probe: probe.map { probeResult in
+        ProbePayload(
+          fan: Int(probeResult.fanIndex),
+          commanded: probeResult.commandedRPM,
+          sustained: probeResult.sustainedRPM,
+          samples: probeResult.sampleCount
+        )
+      }
+    )
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
 
-        do {
-            let data = try encoder.encode(payload)
-            guard let jsonString = String(bytes: data, encoding: .utf8) else {
-                learnResultPublisherLog.error(
-                    "learn.publish.payload_string_failed recovery=return-empty-json"
-                )
-                return "{}"
-            }
-            return jsonString
-        } catch {
-            learnResultPublisherLog.error(
-                "learn.publish.payload_encode_failed error=\(error.localizedDescription, privacy: .public) recovery=return-empty-json"
-            )
-            return "{}"
-        }
+    do {
+      let data = try encoder.encode(payload)
+      guard let jsonString = String(bytes: data, encoding: .utf8) else {
+        learnResultPublisherLog.error(
+          "learn.publish.payload_string_failed recovery=return-empty-json"
+        )
+        return "{}"
+      }
+      return jsonString
+    } catch {
+      learnResultPublisherLog.error(
+        "learn.publish.payload_encode_failed error=\(error.localizedDescription, privacy: .public) recovery=return-empty-json"
+      )
+      return "{}"
     }
+  }
 
-    /// Reads hw.model via sysctl. Returns something like "Mac15,6" so the
-    /// maintainer can group submissions by hardware revision.
-    private static func hardwareModel() -> String {
-        var size: size_t = 0
-        guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else {
-            return "Unknown Mac"
-        }
-        var model = [CChar](repeating: 0, count: size)
-        guard sysctlbyname("hw.model", &model, &size, nil, 0) == 0 else {
-            return "Unknown Mac"
-        }
-        let bytes = model.prefix { $0 != 0 }.map(UInt8.init(bitPattern:))
-        return String(bytes: bytes, encoding: .utf8) ?? "Unknown Mac"
+  /// Reads hw.model via sysctl. Returns something like "Mac15,6" so the
+  /// maintainer can group submissions by hardware revision.
+  private static func hardwareModel() -> String {
+    var size: size_t = 0
+    guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else {
+      return "Unknown Mac"
     }
-
-    enum PublishError: LocalizedError {
-        case invalidURL
-
-        var errorDescription: String? {
-            switch self {
-            case .invalidURL: return "Invalid GitHub URL"
-            }
-        }
+    var model = [CChar](repeating: 0, count: size)
+    guard sysctlbyname("hw.model", &model, &size, nil, 0) == 0 else {
+      return "Unknown Mac"
     }
+    let bytes = model.prefix { $0 != 0 }.map(UInt8.init(bitPattern:))
+    return String(bytes: bytes, encoding: .utf8) ?? "Unknown Mac"
+  }
+
+  enum PublishError: LocalizedError {
+    case invalidURL
+
+    var errorDescription: String? {
+      switch self {
+      case .invalidURL: return "Invalid GitHub URL"
+      }
+    }
+  }
 }

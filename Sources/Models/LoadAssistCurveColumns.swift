@@ -9,5 +9,5 @@
 import Foundation
 
 enum LoadAssistCurveColumns {
-    static let xRange: ClosedRange<Double> = 0...100
+  static let xRange: ClosedRange<Double> = 0...100
 }

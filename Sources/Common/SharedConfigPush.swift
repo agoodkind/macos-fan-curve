@@ -19,7 +19,7 @@ import Foundation
 /// is empty. The Agent re-reads the shared suite on every tick, so it
 /// does not need to know what changed, only that something did.
 enum SharedConfigPush {
-    static let notificationNameString = "io.goodkind.fancurve.configChanged"
+  static let notificationNameString = "io.goodkind.fancurve.configChanged"
 
-    static var notificationName: CFString { notificationNameString as CFString }
+  static var notificationName: CFString { notificationNameString as CFString }
 }

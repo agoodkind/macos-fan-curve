@@ -9,17 +9,17 @@
 import SwiftUI
 
 struct SettingsDangerStatusBadge: View {
-    let status: String
+  let status: String
 
-    var body: some View {
-        Label {
-            Text(status)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle.fill")
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(Color(nsColor: .systemOrange))
-        .lineLimit(1)
-        .fixedSize(horizontal: true, vertical: false)
+  var body: some View {
+    Label {
+      Text(status)
+    } icon: {
+      Image(systemName: "exclamationmark.triangle.fill")
     }
+    .font(.caption.weight(.semibold))
+    .foregroundStyle(Color(nsColor: .systemOrange))
+    .lineLimit(1)
+    .fixedSize(horizontal: true, vertical: false)
+  }
 }

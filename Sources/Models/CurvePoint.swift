@@ -9,13 +9,13 @@
 import Foundation
 
 struct CurvePoint: Identifiable, Codable, Sendable, Equatable {
-    let id: UUID
-    var temperature: Double
-    var fanPercent: Double
+  let id: UUID
+  var temperature: Double
+  var fanPercent: Double
 
-    init(temperature: Double, fanPercent: Double) {
-        self.id = UUID()
-        self.temperature = temperature
-        self.fanPercent = fanPercent
-    }
+  init(temperature: Double, fanPercent: Double) {
+    self.id = UUID()
+    self.temperature = temperature
+    self.fanPercent = fanPercent
+  }
 }

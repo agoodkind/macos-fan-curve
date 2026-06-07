@@ -7,6 +7,6 @@
 //
 
 enum BuildHashes {
-    static let appHash: String = BuildFingerprint.runningExecutableHash
-    static let agentHash: String = BuildFingerprint.bundledAgentHash
+  static let appHash: String = BuildFingerprint.runningExecutableHash
+  static let agentHash: String = BuildFingerprint.bundledAgentHash
 }

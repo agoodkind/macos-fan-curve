@@ -9,15 +9,15 @@
 import SwiftUI
 
 enum ServiceRowState {
-    case degraded
-    case healthy
-    case inactive
+  case degraded
+  case healthy
+  case inactive
 
-    var color: Color {
-        switch self {
-        case .healthy: return Color(nsColor: .systemGreen)
-        case .degraded: return Color(nsColor: .systemOrange)
-        case .inactive: return Color(nsColor: .systemGray)
-        }
+  var color: Color {
+    switch self {
+    case .healthy: return Color(nsColor: .systemGreen)
+    case .degraded: return Color(nsColor: .systemOrange)
+    case .inactive: return Color(nsColor: .systemGray)
     }
+  }
 }

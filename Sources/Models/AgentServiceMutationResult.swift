@@ -9,14 +9,14 @@
 import Foundation
 
 struct AgentServiceMutationResult: Sendable {
-    let statusBefore: String
-    let statusAfterUnregister: String?
-    let statusAfterRegister: String?
-    let errorDescription: String?
+  let statusBefore: String
+  let statusAfterUnregister: String?
+  let statusAfterRegister: String?
+  let errorDescription: String?
 }
 
 struct HelperServiceMutationResult: Sendable {
-    let statusBefore: String
-    let statusAfterRegister: String?
-    let errorDescription: String?
+  let statusBefore: String
+  let statusAfterRegister: String?
+  let errorDescription: String?
 }

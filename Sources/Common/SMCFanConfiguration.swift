@@ -10,15 +10,15 @@ import Foundation
 
 /// Configuration for SMC Fan Control
 public struct SMCFanConfiguration: Sendable {
-    /// Bundle identifier for the XPC helper service
-    public let helperBundleID: String
+  /// Bundle identifier for the XPC helper service
+  public let helperBundleID: String
 
-    public init(helperBundleID: String) {
-        self.helperBundleID = helperBundleID
-    }
+  public init(helperBundleID: String) {
+    self.helperBundleID = helperBundleID
+  }
 
-    /// Default configuration, populated from build settings via Config.generated.swift
-    public static let `default` = SMCFanConfiguration(
-        helperBundleID: generatedHelperBundleID
-    )
+  /// Default configuration, populated from build settings via Config.generated.swift
+  public static let `default` = SMCFanConfiguration(
+    helperBundleID: generatedHelperBundleID
+  )
 }

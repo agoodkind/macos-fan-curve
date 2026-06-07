@@ -16,44 +16,44 @@ private let log = AppLog.make(category: "AgentMain")
 /// Resets all fans to auto on SIGTERM/SIGINT/crash.
 @main
 enum FanCurveAgentMain {
-    static func main() {
-        AppLog.bootstrap(subsystem: "io.goodkind.fan")
+  static func main() {
+    AppLog.bootstrap(subsystem: "io.goodkind.fan")
 
-        log.notice(
-            "agent.starting pid=\(ProcessInfo.processInfo.processIdentifier, privacy: .public)")
+    log.notice(
+      "agent.starting pid=\(ProcessInfo.processInfo.processIdentifier, privacy: .public)")
 
-        let controller = AgentController()
-        let appXPCService = FanCurveAgentXPCService(controller: controller)
+    let controller = AgentController()
+    let appXPCService = FanCurveAgentXPCService(controller: controller)
 
-        installSignalHandler(SIGTERM, controller: controller)
-        installSignalHandler(SIGINT, controller: controller)
+    installSignalHandler(SIGTERM, controller: controller)
+    installSignalHandler(SIGINT, controller: controller)
 
-        atexit {
-            let exitLog = AppLog.make(category: "AgentMain")
-            exitLog.info("agent.atexit fans may not have been reset")
-        }
-
-        appXPCService.start()
-        controller.start()
-        RunLoop.main.run()
+    atexit {
+      let exitLog = AppLog.make(category: "AgentMain")
+      exitLog.info("agent.atexit fans may not have been reset")
     }
 
-    private static func installSignalHandler(_ sig: Int32, controller: AgentController) {
-        signal(sig, SIG_IGN)
+    appXPCService.start()
+    controller.start()
+    RunLoop.main.run()
+  }
 
-        let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
-        source.setEventHandler {
-            log.notice("agent.signal received=\(sig, privacy: .public) action=reset-and-exit")
-            Task {
-                await controller.resetAllFansToAuto()
-                controller.stop()
-                CFRunLoopStop(CFRunLoopGetMain())
-            }
-        }
-        source.resume()
+  private static func installSignalHandler(_ sig: Int32, controller: AgentController) {
+    signal(sig, SIG_IGN)
 
-        signalSources.append(source)
+    let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+    source.setEventHandler {
+      log.notice("agent.signal received=\(sig, privacy: .public) action=reset-and-exit")
+      Task {
+        await controller.resetAllFansToAuto()
+        controller.stop()
+        CFRunLoopStop(CFRunLoopGetMain())
+      }
     }
+    source.resume()
 
-    nonisolated(unsafe) private static var signalSources: [DispatchSourceSignal] = []
+    signalSources.append(source)
+  }
+
+  nonisolated(unsafe) private static var signalSources: [DispatchSourceSignal] = []
 }

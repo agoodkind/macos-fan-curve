@@ -7,6 +7,6 @@
 //
 
 enum FanCommand: Sendable {
-    case auto
-    case setRPM(Float)
+  case auto
+  case setRPM(Float)
 }

@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct AboutSettingsView: View {
-    var body: some View {
-        AboutContentView()
-    }
+  var body: some View {
+    AboutContentView()
+  }
 }

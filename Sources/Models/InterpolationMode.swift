@@ -11,41 +11,41 @@ import AppLog
 private let interpolationModeLog = AppLog.make(category: "InterpolationMode")
 
 enum InterpolationMode: Codable, Sendable, Equatable {
-    case catmullRom
-    case linear
+  case catmullRom
+  case linear
 
-    init?(rawValue: String) {
-        switch rawValue {
-        case Self.catmullRom.rawValue: self = .catmullRom
-        case Self.linear.rawValue: self = .linear
-        default: return nil
-        }
+  init?(rawValue: String) {
+    switch rawValue {
+    case Self.catmullRom.rawValue: self = .catmullRom
+    case Self.linear.rawValue: self = .linear
+    default: return nil
     }
+  }
 
-    var rawValue: String {
-        switch self {
-        case .catmullRom: return "catmullRom"
-        case .linear: return "linear"
-        }
+  var rawValue: String {
+    switch self {
+    case .catmullRom: return "catmullRom"
+    case .linear: return "linear"
     }
+  }
 
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let decodedRawValue = try container.decode(String.self)
-        guard let mode = Self(rawValue: decodedRawValue) else {
-            interpolationModeLog.error(
-                "interpolation_mode.decode_failed raw=\(decodedRawValue, privacy: .public) recovery=throw-data-corrupted"
-            )
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Unknown interpolation mode: \(decodedRawValue)"
-            )
-        }
-        self = mode
+  init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let decodedRawValue = try container.decode(String.self)
+    guard let mode = Self(rawValue: decodedRawValue) else {
+      interpolationModeLog.error(
+        "interpolation_mode.decode_failed raw=\(decodedRawValue, privacy: .public) recovery=throw-data-corrupted"
+      )
+      throw DecodingError.dataCorruptedError(
+        in: container,
+        debugDescription: "Unknown interpolation mode: \(decodedRawValue)"
+      )
     }
+    self = mode
+  }
 
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
-    }
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(rawValue)
+  }
 }

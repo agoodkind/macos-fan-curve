@@ -7,10 +7,10 @@
 //
 
 struct SettingsMonitoringGate: Equatable {
-    let selectedTab: SettingsTab
-    let renderMode: AppRenderMode
+  let selectedTab: SettingsTab
+  let renderMode: AppRenderMode
 
-    var isMonitoringEnabled: Bool {
-        selectedTab == .general && renderMode == .interactive
-    }
+  var isMonitoringEnabled: Bool {
+    selectedTab == .general && renderMode == .interactive
+  }
 }

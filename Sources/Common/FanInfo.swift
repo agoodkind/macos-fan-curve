@@ -7,23 +7,23 @@
 //
 
 public struct FanInfo: Sendable {
-    public let actualRPM: Float
-    public let targetRPM: Float
-    public let minRPM: Float
-    public let maxRPM: Float
-    public let manualMode: Bool
+  public let actualRPM: Float
+  public let targetRPM: Float
+  public let minRPM: Float
+  public let maxRPM: Float
+  public let manualMode: Bool
 
-    public init(
-        actualRPM: Float,
-        targetRPM: Float,
-        minRPM: Float,
-        maxRPM: Float,
-        manualMode: Bool
-    ) {
-        self.actualRPM = actualRPM
-        self.targetRPM = targetRPM
-        self.minRPM = minRPM
-        self.maxRPM = maxRPM
-        self.manualMode = manualMode
-    }
+  public init(
+    actualRPM: Float,
+    targetRPM: Float,
+    minRPM: Float,
+    maxRPM: Float,
+    manualMode: Bool
+  ) {
+    self.actualRPM = actualRPM
+    self.targetRPM = targetRPM
+    self.minRPM = minRPM
+    self.maxRPM = maxRPM
+    self.manualMode = manualMode
+  }
 }

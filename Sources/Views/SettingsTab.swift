@@ -7,8 +7,8 @@
 //
 
 enum SettingsTab: Hashable {
-    case about
-    case advanced
-    case general
-    case profiles
+  case about
+  case advanced
+  case general
+  case profiles
 }

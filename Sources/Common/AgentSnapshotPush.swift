@@ -12,16 +12,16 @@ import Foundation
 private let snapshotLog = AppLog.make(category: "AgentSnapshot")
 
 enum AgentSnapshotPush {
-    static let notificationNameString = "io.goodkind.fancurve.snapshotChanged"
+  static let notificationNameString = "io.goodkind.fancurve.snapshotChanged"
 
-    static func post() {
-        snapshotLog.debug(
-            "snapshot.pushed notification=\(notificationNameString, privacy: .public)")
-        CFNotificationCenterPostNotification(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            CFNotificationName(notificationNameString as CFString),
-            nil,
-            nil,
-            true)
-    }
+  static func post() {
+    snapshotLog.debug(
+      "snapshot.pushed notification=\(notificationNameString, privacy: .public)")
+    CFNotificationCenterPostNotification(
+      CFNotificationCenterGetDarwinNotifyCenter(),
+      CFNotificationName(notificationNameString as CFString),
+      nil,
+      nil,
+      true)
+  }
 }

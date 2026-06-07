@@ -9,12 +9,12 @@
 import Foundation
 
 struct AgentFanSnapshot: Identifiable, Codable, Sendable, Equatable {
-    var id: Int { index }
+  var id: Int { index }
 
-    let index: Int
-    let actualRPM: Float
-    let targetRPM: Float
-    let minRPM: Float
-    let maxRPM: Float
-    let manualMode: Bool
+  let index: Int
+  let actualRPM: Float
+  let targetRPM: Float
+  let minRPM: Float
+  let maxRPM: Float
+  let manualMode: Bool
 }
