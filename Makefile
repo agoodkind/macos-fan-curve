@@ -78,7 +78,7 @@ include bootstrap.mk
 
 all: app
 
-install-dependencies:
+install-dependencies: swift-mk-bin
 	"$(SWIFT_MK_BIN)" toolchain install --generator $(FANCURVE_GENERATOR)
 
 install-analysis-tools: lint-tools
@@ -87,7 +87,7 @@ generate-config-artifacts:
 	@TARGET_NAME="$(APP_NAME)" $(GENERATE_CONFIG_ENV) ./Scripts/GenerateConfig.swift
 	@TARGET_NAME="$(AGENT_EXECUTABLE_NAME)" $(GENERATE_CONFIG_ENV) ./Scripts/GenerateConfig.swift
 
-generate-project: generate-config-artifacts
+generate-project: swift-mk-bin generate-config-artifacts
 	"$(SWIFT_MK_BIN)" toolchain generate --generator $(FANCURVE_GENERATOR)
 
 lint-deadcode: generate-project
