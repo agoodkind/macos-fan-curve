@@ -1,7 +1,5 @@
 -include Config/local.xcconfig
 
-TUIST := $(shell command -v tuist || printf '%s' "mise x tuist@4.192.3 -- tuist")
-
 CONFIGURATION = Release
 BUILD_DIR = build
 PRODUCTS_DIR = Products
@@ -73,6 +71,11 @@ SWIFT_FORMAT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTLINT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTCHECK_EXTRA_TARGETS := $(SWIFT_FORMAT_FILES)
 
+# Generator names are data, bound to variables so no recipe line names a build
+# tool directly; every build/test/analyze routes through the swift-mk toolchain.
+FANCURVE_GENERATOR := tuist
+HELPER_GENERATOR := xcodegen
+
 include bootstrap.mk
 
 .PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates sparkle-appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons helper-artifacts
@@ -80,7 +83,7 @@ include bootstrap.mk
 all: app
 
 install-dependencies:
-	$(TUIST) install
+	"$(SWIFT_MK_BIN)" toolchain install --generator $(FANCURVE_GENERATOR)
 
 install-analysis-tools: lint-tools
 
@@ -89,7 +92,7 @@ generate-config-artifacts:
 	@TARGET_NAME="$(AGENT_EXECUTABLE_NAME)" $(GENERATE_CONFIG_ENV) ./Scripts/GenerateConfig.swift
 
 generate-project: generate-config-artifacts
-	$(TUIST) generate --no-open
+	"$(SWIFT_MK_BIN)" toolchain generate --generator $(FANCURVE_GENERATOR)
 
 lint-deadcode: generate-project
 
@@ -99,15 +102,16 @@ open-project: generate-project
 helper-artifacts:
 	@test -d "$(HELPER_REPO)" || { echo "Missing helper repo: $(HELPER_REPO)"; exit 1; }
 	$(MAKE) -C "$(HELPER_REPO)" generate-project
-	xcodebuild -project "$(HELPER_REPO)/SMCFanApp.xcodeproj" \
-		-scheme SMCFanHelper \
-		-configuration $(CONFIGURATION) \
-		-derivedDataPath "$(HELPER_REPO)/build" \
+	"$(SWIFT_MK_BIN)" toolchain build \
+		--generator $(HELPER_GENERATOR) \
+		--project "$(HELPER_REPO)/SMCFanApp.xcodeproj" \
+		--scheme SMCFanHelper \
+		--configuration $(CONFIGURATION) \
+		--derived-data-path "$(HELPER_REPO)/build" \
 		$(HELPER_BUILD_SETTINGS) \
 		APP_BUNDLE_ID="$(APP_BUNDLE_ID)" \
 		ONLY_ACTIVE_ARCH=YES \
-		$(SWIFT_MK_XCODEBUILD_ARGS) \
-		build
+		$(SWIFT_MK_XCODEBUILD_ARGS)
 	@mkdir -p "$(dir $(HELPER_APP_SOURCE))"
 	@rm -rf "$(HELPER_APP_SOURCE)"
 	@cp -R "$(HELPER_REPO)/build/Build/Products/$(CONFIGURATION)/SMCFanHelper.app" "$(HELPER_APP_SOURCE)"
@@ -117,10 +121,12 @@ icons:
 	./Scripts/GenerateIcons.swift
 
 project-build: generate-config-artifacts helper-artifacts icons generate-project
-	xcodebuild -workspace FanCurveApp.xcworkspace \
-		-scheme FanCurve \
-		-configuration $(CONFIGURATION) \
-		-derivedDataPath $(BUILD_DIR) \
+	"$(SWIFT_MK_BIN)" toolchain build \
+		--generator $(FANCURVE_GENERATOR) \
+		--workspace FanCurveApp.xcworkspace \
+		--scheme FanCurve \
+		--configuration $(CONFIGURATION) \
+		--derived-data-path $(BUILD_DIR) \
 		$(XCODE_BUILD_SETTINGS) \
 		$(SWIFT_MK_XCODEBUILD_ARGS) \
 		MARKETING_VERSION="$(MARKETING_VERSION)" \
@@ -198,14 +204,15 @@ prepare-sparkle-updates:
 sparkle-appcast: release-assets prepare-sparkle-updates
 
 test-local: generate-config-artifacts helper-artifacts generate-project
-	xcodebuild -workspace FanCurveApp.xcworkspace \
-		-scheme FanCurve \
-		-configuration Debug \
-		-derivedDataPath $(BUILD_DIR) \
+	"$(SWIFT_MK_BIN)" toolchain test \
+		--generator $(FANCURVE_GENERATOR) \
+		--workspace FanCurveApp.xcworkspace \
+		--scheme FanCurve \
+		--configuration Debug \
+		--derived-data-path $(BUILD_DIR) \
 		$(XCODE_BUILD_SETTINGS) \
 		$(SWIFT_MK_XCODEBUILD_ARGS) \
-		SMC_FAN_HELPER_APP="$(HELPER_APP_SOURCE)" \
-		test
+		SMC_FAN_HELPER_APP="$(HELPER_APP_SOURCE)"
 
 format: fmt
 
@@ -214,22 +221,26 @@ format-check: lint-format
 swiftlint-lint: lint-swiftlint
 
 xcode-analyze: generate-project
-	xcodebuild -workspace FanCurveApp.xcworkspace \
-		-scheme FanCurve \
-		-configuration Debug \
-		-derivedDataPath $(BUILD_DIR) \
-		$(SWIFT_MK_XCODEBUILD_ARGS) \
-		analyze
+	"$(SWIFT_MK_BIN)" toolchain analyze \
+		--generator $(FANCURVE_GENERATOR) \
+		--workspace FanCurveApp.xcworkspace \
+		--scheme FanCurve \
+		--configuration Debug \
+		--derived-data-path $(BUILD_DIR) \
+		$(SWIFT_MK_XCODEBUILD_ARGS)
 
 swiftlint-analyze: generate-project
 	@rm -rf "$(SWIFTLINT_ANALYZE_DERIVED_DATA)"
 	@mkdir -p "$(ANALYZE_BUILD_DIR)"
-	xcodebuild -workspace FanCurveApp.xcworkspace \
-		-scheme FanCurve \
-		-configuration Debug \
-		-derivedDataPath "$(SWIFTLINT_ANALYZE_DERIVED_DATA)" \
-		$(SWIFT_MK_XCODEBUILD_NO_CACHE_ARGS) \
-		clean build | tee "$(SWIFTLINT_ANALYZE_LOG)"
+	"$(SWIFT_MK_BIN)" toolchain build \
+		--clean \
+		--log-path "$(SWIFTLINT_ANALYZE_LOG)" \
+		--generator $(FANCURVE_GENERATOR) \
+		--workspace FanCurveApp.xcworkspace \
+		--scheme FanCurve \
+		--configuration Debug \
+		--derived-data-path "$(SWIFTLINT_ANALYZE_DERIVED_DATA)" \
+		$(SWIFT_MK_XCODEBUILD_NO_CACHE_ARGS)
 	swiftlint analyze --strict \
 		--config "$(SWIFT_MK_SWIFTLINT_CONFIG)" \
 		--compiler-log-path "$(SWIFTLINT_ANALYZE_LOG)"
