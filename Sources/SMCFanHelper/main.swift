@@ -1,0 +1,15 @@
+//
+//  main.swift
+//  SMCFanHelper
+//
+//  Created by Alex Goodkind <alex@goodkind.io> on 2026-06-08.
+//  Copyright © 2026, all rights reserved.
+//
+
+import AppLog
+import SMCFanHelperCore
+
+// The daemon logic lives in SMCFanHelperCore; the __info_plist and
+// __launchd_plist sections are linked via -sectcreate in the target settings.
+AppLog.bootstrap(subsystem: "io.goodkind.fan")
+SMCFanHelper(machServiceName: "io.goodkind.smcfanhelper").start()

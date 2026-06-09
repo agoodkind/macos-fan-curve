@@ -27,7 +27,9 @@ let generatedConfigScript = TargetScript.pre(
     "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/App-Info.plist",
     "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/Agent-Info.plist",
     "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/agent-launchd.plist",
-    "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/helper-daemon.plist",
+    "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/io.goodkind.smcfanhelper.plist",
+    "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/helper-info.plist",
+    "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/helper-launchd.plist",
   ]
 )
 
@@ -46,19 +48,6 @@ let signSparkleScript = TargetScript.post(
     "\(sparkleXPCPath)/Installer.xpc",
     "\(sparkleCurrentPath)/Autoupdate",
     "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Frameworks/Sparkle.framework",
-  ]
-)
-
-let embedHelperDaemonScript = TargetScript.post(
-  path: "Scripts/EmbedHelperDaemon.swift",
-  name: "Embed Helper Daemon",
-  inputPaths: [
-    "$(SMC_FAN_HELPER_APP)/Contents/MacOS/$(HELPER_BUNDLE_ID)",
-    "$(SRCROOT)/Derived/Generated/FanCurve/helper-daemon.plist",
-  ],
-  outputPaths: [
-    "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/MacOS/$(HELPER_BUNDLE_ID)",
-    "$(BUILT_PRODUCTS_DIR)/$(PRODUCT_NAME).app/Contents/Library/LaunchDaemons/$(HELPER_BUNDLE_ID).plist",
   ]
 )
 
@@ -173,15 +162,28 @@ let project = Project(
             .glob(pattern: "Derived/Generated/FanCurve/agent-launchd.plist")
           ]
         ),
+        .executables(
+          name: "Embed Helper Daemon",
+          files: [
+            .buildProduct(name: "SMCFanHelper", codeSignOnCopy: true)
+          ]
+        ),
+        .wrapper(
+          name: "Embed Helper Daemon Plist",
+          subpath: "Contents/Library/LaunchDaemons",
+          files: [
+            .glob(pattern: "Derived/Generated/FanCurve/io.goodkind.smcfanhelper.plist")
+          ]
+        ),
       ],
       scripts: [
         generatedConfigScript,
-        embedHelperDaemonScript,
         signSparkleScript,
       ],
       dependencies: externalDependencies + [
         .external(name: "Sparkle"),
         .target(name: "FanCurveAgent"),
+        .target(name: "SMCFanHelper"),
       ],
       settings: .settings(
         base: signingSettings.merging([
@@ -218,6 +220,41 @@ let project = Project(
           "PRODUCT_BUNDLE_IDENTIFIER": .string("$(AGENT_BUNDLE_ID)"),
           "CREATE_INFOPLIST_SECTION_IN_BINARY": "YES",
           "SKIP_INSTALL": "YES",
+        ]) { _, new in new }
+      )
+    ),
+    .target(
+      name: "SMCFanHelper",
+      destinations: [.mac],
+      product: .commandLineTool,
+      bundleId: "$(HELPER_BUNDLE_ID)",
+      deploymentTargets: macOSDeploymentTarget,
+      infoPlist: .default,
+      sources: [
+        "Sources/SMCFanHelper/**"
+      ],
+      scripts: [
+        generatedConfigScript
+      ],
+      dependencies: [
+        .external(name: "SMCFanHelperCore"),
+        .external(name: "SMCFanKit"),
+        .external(name: "AppLog"),
+        .external(name: "SMCFanProtocol"),
+      ],
+      settings: .settings(
+        base: signingSettings.merging([
+          "PRODUCT_NAME": "io.goodkind.smcfanhelper",
+          "PRODUCT_BUNDLE_IDENTIFIER": .string("$(HELPER_BUNDLE_ID)"),
+          "ENABLE_HARDENED_RUNTIME": "YES",
+          "SKIP_INSTALL": "YES",
+          "CREATE_INFOPLIST_SECTION_IN_BINARY": "NO",
+          "OTHER_LDFLAGS": [
+            "-sectcreate", "__TEXT", "__info_plist",
+            "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/helper-info.plist",
+            "-sectcreate", "__TEXT", "__launchd_plist",
+            "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/helper-launchd.plist",
+          ],
         ]) { _, new in new }
       )
     ),
@@ -265,6 +302,15 @@ let project = Project(
       name: "FanCurveAgent",
       shared: true,
       buildAction: .buildAction(targets: [.target("FanCurveAgent")]),
+      runAction: .runAction(configuration: "Debug"),
+      archiveAction: .archiveAction(configuration: "Release"),
+      profileAction: .profileAction(configuration: "Release"),
+      analyzeAction: .analyzeAction(configuration: "Debug")
+    ),
+    .scheme(
+      name: "SMCFanHelper",
+      shared: true,
+      buildAction: .buildAction(targets: [.target("SMCFanHelper")]),
       runAction: .runAction(configuration: "Debug"),
       archiveAction: .archiveAction(configuration: "Release"),
       profileAction: .profileAction(configuration: "Release"),
