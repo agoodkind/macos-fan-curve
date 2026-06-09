@@ -30,3 +30,5 @@ Config/local.xcconfig
 
 # Research files
 research/
+
+Generated/

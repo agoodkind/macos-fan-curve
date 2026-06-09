@@ -23,13 +23,13 @@ let generatedConfigScript = TargetScript.pre(
   path: "Scripts/GenerateConfig.swift",
   name: "Generate Config from xcconfig",
   outputPaths: [
-    "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/Config.generated.swift",
-    "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/App-Info.plist",
-    "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/Agent-Info.plist",
-    "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/agent-launchd.plist",
-    "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/io.goodkind.smcfanhelper.plist",
-    "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/helper-info.plist",
-    "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/helper-launchd.plist",
+    "$(SRCROOT)/Generated/$(TARGET_NAME)/Config.generated.swift",
+    "$(SRCROOT)/Generated/$(TARGET_NAME)/App-Info.plist",
+    "$(SRCROOT)/Generated/$(TARGET_NAME)/Agent-Info.plist",
+    "$(SRCROOT)/Generated/$(TARGET_NAME)/agent-launchd.plist",
+    "$(SRCROOT)/Generated/$(TARGET_NAME)/io.goodkind.smcfanhelper.plist",
+    "$(SRCROOT)/Generated/$(TARGET_NAME)/helper-info.plist",
+    "$(SRCROOT)/Generated/$(TARGET_NAME)/helper-launchd.plist",
   ]
 )
 
@@ -135,14 +135,14 @@ let project = Project(
       product: .app,
       bundleId: "$(APP_BUNDLE_ID)",
       deploymentTargets: macOSDeploymentTarget,
-      infoPlist: .file(path: "Derived/Generated/FanCurve/App-Info.plist"),
+      infoPlist: .file(path: "Generated/FanCurve/App-Info.plist"),
       sources: [
         "Sources/App/**",
         "Sources/Models/**",
         "Sources/Views/**",
         "Sources/Services/**",
         "Sources/Common/**",
-        .generated("Derived/Generated/FanCurve/Config.generated.swift"),
+        .generated("Generated/FanCurve/Config.generated.swift"),
       ],
       resources: [
         "Sources/App/Base.lproj/**",
@@ -159,7 +159,7 @@ let project = Project(
           name: "Embed Launch Agent Plist",
           subpath: "Contents/Library/LaunchAgents",
           files: [
-            .glob(pattern: "Derived/Generated/FanCurve/agent-launchd.plist")
+            .glob(pattern: "Generated/FanCurve/agent-launchd.plist")
           ]
         ),
         .executables(
@@ -172,7 +172,7 @@ let project = Project(
           name: "Embed Helper Daemon Plist",
           subpath: "Contents/Library/LaunchDaemons",
           files: [
-            .glob(pattern: "Derived/Generated/FanCurve/io.goodkind.smcfanhelper.plist")
+            .glob(pattern: "Generated/FanCurve/io.goodkind.smcfanhelper.plist")
           ]
         ),
       ],
@@ -201,7 +201,7 @@ let project = Project(
       product: .commandLineTool,
       bundleId: "$(AGENT_BUNDLE_ID)",
       deploymentTargets: macOSDeploymentTarget,
-      infoPlist: .file(path: "Derived/Generated/FanCurveAgent/Agent-Info.plist"),
+      infoPlist: .file(path: "Generated/FanCurveAgent/Agent-Info.plist"),
       sources: [
         "Sources/Agent/**",
         "Sources/App/L10n.swift",
@@ -209,7 +209,7 @@ let project = Project(
         "Sources/Services/FanCurveAgentClient.swift",
         "Sources/Services/DevToggleOverride.swift",
         "Sources/Common/**",
-        .generated("Derived/Generated/FanCurveAgent/Config.generated.swift"),
+        .generated("Generated/FanCurveAgent/Config.generated.swift"),
       ],
       scripts: [
         generatedConfigScript
@@ -251,9 +251,9 @@ let project = Project(
           "CREATE_INFOPLIST_SECTION_IN_BINARY": "NO",
           "OTHER_LDFLAGS": [
             "-sectcreate", "__TEXT", "__info_plist",
-            "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/helper-info.plist",
+            "$(SRCROOT)/Generated/$(TARGET_NAME)/helper-info.plist",
             "-sectcreate", "__TEXT", "__launchd_plist",
-            "$(SRCROOT)/Derived/Generated/$(TARGET_NAME)/helper-launchd.plist",
+            "$(SRCROOT)/Generated/$(TARGET_NAME)/helper-launchd.plist",
           ],
         ]) { _, new in new }
       )

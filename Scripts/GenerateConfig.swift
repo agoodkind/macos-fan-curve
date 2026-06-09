@@ -57,7 +57,7 @@ func pacificBuildDate() -> String {
 do {
     let srcRoot = try requiredEnv("SRCROOT")
     let targetName = try requiredEnv("TARGET_NAME")
-    let generatedDir = "\(srcRoot)/Derived/Generated/\(targetName)"
+    let generatedDir = "\(srcRoot)/Generated/\(targetName)"
     let templatesDir = "\(srcRoot)/Templates"
 
     try FileManager.default.createDirectory(
