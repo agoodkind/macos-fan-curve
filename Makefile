@@ -16,8 +16,6 @@ APP_DISPLAY_NAME = Fan Curve
 APP_BUNDLE_NAME = $(APP_DISPLAY_NAME)
 AGENT_DISPLAY_NAME = Fan Curve Background Control
 HELPER_DISPLAY_NAME = Fan Curve Hardware Helper
-HELPER_REPO ?= $(CURDIR)/../macos-smc-fan
-HELPER_APP_SOURCE ?= $(HELPER_REPO)/Products/SMCFanHelper.app
 HELPER_BUNDLE_ID ?= $(BUNDLE_ID_PREFIX).smcfanhelper
 APP_BUNDLE_ID ?= $(BUNDLE_ID_PREFIX).fancurve
 AGENT_BUNDLE_ID ?= $(BUNDLE_ID_PREFIX).fancurveagent
@@ -49,7 +47,6 @@ GITHUB_RELEASE_BASE_URL ?= https://github.com/agoodkind/macos-fan-curve/releases
 GENERATE_CONFIG_ENV = SRCROOT="$(CURDIR)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
 # Signing is owned by swift-mk (XCODE_XCCONFIG_FILE override), not set here.
 XCODE_BUILD_SETTINGS = BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
-HELPER_BUILD_SETTINGS = BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" OWNER_APP_BUNDLE_ID="$(APP_BUNDLE_ID)" HELPER_APP_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" HELPER_DAEMON_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)"
 
 SWIFT_MK_MODULES := swift-build.mk
 # This project defines its own `run` (Debug build deployed to /Applications). The
@@ -74,11 +71,10 @@ SWIFTCHECK_EXTRA_TARGETS := $(SWIFT_FORMAT_FILES)
 # Generator names are data, bound to variables so no recipe line names a build
 # tool directly; every build/test/analyze routes through the swift-mk toolchain.
 FANCURVE_GENERATOR := tuist
-HELPER_GENERATOR := xcodegen
 
 include bootstrap.mk
 
-.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates sparkle-appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons helper-artifacts
+.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates sparkle-appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
 
 all: app
 
@@ -99,28 +95,10 @@ lint-deadcode: generate-project
 open-project: generate-project
 	open FanCurveApp.xcworkspace
 
-helper-artifacts:
-	@test -d "$(HELPER_REPO)" || { echo "Missing helper repo: $(HELPER_REPO)"; exit 1; }
-	$(MAKE) -C "$(HELPER_REPO)" generate-project
-	"$(SWIFT_MK_BIN)" toolchain build \
-		--generator $(HELPER_GENERATOR) \
-		--project "$(HELPER_REPO)/SMCFanApp.xcodeproj" \
-		--scheme SMCFanHelper \
-		--configuration $(CONFIGURATION) \
-		--derived-data-path "$(HELPER_REPO)/build" \
-		$(HELPER_BUILD_SETTINGS) \
-		APP_BUNDLE_ID="$(APP_BUNDLE_ID)" \
-		ONLY_ACTIVE_ARCH=YES \
-		$(SWIFT_MK_XCODEBUILD_ARGS)
-	@mkdir -p "$(dir $(HELPER_APP_SOURCE))"
-	@rm -rf "$(HELPER_APP_SOURCE)"
-	@cp -R "$(HELPER_REPO)/build/Build/Products/$(CONFIGURATION)/SMCFanHelper.app" "$(HELPER_APP_SOURCE)"
-	@test -x "$(HELPER_APP_SOURCE)/Contents/MacOS/$(HELPER_BUNDLE_ID)" || { echo "Missing helper executable in $(HELPER_APP_SOURCE)"; exit 1; }
-
 icons:
 	./Scripts/GenerateIcons.swift
 
-project-build: generate-config-artifacts helper-artifacts icons generate-project
+project-build: generate-config-artifacts icons generate-project
 	"$(SWIFT_MK_BIN)" toolchain build \
 		--generator $(FANCURVE_GENERATOR) \
 		--workspace FanCurveApp.xcworkspace \
@@ -130,8 +108,7 @@ project-build: generate-config-artifacts helper-artifacts icons generate-project
 		$(XCODE_BUILD_SETTINGS) \
 		$(SWIFT_MK_XCODEBUILD_ARGS) \
 		MARKETING_VERSION="$(MARKETING_VERSION)" \
-		CURRENT_PROJECT_VERSION="$(CURRENT_PROJECT_VERSION)" \
-		SMC_FAN_HELPER_APP="$(HELPER_APP_SOURCE)"
+		CURRENT_PROJECT_VERSION="$(CURRENT_PROJECT_VERSION)"
 
 app-local: project-build
 	@mkdir -p $(PRODUCTS_DIR)
@@ -203,7 +180,7 @@ prepare-sparkle-updates:
 
 sparkle-appcast: release-assets prepare-sparkle-updates
 
-test-local: generate-config-artifacts helper-artifacts generate-project
+test-local: generate-config-artifacts generate-project
 	"$(SWIFT_MK_BIN)" toolchain test \
 		--generator $(FANCURVE_GENERATOR) \
 		--workspace FanCurveApp.xcworkspace \
@@ -211,8 +188,7 @@ test-local: generate-config-artifacts helper-artifacts generate-project
 		--configuration Debug \
 		--derived-data-path $(BUILD_DIR) \
 		$(XCODE_BUILD_SETTINGS) \
-		$(SWIFT_MK_XCODEBUILD_ARGS) \
-		SMC_FAN_HELPER_APP="$(HELPER_APP_SOURCE)"
+		$(SWIFT_MK_XCODEBUILD_ARGS)
 
 format: fmt
 

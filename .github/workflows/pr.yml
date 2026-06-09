@@ -28,13 +28,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Check out helper repo
-        uses: actions/checkout@v6
-        with:
-          repository: agoodkind/macos-smc-fan
-          ref: 4f942a36f6b63c5b0951a3937f8bf2dcbc85446d
-          path: .ci/macos-smc-fan
-
       - uses: ./.github/actions/setup-build-env
         with:
           xcode-version: ${{ env.XCODE_VERSION }}
@@ -43,26 +36,11 @@ jobs:
       - name: Install Tuist dependencies
         run: make install-dependencies
 
-      - name: Write helper CI xcconfig
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          cat > .ci/macos-smc-fan/Config/local.xcconfig <<EOF
-          CODE_SIGN_IDENTITY = -
-          DEVELOPMENT_TEAM = H3BMXM4W7H
-          BUNDLE_ID_PREFIX = io.goodkind
-          HELPER_BUNDLE_ID = io.goodkind.smcfanhelper
-          APP_BUNDLE_ID = io.goodkind.fancurve
-          HELPER_APP_DISPLAY_NAME = Fan Curve Hardware Helper
-          HELPER_DAEMON_DISPLAY_NAME = Fan Curve Hardware Helper
-          EOF
-
       - name: Verify project
-        run: make verify HELPER_REPO="${{ github.workspace }}/.ci/macos-smc-fan" CODE_SIGN_IDENTITY="-"
+        run: make verify CODE_SIGN_IDENTITY="-"
 
       - name: Lint project
-        run: make lint HELPER_REPO="${{ github.workspace }}/.ci/macos-smc-fan" CODE_SIGN_IDENTITY="-"
+        run: make lint CODE_SIGN_IDENTITY="-"
 
       - name: Build project
-        run: make build HELPER_REPO="${{ github.workspace }}/.ci/macos-smc-fan" CODE_SIGN_IDENTITY="-"
+        run: make build CODE_SIGN_IDENTITY="-"
