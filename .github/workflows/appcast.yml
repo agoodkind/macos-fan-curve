@@ -71,7 +71,7 @@ jobs:
 
           printf 'RELEASE_TAG=%s\n' "$tag" >> "$GITHUB_ENV"
 
-      - uses: ./.github/actions/setup-build-env
+      - uses: agoodkind/swift-makefile/.github/actions/setup-build-env@main
         with:
           xcode-version: ${{ env.XCODE_VERSION }}
           github-token: ${{ github.token }}

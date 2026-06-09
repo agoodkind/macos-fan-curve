@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: ./.github/actions/setup-build-env
+      - uses: agoodkind/swift-makefile/.github/actions/setup-build-env@main
         with:
           xcode-version: ${{ env.XCODE_VERSION }}
           github-token: ${{ github.token }}
