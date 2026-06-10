@@ -24,8 +24,12 @@ DMG_NAME = $(APP_NAME)-$(CONFIGURATION)
 MARKETING_VERSION ?= 0.1.0
 CURRENT_PROJECT_VERSION ?= 1
 SPARKLE_FEED_URL ?= https://goodkind.io/fancurve/appcast.xml
-SPARKLE_PUBLIC_ED_KEY ?=
+# Sparkle's Ed25519 PUBLIC key: shipped in every released Info.plist already,
+# so it is committed here and CI needs no secret for it.
+SPARKLE_PUBLIC_ED_KEY ?= dYrjw1tlOKpU4dRh8DL3k4u+xIl42Zkio09nZOOS6No=  # gitleaks:allow
 RELEASE_TAG ?= $(CURRENT_PROJECT_VERSION)-$(shell git rev-parse --short HEAD)
+# The DMG signs with the same identity as the app unless overridden.
+DMG_SIGN_IDENTITY ?= $(CODE_SIGN_IDENTITY)
 DMG_VOLUME_NAME = $(APP_DISPLAY_NAME)
 DMG_STAGING_DIR = $(BUILD_DIR)/dmg
 XCODE_PRODUCTS_DIR = $(BUILD_DIR)/Build/Products/$(CONFIGURATION)
@@ -48,12 +52,16 @@ GENERATE_CONFIG_ENV = SRCROOT="$(CURDIR)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)"
 # Signing is owned by swift-mk (XCODE_XCCONFIG_FILE override), not set here.
 XCODE_BUILD_SETTINGS = BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
 
-SWIFT_MK_MODULES := swift-build.mk
+SWIFT_MK_MODULES := swift-build.mk swift-release.mk
 # This project defines its own `run` (Debug build deployed to /Applications). The
 # swift-build.mk module skips its generic `run` when this is set, avoiding a Make
 # "overriding commands" warning. Takes effect once the guard is synced into .make/.
 SWIFT_MK_OWN_RUN := 1
 SWIFT_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 app-local
+# Release artifacts for the shared _release.yml pipeline: the signed DMG into
+# dist/. MARKETING_VERSION/CURRENT_PROJECT_VERSION/RELEASE_TAG arrive as env
+# from the workflow's release-meta job; the ?= declarations above pick them up.
+SWIFT_MK_RELEASE_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 release-assets && cp "$(RELEASE_DMG_PATH)" dist/
 # The project-build recipe writes its index store under BUILD_DIR, so the
 # dead-code gate reads from there. A clean build before the scan keeps the index
 # free of stale units from earlier incremental builds.
@@ -74,7 +82,7 @@ FANCURVE_GENERATOR := tuist
 
 include bootstrap.mk
 
-.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates sparkle-appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
+.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates sparkle-appcast appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
 
 all: app
 
@@ -179,6 +187,19 @@ prepare-sparkle-updates:
 	fi
 
 sparkle-appcast: release-assets prepare-sparkle-updates
+
+# Regenerate the appcast for an already-published release: download its DMG,
+# derive the build version from the asset name, and run the Sparkle generator.
+# RELEASE_TAG names the release; SPARKLE_PRIVATE_KEY_FILE (optional) signs.
+appcast:
+	@if [ -z "$(strip $(RELEASE_TAG))" ]; then echo "appcast: RELEASE_TAG is required"; exit 1; fi
+	@mkdir -p $(PRODUCTS_DIR)
+	gh release download "$(RELEASE_TAG)" --pattern "$(APP_NAME)-*.dmg" --dir $(PRODUCTS_DIR) --clobber
+	@dmg="$$(ls $(PRODUCTS_DIR)/$(APP_NAME)-*.dmg | sed -n 1p)"; \
+	build_version="$$(basename "$$dmg" .dmg | sed 's/^$(APP_NAME)-//')"; \
+	$(MAKE) SWIFT_MK_SKIP_FETCH=1 prepare-sparkle-updates \
+		CURRENT_PROJECT_VERSION="$$build_version" \
+		RELEASE_TAG="$(RELEASE_TAG)"
 
 test-local: generate-config-artifacts generate-project
 	"$(SWIFT_MK_BIN)" toolchain test \
