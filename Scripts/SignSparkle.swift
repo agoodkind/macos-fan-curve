@@ -96,16 +96,38 @@ do {
         (frameworkPath, false),
     ]
 
-    for entry in signingPlan where fileExists(atPath: entry.path) {
-        try run(
-            "/usr/bin/codesign",
-            codesignArguments(
-                identity: identity,
-                path: entry.path,
-                preserveEntitlements: entry.preserveEntitlements,
-                addTimestamp: addTimestamp
+    // swift-mk's codesign-run owns the canonical Sparkle re-sign flags; the
+    // resolved identity rides in through SWIFT_MK_SIGN_IDENTITY. The direct
+    // codesign loop survives only for a build without the swift-mk binary
+    // (for example a raw Xcode GUI build before any make run).
+    let srcroot = optionalEnv("SRCROOT")
+    let swiftMkPath = "\(srcroot)/.make/swift-mk"
+    if !srcroot.isEmpty, fileExists(atPath: swiftMkPath) {
+        for entry in signingPlan where fileExists(atPath: entry.path) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: swiftMkPath)
+            process.arguments = ["codesign-run", "--mode", "sparkle", entry.path]
+            var environment = ProcessInfo.processInfo.environment
+            environment["SWIFT_MK_SIGN_IDENTITY"] = identity
+            process.environment = environment
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else {
+                try fail("SignSparkle failed: swift-mk codesign-run failed for \(entry.path)")
+            }
+        }
+    } else {
+        for entry in signingPlan where fileExists(atPath: entry.path) {
+            try run(
+                "/usr/bin/codesign",
+                codesignArguments(
+                    identity: identity,
+                    path: entry.path,
+                    preserveEntitlements: entry.preserveEntitlements,
+                    addTimestamp: addTimestamp
+                )
             )
-        )
+        }
     }
 } catch let failure as Failure {
     FileHandle.standardError.write(Data((failure.description + "\n").utf8))

@@ -165,7 +165,7 @@ dmg: app
 		-format UDZO \
 		-ov "$(DMG_PATH)"
 	@if [ -n "$(DMG_SIGN_IDENTITY)" ]; then \
-		codesign --force --sign "$(DMG_SIGN_IDENTITY)" "$(DMG_PATH)"; \
+		SWIFT_MK_SIGN_IDENTITY="$(DMG_SIGN_IDENTITY)" "$(SWIFT_MK_BIN)" codesign-run --mode dmg "$(DMG_PATH)"; \
 	fi
 
 release-assets: dmg
