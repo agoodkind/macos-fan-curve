@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches-ignore:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: agoodkind/swift-makefile/.github/workflows/_ci.yml@main
+    with:
+      setup-target: install-dependencies
+      targets: '["verify","lint","build"]'
+      make-args: 'CODE_SIGN_IDENTITY=-'
+    secrets: inherit

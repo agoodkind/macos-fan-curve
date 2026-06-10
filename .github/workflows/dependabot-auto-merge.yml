@@ -1,0 +1,16 @@
+name: Dependabot Auto Merge
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+jobs:
+  automerge:
+    uses: agoodkind/swift-makefile/.github/workflows/_dependabot-automerge.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+    secrets: inherit

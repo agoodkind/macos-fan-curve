@@ -1,6 +1,8 @@
 name: Deploy Appcast
 
-# Deploys the Sparkle appcast to the Cloudflare worker.
+# Deploys the Sparkle appcast to the Cloudflare worker. Event plumbing stays
+# here (it is inherently caller-side); the appcast generation itself is the
+# `make appcast` target.
 # Triggers:
 #   - workflow_run: fires after the Release workflow completes. This is the path that
 #     runs for normal releases, since the release is created with the bot GITHUB_TOKEN,
@@ -25,6 +27,7 @@ on:
 
 env:
   XCODE_VERSION: "latest-stable"
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   deploy-appcast:
@@ -57,7 +60,7 @@ jobs:
                 tag="$DISPATCH_TAG"
                 ;;
             workflow_run)
-                tag="$(git tag --points-at "$RUN_HEAD_SHA" | head -n 1)"
+                tag="$(git tag --points-at "$RUN_HEAD_SHA" | sed -n 1p)"
                 ;;
             *)
                 tag=""
@@ -79,19 +82,6 @@ jobs:
       - name: Install Tuist dependencies
         run: make install-dependencies
 
-      - name: Download release DMG
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mkdir -p Products
-          gh release download "$RELEASE_TAG" \
-            --pattern "FanCurve-*.dmg" \
-            --dir Products \
-            --clobber
-
       - name: Generate Sparkle appcast
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
@@ -99,23 +89,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          dmg_path="$(find Products -maxdepth 1 -name 'FanCurve-*.dmg' -print | sort | head -n 1)"
-          if [[ -z "$dmg_path" ]]; then
-              echo "No FanCurve DMG was downloaded for ${RELEASE_TAG}" >&2
-              exit 1
-          fi
-
-          dmg_name="$(basename "$dmg_path")"
-          build_version="${dmg_name#FanCurve-}"
-          build_version="${build_version%.dmg}"
           key_path="$RUNNER_TEMP/sparkle_private_key"
           printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key_path"
           export SPARKLE_PRIVATE_KEY_FILE="$key_path"
 
-          make prepare-sparkle-updates \
-            CURRENT_PROJECT_VERSION="$build_version" \
-            RELEASE_TAG="$RELEASE_TAG" \
-            GITHUB_RELEASE_BASE_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/"
+          make appcast RELEASE_TAG="$RELEASE_TAG"
 
       - uses: actions/upload-artifact@v7
         with:
