@@ -24,9 +24,11 @@ DMG_NAME = $(APP_NAME)-$(CONFIGURATION)
 MARKETING_VERSION ?= 0.1.0
 CURRENT_PROJECT_VERSION ?= 1
 SPARKLE_FEED_URL ?= https://goodkind.io/fancurve/appcast.xml
-# Sparkle's Ed25519 PUBLIC key: shipped in every released Info.plist already,
-# so it is committed here and CI needs no secret for it.
-SPARKLE_PUBLIC_ED_KEY ?= dYrjw1tlOKpU4dRh8DL3k4u+xIl42Zkio09nZOOS6No=  # gitleaks:allow
+# Sparkle's Ed25519 PUBLIC key, read from a committed file so the make value
+# stays byte-exact: a whitespace-dirtied SUPublicEDKey reaches Info.plist and
+# generate_appcast then sees a key mismatch and silently emits an unsigned
+# appcast, which bricks every shipped updater.
+SPARKLE_PUBLIC_ED_KEY ?= $(shell cat Config/sparkle.pub 2>/dev/null)
 RELEASE_TAG ?= $(CURRENT_PROJECT_VERSION)-$(shell git rev-parse --short HEAD)
 # The DMG signs with the same identity as the app unless overridden.
 DMG_SIGN_IDENTITY ?= $(CODE_SIGN_IDENTITY)
@@ -174,17 +176,24 @@ prepare-sparkle-updates:
 	@rm -rf "$(SPARKLE_UPDATES_DIR)"
 	@mkdir -p "$(SPARKLE_UPDATES_DIR)"
 	@cp "$(RELEASE_DMG_PATH)" "$(SPARKLE_UPDATES_DIR)/"
-	@SPARKLE_APPCAST_TOOL="$$(Scripts/FindSparkleTool.swift "$(BUILD_DIR)" generate_appcast)"; \
-	if [ -n "$${SPARKLE_PRIVATE_KEY_FILE:-}" ]; then \
-		"$${SPARKLE_APPCAST_TOOL}" \
-			--ed-key-file "$${SPARKLE_PRIVATE_KEY_FILE}" \
-			--download-url-prefix "$(GITHUB_RELEASE_BASE_URL)" \
-			"$(SPARKLE_UPDATES_DIR)"; \
-	else \
-		"$${SPARKLE_APPCAST_TOOL}" \
-			--download-url-prefix "$(GITHUB_RELEASE_BASE_URL)" \
-			"$(SPARKLE_UPDATES_DIR)"; \
+	@if [ -z "$${SPARKLE_PRIVATE_KEY_FILE:-}" ] || [ ! -s "$${SPARKLE_PRIVATE_KEY_FILE:-}" ]; then \
+		echo "prepare-sparkle-updates: SPARKLE_PRIVATE_KEY_FILE must point at the Ed25519 private key."; \
+		echo "  Shipped apps embed SUPublicEDKey, so an unsigned appcast bricks every update."; \
+		exit 1; \
 	fi
+	@SPARKLE_APPCAST_TOOL="$$(Scripts/FindSparkleTool.swift "$(BUILD_DIR)" generate_appcast)"; \
+	"$${SPARKLE_APPCAST_TOOL}" \
+		--ed-key-file "$${SPARKLE_PRIVATE_KEY_FILE}" \
+		--download-url-prefix "$(GITHUB_RELEASE_BASE_URL)" \
+		"$(SPARKLE_UPDATES_DIR)"
+	@unsigned="$$(awk '/<enclosure /{ if ($$0 !~ /sparkle:edSignature="/) print }' "$(SPARKLE_APPCAST_PATH)")"; \
+	if [ -n "$$unsigned" ]; then \
+		echo "prepare-sparkle-updates: generate_appcast produced unsigned enclosures:"; \
+		echo "$$unsigned"; \
+		echo "  This means the private key does not pair with SUPublicEDKey ($(SPARKLE_PUBLIC_ED_KEY))."; \
+		exit 1; \
+	fi
+	@echo "prepare-sparkle-updates: every enclosure carries an EdDSA signature."
 
 sparkle-appcast: release-assets prepare-sparkle-updates
 
