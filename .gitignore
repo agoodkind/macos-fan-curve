@@ -32,3 +32,4 @@ Config/local.xcconfig
 research/
 
 Generated/
+.config/mise/conf.d/swift-mk.toml
