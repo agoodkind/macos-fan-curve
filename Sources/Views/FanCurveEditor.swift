@@ -183,6 +183,7 @@ struct FanCurveEditor: View {
           hoverTooltipOverlay(size: size)
           chartLegendOverlay
           appleAutoLabelOverlay(size: size)
+          controlPointHitTargetsOverlay(size: size)
         }
       }
       .onContinuousHover { phase in

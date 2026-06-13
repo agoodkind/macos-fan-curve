@@ -91,7 +91,27 @@ extension FanCurveEditor {
       hitRadius: controlPointHitRadius,
       hoveredIndex: hoveredIndex,
       draggedIndex: draggedIndex,
-      makeGesture: dragGesture
+      makeGesture: dragGesture,
+      rendersHitTargets: false
+    )
+    .allowsHitTesting(false)
+    .animation(
+      .easeInOut(duration: InteractionAnimationConstants.activeToggleDuration),
+      value: effectiveActive
+    )
+  }
+
+  func controlPointHitTargetsOverlay(size: CGSize) -> some View {
+    CurveGraphControlPointsOverlay(
+      points: model.controlPoints,
+      size: size,
+      graph: graphContext(size: size),
+      style: controlPointStyle,
+      hitRadius: controlPointHitRadius,
+      hoveredIndex: hoveredIndex,
+      draggedIndex: draggedIndex,
+      makeGesture: dragGesture,
+      rendersVisiblePoints: false
     )
     .allowsHitTesting(true)
     .animation(
