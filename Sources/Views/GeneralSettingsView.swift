@@ -365,8 +365,7 @@ extension GeneralSettingsView {
 
         if installState.helperNeedsRepair {
           SettingsDescription(
-            text:
-              "The helper is still reachable, but this app install needs to repair its registration."
+            text: helperRepairDescription
           )
         }
       }
@@ -424,9 +423,16 @@ extension GeneralSettingsView {
 
   private var helperActionTitle: String {
     if installState.isRegisteringHelper {
-      return installState.helperNeedsRepair ? "Reinstalling" : "Installing"
+      return installState.helperNeedsRepair
+        ? "Reinstalling System Helper"
+        : "Installing System Helper"
     }
-    return installState.helperNeedsRepair ? "Reinstall" : "Install"
+    return installState.helperNeedsRepair ? "Reinstall System Helper" : "Install System Helper"
+  }
+
+  private var helperRepairDescription: String {
+    "Fan Curve can still reach the System Helper, but this app install needs to "
+      + "repair its helper registration."
   }
 
   private var agentRowState: ServiceRowState {
@@ -451,7 +457,11 @@ extension GeneralSettingsView {
               .controlSize(.small)
               .scaleEffect(GeneralSettingsConstants.progressViewScale)
           }
-          Text(installState.isRegisteringAgent ? "Installing" : "Install")
+          Text(
+            installState.isRegisteringAgent
+              ? "Enabling Background Control"
+              : "Enable Background Control"
+          )
         }
       }
       .disabled(installState.isRegisteringAgent)

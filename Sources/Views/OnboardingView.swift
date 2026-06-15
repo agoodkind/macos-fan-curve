@@ -13,8 +13,8 @@ private let onboardingViewLog = AppLog.make(category: "OnboardingView")
 
 private enum OnboardingConstants {
   static let outerSpacerMinLength: CGFloat = 40
-  static let contentStackSpacing: CGFloat = 24
-  static let contentMaxWidth: CGFloat = 480
+  static let contentStackSpacing: CGFloat = 20
+  static let contentMaxWidth: CGFloat = 560
   static let contentPadding: CGFloat = 32
   static let iconCircleSize: CGFloat = 96
   static let iconFontSize: CGFloat = 40
@@ -22,6 +22,127 @@ private enum OnboardingConstants {
   static let buttonLabelSpacing: CGFloat = 8
   static let buttonMinWidth: CGFloat = 180
   static let errorTopPadding: CGFloat = 8
+  static let approvalGuideSpacing: CGFloat = 12
+  static let approvalStepSpacing: CGFloat = 10
+  static let approvalStepNumberSize: CGFloat = 22
+  static let approvalStepNumberFontSize: CGFloat = 11
+  static let approvalGuideTopPadding: CGFloat = 2
+  static let secondaryTextMaxWidth: CGFloat = 500
+}
+
+// MARK: - SetupStepContent
+
+private struct SetupStepContent {
+  let iconName: String
+  let title: String
+  let message: String
+  let primaryActionTitle: String?
+  let pendingActionTitle: String?
+  let approvalSteps: [String]
+
+  static func make(step: InstallationState.Step) -> SetupStepContent {
+    switch step {
+    case .checking:
+      return checking()
+    case .helperMissing:
+      return helperMissing()
+    case .helperAwaitingApproval:
+      return helperAwaitingApproval()
+    case .agentMissing:
+      return agentMissing()
+    case .agentAwaitingApproval:
+      return agentAwaitingApproval()
+    case .ready:
+      return ready()
+    }
+  }
+
+  private static func checking() -> SetupStepContent {
+    SetupStepContent(
+      iconName: "hourglass",
+      title: L10n.tr("Checking setup"),
+      message: L10n.tr("Fan Curve is checking the system helper and background agent."),
+      primaryActionTitle: nil,
+      pendingActionTitle: nil,
+      approvalSteps: []
+    )
+  }
+
+  private static func helperMissing() -> SetupStepContent {
+    SetupStepContent(
+      iconName: "lock.shield",
+      title: L10n.tr("Install the System Helper"),
+      message: L10n.tr(
+        "Fan Curve uses a system helper to read Mac temperature sensors and send fan "
+          + "speed commands. macOS requires your approval before an app can install this "
+          + "kind of helper."
+      ),
+      primaryActionTitle: L10n.tr("Install System Helper"),
+      pendingActionTitle: L10n.tr("Installing System Helper"),
+      approvalSteps: []
+    )
+  }
+
+  private static func helperAwaitingApproval() -> SetupStepContent {
+    SetupStepContent(
+      iconName: "hand.raised",
+      title: L10n.tr("Allow the System Helper"),
+      message: L10n.tr(
+        "System Settings is waiting for you to allow the Fan Curve helper. Open Login "
+          + "Items & Extensions, turn on Fan Curve, then return here."
+      ),
+      primaryActionTitle: L10n.tr("Open System Settings"),
+      pendingActionTitle: L10n.tr("Opening System Settings"),
+      approvalSteps: [
+        L10n.tr("Click Open System Settings."),
+        L10n.tr("In Login Items & Extensions, turn on Fan Curve."),
+        L10n.tr("Return to Fan Curve to continue setup when the helper starts."),
+      ]
+    )
+  }
+
+  private static func agentMissing() -> SetupStepContent {
+    SetupStepContent(
+      iconName: "gearshape.2",
+      title: L10n.tr("Enable Background Control"),
+      message: L10n.tr(
+        "Fan Curve uses a background agent to keep applying your fan curve when the app "
+          + "is closed."
+      ),
+      primaryActionTitle: L10n.tr("Enable Background Control"),
+      pendingActionTitle: L10n.tr("Enabling Background Control"),
+      approvalSteps: []
+    )
+  }
+
+  private static func agentAwaitingApproval() -> SetupStepContent {
+    SetupStepContent(
+      iconName: "gearshape.2",
+      title: L10n.tr("Allow Fan Curve in Background"),
+      message: L10n.tr(
+        "Allow Fan Curve to run in the background so your curve can stay active after "
+          + "login."
+      ),
+      primaryActionTitle: L10n.tr("Open System Settings"),
+      pendingActionTitle: L10n.tr("Opening System Settings"),
+      approvalSteps: [
+        L10n.tr("Click Open System Settings."),
+        L10n.tr("In Login Items & Extensions, turn on Fan Curve."),
+        L10n.tr("Return to Fan Curve to continue setup when the background agent starts."),
+      ]
+    )
+  }
+
+  private static func ready() -> SetupStepContent {
+    SetupStepContent(
+      iconName: "checkmark.circle",
+      title: L10n.tr("All set"),
+      message: L10n.tr("Fan Curve is ready."),
+      primaryActionTitle: nil,
+      pendingActionTitle: nil,
+      approvalSteps: []
+    )
+  }
 }
 
 /// Inline onboarding shown when the helper or agent is not installed.
@@ -37,7 +158,8 @@ struct OnboardingView: View {
       VStack(spacing: OnboardingConstants.contentStackSpacing) {
         icon
         title
-        subtitle
+        message
+        approvalGuide
         action
         errorMessage
       }
@@ -50,6 +172,10 @@ struct OnboardingView: View {
     .background(Color(nsColor: .windowBackgroundColor))
   }
 
+  private var content: SetupStepContent {
+    SetupStepContent.make(step: state.step)
+  }
+
   @ViewBuilder
   private var icon: some View {
     ZStack {
@@ -58,7 +184,7 @@ struct OnboardingView: View {
         .frame(
           width: OnboardingConstants.iconCircleSize,
           height: OnboardingConstants.iconCircleSize)
-      Image(systemName: iconName)
+      Image(systemName: content.iconName)
         .font(.system(size: OnboardingConstants.iconFontSize, weight: .light))
         .foregroundStyle(Color.accentColor)
     }
@@ -66,18 +192,56 @@ struct OnboardingView: View {
 
   @ViewBuilder
   private var title: some View {
-    Text(titleText)
+    Text(content.title)
       .font(.system(.title, design: .rounded, weight: .semibold))
       .multilineTextAlignment(.center)
   }
 
   @ViewBuilder
-  private var subtitle: some View {
-    Text(subtitleText)
+  private var message: some View {
+    Text(content.message)
       .font(.body)
       .foregroundColor(.secondary)
       .multilineTextAlignment(.center)
       .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: OnboardingConstants.secondaryTextMaxWidth)
+  }
+
+  @ViewBuilder
+  private var approvalGuide: some View {
+    if !content.approvalSteps.isEmpty {
+      VStack(alignment: .leading, spacing: OnboardingConstants.approvalGuideSpacing) {
+        ForEach(Array(content.approvalSteps.enumerated()), id: \.offset) { offset, step in
+          HStack(alignment: .firstTextBaseline, spacing: OnboardingConstants.approvalStepSpacing) {
+            Text("\(offset + 1)")
+              .font(
+                .system(
+                  size: OnboardingConstants.approvalStepNumberFontSize,
+                  weight: .semibold,
+                  design: .rounded)
+              )
+              .foregroundStyle(Color.accentColor)
+              .frame(
+                width: OnboardingConstants.approvalStepNumberSize,
+                height: OnboardingConstants.approvalStepNumberSize
+              )
+              .background(
+                Circle().fill(
+                  Color.accentColor.opacity(OnboardingConstants.iconBackgroundOpacity))
+              )
+              .accessibilityHidden(true)
+
+            Text(step)
+              .font(.callout)
+              .foregroundStyle(.primary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
+      }
+      .frame(maxWidth: OnboardingConstants.secondaryTextMaxWidth, alignment: .leading)
+      .padding(.top, OnboardingConstants.approvalGuideTopPadding)
+      .accessibilityElement(children: .combine)
+    }
   }
 
   @ViewBuilder
@@ -115,65 +279,17 @@ struct OnboardingView: View {
     }
   }
 
-  // MARK: - Step-dependent content
-
-  private var iconName: String {
-    switch state.step {
-    case .checking: return "hourglass"
-    case .helperMissing: return "lock.shield"
-    case .helperAwaitingApproval: return "hand.raised"
-    case .agentMissing, .agentAwaitingApproval: return "gearshape.2"
-    case .ready: return "checkmark.circle"
-    }
-  }
-
-  private var titleText: String {
-    switch state.step {
-    case .checking: return L10n.tr("Checking installation")
-    case .helperMissing: return L10n.tr("Install the system helper")
-    case .helperAwaitingApproval: return L10n.tr("Approve the helper in System Settings")
-    case .agentMissing: return L10n.tr("Enable background fan control")
-    case .agentAwaitingApproval: return L10n.tr("Allow FanCurve at login")
-    case .ready: return L10n.tr("All set")
-    }
-  }
-
-  private var subtitleText: String {
-    switch state.step {
-    case .checking:
-      return L10n.tr("Looking for the helper and background agent.")
-    case .helperMissing:
-      return L10n.tr(
-        "FanCurve needs a privileged helper to read temperatures and control fans. "
-          + "Install the helper from this app, then approve it in System Settings if macOS asks."
-      )
-    case .helperAwaitingApproval:
-      return L10n.tr(
-        "Open Login Items in System Settings and enable the helper. "
-          + "FanCurve will continue as soon as it is running."
-      )
-    case .agentMissing:
-      return L10n.tr(
-        "Install the background agent so FanCurve can apply your curve after the app closes "
-          + "and start again at login."
-      )
-    case .agentAwaitingApproval:
-      return L10n.tr(
-        "Open Login Items in System Settings and enable FanCurve so the agent can start at login."
-      )
-    case .ready:
-      return L10n.tr("Everything is running.")
-    }
-  }
-
   private var primaryAction: (String, () -> Void)? {
     switch state.step {
     case .helperMissing:
-      return (L10n.tr("Install System Helper"), { registerHelper() })
+      return (content.primaryActionTitle ?? L10n.tr("Install System Helper"), { registerHelper() })
     case .agentMissing:
-      return (L10n.tr("Install Background Agent"), { state.registerAgent() })
+      return (
+        content.primaryActionTitle ?? L10n.tr("Enable Background Control"),
+        { state.registerAgent() }
+      )
     case .agentAwaitingApproval, .helperAwaitingApproval:
-      return (L10n.tr("Open Login Items"), { openLoginItems() })
+      return (content.primaryActionTitle ?? L10n.tr("Open System Settings"), { openLoginItems() })
     case .ready, .checking:
       return nil
     }
@@ -204,7 +320,6 @@ struct OnboardingView: View {
   }
 
   private var installingLabel: String {
-    if state.isRegisteringHelper { return L10n.tr("Installing System Helper") }
-    return L10n.tr("Installing Background Agent")
+    content.pendingActionTitle ?? L10n.tr("Working")
   }
 }
