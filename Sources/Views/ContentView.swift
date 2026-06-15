@@ -185,9 +185,11 @@ struct ContentView: View {
 
   private var showsDashboardArea: Bool {
     switch installState.step {
-    case .checking, .agentMissing, .agentAwaitingApproval:
+    case .checking, .agentMissing, .agentAwaitingApproval, .helperAwaitingApproval:
       return false
-    case .helperMissing, .helperAwaitingApproval, .ready:
+    case .helperMissing:
+      return installState.helperNeedsRepair
+    case .ready:
       return true
     }
   }
