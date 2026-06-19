@@ -16,8 +16,6 @@ jobs:
     uses: agoodkind/swift-makefile/.github/workflows/_ci.yml@main
     with:
       setup-target: install-dependencies
-      # gate (lint/audit/deadcode) runs in the reusable workflow's mandatory gate job.
-      targets: '["build","test"]'
       import-signing-cert: true
       signing-identity-name: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
       apple-team-id: H3BMXM4W7H
