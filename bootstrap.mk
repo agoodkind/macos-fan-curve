@@ -14,6 +14,7 @@ SWIFT_MK_API_REF ?= main
 # GitHub. Used only to obtain swift.mk; swift.mk fetches everything else itself.
 define _swift_mk_fetch
 	tmp_file=$$(mktemp "$(2).tmp.XXXXXX") || exit 1; \
+	trap 'rm -f "$$tmp_file"' EXIT; \
 	if [ -n "$(SWIFT_MK_DEV_DIR)" ] && [ -f "$(SWIFT_MK_DEV_DIR)/$(1)" ]; then \
 		cp "$(SWIFT_MK_DEV_DIR)/$(1)" "$$tmp_file" && [ -s "$$tmp_file" ] && mv "$$tmp_file" "$(2)"; \
 	else \
@@ -23,8 +24,7 @@ define _swift_mk_fetch
 		elif curl -fsSL --connect-timeout 5 --max-time 10 "$(SWIFT_MK_BASE_URL)/$(1)" -o "$$tmp_file" && [ -s "$$tmp_file" ]; then \
 			mv "$$tmp_file" "$(2)"; \
 		else \
-			rm -f "$$tmp_file"; \
-			printf '%s\n' "error: $(1) fetch failed. Run: gh auth login"; \
+			printf '%s\n' "error: could not fetch $(1) (tried SWIFT_MK_DEV_DIR, gh api, then $(SWIFT_MK_BASE_URL)); check your network connection, and if gh is installed run 'gh auth status'" >&2; \
 			exit 1; \
 		fi; \
 	fi
