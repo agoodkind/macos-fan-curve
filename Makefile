@@ -94,7 +94,7 @@ override SWIFT_DEADCODE_BUILD_CMD = \
 	"$(SWIFT_MK_BIN)" toolchain generate --generator $(SWIFT_XCODE_GENERATOR) && \
 	"$(SWIFT_MK_BIN)" toolchain build-for-testing \
 		--generator $(SWIFT_XCODE_GENERATOR) \
-		$(SWIFT_XCODE_CONTAINER_ARG) \
+		--workspace $(SWIFT_XCODE_WORKSPACE) \
 		--scheme $(SWIFT_XCODE_SCHEME) \
 		--configuration $(SWIFT_XCODE_COVERAGE_CONFIGURATION) \
 		--derived-data-path $(SWIFT_MK_DERIVED_DATA) \
