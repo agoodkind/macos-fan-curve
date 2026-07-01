@@ -82,10 +82,8 @@ FANCURVE_GENERATOR := tuist
 SWIFT_XCODE_GENERATOR := $(FANCURVE_GENERATOR)
 SWIFT_XCODE_WORKSPACE := FanCurveApp.xcworkspace
 SWIFT_XCODE_SCHEME := FanCurve
-# The engine coverage build runs at Debug (matching the old bespoke coverage) and
-# needs the project's build settings to compile, so forward both to it.
+# The engine coverage build runs at Debug; the engine derives and owns the rest.
 SWIFT_XCODE_COVERAGE_CONFIGURATION := Debug
-SWIFT_XCODE_BUILD_SETTINGS := $(XCODE_BUILD_SETTINGS)
 
 include bootstrap.mk
 
