@@ -84,6 +84,10 @@ SWIFT_XCODE_WORKSPACE := FanCurveApp.xcworkspace
 SWIFT_XCODE_SCHEME := FanCurve
 # The engine coverage build runs at Debug; the engine derives and owns the rest.
 SWIFT_XCODE_COVERAGE_CONFIGURATION := Debug
+# The tuist Generate Config build phase needs these project build settings in the
+# xcodebuild environment; the engine shell-parses them so quoted values with spaces
+# survive.
+SWIFT_XCODE_BUILD_SETTINGS := $(XCODE_BUILD_SETTINGS)
 
 include bootstrap.mk
 
