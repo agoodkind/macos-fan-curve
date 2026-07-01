@@ -80,8 +80,28 @@ SWIFTCHECK_EXTRA_TARGETS := $(SWIFT_FORMAT_FILES)
 # Generator names are data, bound to variables so no recipe line names a build
 # tool directly; every build/test/analyze routes through the swift-mk toolchain.
 FANCURVE_GENERATOR := tuist
+SWIFT_XCODE_GENERATOR := $(FANCURVE_GENERATOR)
+SWIFT_XCODE_WORKSPACE := FanCurveApp.xcworkspace
+SWIFT_XCODE_SCHEME := FanCurve
 
 include bootstrap.mk
+
+# Build-for-testing indexes the app and test targets, keeping deadcode coverage
+# complete for SWIFT_FORMAT_FILES entries under both Sources and Tests.
+override SWIFT_DEADCODE_BUILD_CMD = \
+	rm -rf "$(SWIFT_MK_DERIVED_DATA)" && \
+	"$(SWIFT_MK_BIN)" toolchain install --generator $(SWIFT_XCODE_GENERATOR) && \
+	"$(SWIFT_MK_BIN)" toolchain generate --generator $(SWIFT_XCODE_GENERATOR) && \
+	"$(SWIFT_MK_BIN)" toolchain build-for-testing \
+		--generator $(SWIFT_XCODE_GENERATOR) \
+		--workspace $(SWIFT_XCODE_WORKSPACE) \
+		--scheme $(SWIFT_XCODE_SCHEME) \
+		--configuration $(SWIFT_XCODE_COVERAGE_CONFIGURATION) \
+		--derived-data-path $(SWIFT_MK_DERIVED_DATA) \
+		COMPILER_INDEX_STORE_ENABLE=YES \
+		ONLY_ACTIVE_ARCH=YES \
+		$(XCODE_BUILD_SETTINGS) \
+		$(SWIFT_MK_XCODEBUILD_NO_CACHE_ARGS)
 
 .PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates sparkle-appcast appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
 
