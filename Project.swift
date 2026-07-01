@@ -57,6 +57,7 @@ let projectSettings = Settings.settings(
     "MACOSX_DEPLOYMENT_TARGET": "13.0",
     "MARKETING_VERSION": "0.1.0",
     "CURRENT_PROJECT_VERSION": "1",
+    "ARCHS": "arm64",
     "APP_DISPLAY_NAME": .string(appDisplayName),
     "HELPER_DISPLAY_NAME": .string(helperDisplayName),
     "AGENT_DISPLAY_NAME": .string(agentDisplayName),
