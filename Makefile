@@ -68,7 +68,6 @@ SWIFT_MK_RELEASE_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 release-assets && cp
 # dead-code gate reads from there. A clean build before the scan keeps the index
 # free of stale units from earlier incremental builds.
 SWIFT_MK_DERIVED_DATA := $(BUILD_DIR)
-SWIFT_DEADCODE_BUILD_CMD := rm -rf "$(BUILD_DIR)" && $(MAKE) SWIFT_MK_SKIP_FETCH=1 CONFIGURATION=Debug app-local
 SWIFT_TEST_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 test-local
 SWIFT_GENERATE_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 generate-project
 SWIFT_CLEAN_CMD := rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) FanCurveApp.xcworkspace FanCurveApp.xcodeproj
@@ -83,25 +82,12 @@ FANCURVE_GENERATOR := tuist
 SWIFT_XCODE_GENERATOR := $(FANCURVE_GENERATOR)
 SWIFT_XCODE_WORKSPACE := FanCurveApp.xcworkspace
 SWIFT_XCODE_SCHEME := FanCurve
+# The engine coverage build runs at Debug (matching the old bespoke coverage) and
+# needs the project's build settings to compile, so forward both to it.
+SWIFT_XCODE_COVERAGE_CONFIGURATION := Debug
+SWIFT_XCODE_BUILD_SETTINGS := $(XCODE_BUILD_SETTINGS)
 
 include bootstrap.mk
-
-# Build-for-testing indexes the app and test targets, keeping deadcode coverage
-# complete for SWIFT_FORMAT_FILES entries under both Sources and Tests.
-override SWIFT_DEADCODE_BUILD_CMD = \
-	rm -rf "$(SWIFT_MK_DERIVED_DATA)" && \
-	"$(SWIFT_MK_BIN)" toolchain install --generator $(SWIFT_XCODE_GENERATOR) && \
-	"$(SWIFT_MK_BIN)" toolchain generate --generator $(SWIFT_XCODE_GENERATOR) && \
-	"$(SWIFT_MK_BIN)" toolchain build-for-testing \
-		--generator $(SWIFT_XCODE_GENERATOR) \
-		--workspace $(SWIFT_XCODE_WORKSPACE) \
-		--scheme $(SWIFT_XCODE_SCHEME) \
-		--configuration $(SWIFT_XCODE_COVERAGE_CONFIGURATION) \
-		--derived-data-path $(SWIFT_MK_DERIVED_DATA) \
-		COMPILER_INDEX_STORE_ENABLE=YES \
-		ONLY_ACTIVE_ARCH=YES \
-		$(XCODE_BUILD_SETTINGS) \
-		$(SWIFT_MK_XCODEBUILD_NO_CACHE_ARGS)
 
 .PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates sparkle-appcast appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
 
@@ -117,6 +103,7 @@ generate-config-artifacts:
 	@TARGET_NAME="$(AGENT_EXECUTABLE_NAME)" $(GENERATE_CONFIG_ENV) ./Scripts/GenerateConfig.swift
 
 generate-project: swift-mk-bin generate-config-artifacts
+	"$(SWIFT_MK_BIN)" toolchain install --generator $(FANCURVE_GENERATOR)
 	"$(SWIFT_MK_BIN)" toolchain generate --generator $(FANCURVE_GENERATOR)
 
 lint-deadcode: generate-project
