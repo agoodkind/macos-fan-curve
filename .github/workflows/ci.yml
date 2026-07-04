@@ -4,6 +4,12 @@ on:
   pull_request:
     branches:
       - main
+  # Build on merges to main so the branch-scoped compile cache is populated on the
+  # default branch. A pull request reads only its own branch's cache and main's, so
+  # without a main build every pull request starts from a cold cache.
+  push:
+    branches:
+      - main
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
