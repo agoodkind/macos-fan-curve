@@ -25,6 +25,10 @@ jobs:
   swift:
     uses: agoodkind/swift-makefile/.github/workflows/_ci.yml@main
     with:
+      # Pool-routing validation probe: route this run's heavy gates to the M1
+      # pool so we can measure a consumer's queued time on the pool vs hosted.
+      # This mirrors the default that _ci.yml carries after swift-makefile #75.
+      local-pool-capacity-url: https://darwin-gh-broker.silver-flare.com/capacity
       setup-target: install-dependencies
       import-signing-cert: true
       signing-identity-name: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
