@@ -51,8 +51,14 @@ do {
         try fail("run-audit failed: make run must not reference '\(token)'")
     }
 
-    guard body.contains("CONFIGURATION=Debug"), body.contains("app-local") else {
-        try fail("run-audit failed: make run must build the Debug configuration via app-local")
+    guard body.contains("CONFIGURATION=Debug build") else {
+        try fail(
+            "run-audit failed: make run must build the Debug configuration through the gated build target"
+        )
+    }
+
+    guard !body.contains("CONFIGURATION=Debug app-local") else {
+        try fail("run-audit failed: make run must not compile through app-local directly")
     }
 
     guard body.contains(#"cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)""#) else {
