@@ -265,6 +265,7 @@ launch-agent-audit: app
 	@Scripts/AuditLaunchAgent.swift "$(APP_DEST)" "$(AGENT_PLIST_NAME)" "$(AGENT_BUNDLE_PROGRAM)" "$(AGENT_LABEL)"
 
 run-audit:
+	@Scripts/AuditMakeRunTests.swift Scripts/AuditMakeRun.swift
 	@Scripts/AuditMakeRun.swift Makefile
 
 settings-layout-audit:

@@ -10,6 +10,123 @@ func fail(_ message: String) throws -> Never {
     throw Failure(description: message)
 }
 
+func firstShellCommandTokens(_ command: Substring) -> [String] {
+    let doubleQuoteEscapableCharacters: Set<Character> = ["$", "`", "\"", "\\", "\n"]
+    var tokens: [String] = []
+    var currentToken = ""
+    var isEscaped = false
+    var isInDoubleQuotes = false
+    var isInSingleQuotes = false
+
+    func appendCurrentToken() {
+        guard !currentToken.isEmpty else {
+            return
+        }
+        tokens.append(currentToken)
+        currentToken = ""
+    }
+
+    for character in command {
+        if isEscaped {
+            if isInDoubleQuotes, !doubleQuoteEscapableCharacters.contains(character) {
+                currentToken.append("\\")
+            }
+            if character != "\n" {
+                currentToken.append(character)
+            }
+            isEscaped = false
+            continue
+        }
+        if character == "\\", !isInSingleQuotes {
+            isEscaped = true
+            continue
+        }
+        if character == "'", !isInDoubleQuotes {
+            isInSingleQuotes.toggle()
+            continue
+        }
+        if character == "\"", !isInSingleQuotes {
+            isInDoubleQuotes.toggle()
+            continue
+        }
+        if !isInSingleQuotes, !isInDoubleQuotes {
+            if ";&|".contains(character) {
+                appendCurrentToken()
+                tokens.append("<control-operator>")
+                break
+            }
+            if character == "#", currentToken.isEmpty {
+                break
+            }
+            if character.isWhitespace {
+                appendCurrentToken()
+                continue
+            }
+        }
+        currentToken.append(character)
+    }
+
+    appendCurrentToken()
+    return tokens
+}
+
+func hasTrailingLineContinuation(_ line: String) -> Bool {
+    var backslashCount = 0
+    for character in line.reversed() {
+        if character != "\\" {
+            break
+        }
+        backslashCount += 1
+    }
+    return backslashCount.isMultiple(of: 2) == false
+}
+
+func logicalRecipeCommands(from lines: [String]) -> [String] {
+    var commands: [String] = []
+    var continuedCommand: String?
+
+    for line in lines {
+        if var command = continuedCommand {
+            let continuation = line.first == "\t" ? line.dropFirst() : line[...]
+            command += "\n" + continuation
+            continuedCommand = command
+        } else if line.first == "\t" {
+            continuedCommand = line
+        } else {
+            continue
+        }
+
+        guard let command = continuedCommand else {
+            continue
+        }
+        if hasTrailingLineContinuation(command) {
+            continuedCommand = command
+            continue
+        }
+
+        commands.append(command)
+        continuedCommand = nil
+    }
+
+    if let continuedCommand {
+        commands.append(continuedCommand)
+    }
+    return commands
+}
+
+func recipeCommandTokens(from recipeLine: String) -> [String]? {
+    guard recipeLine.first == "\t" else {
+        return nil
+    }
+
+    var command = recipeLine.drop(while: { $0.isWhitespace })
+    while let first = command.first, "@-+".contains(first) {
+        command = command.dropFirst()
+    }
+
+    return firstShellCommandTokens(command)
+}
+
 do {
     let args = CommandLine.arguments.dropFirst()
     guard args.count == 1 else {
@@ -51,14 +168,23 @@ do {
         try fail("run-audit failed: make run must not reference '\(token)'")
     }
 
-    guard body.contains("CONFIGURATION=Debug build") else {
-        try fail(
-            "run-audit failed: make run must build the Debug configuration through the gated build target"
-        )
+    let recipeCommands = logicalRecipeCommands(from: runBody)
+    let recipeTokenLists = recipeCommands.compactMap(recipeCommandTokens).filter { !$0.isEmpty }
+    guard !recipeTokenLists.contains(where: { $0.contains("app-local") }) else {
+        try fail("run-audit failed: make run must not compile through app-local directly")
     }
 
-    guard !body.contains("CONFIGURATION=Debug app-local") else {
-        try fail("run-audit failed: make run must not compile through app-local directly")
+    let requiredRecipeTokenLists = [
+        ["$(MAKE)", "CONFIGURATION=Debug", "build"],
+        ["rm", "-rf", "$(INSTALL_APP_DEST)"],
+        ["cp", "-R", "$(APP_DEST)", "$(INSTALL_APP_DEST)"],
+        ["Scripts/TerminateAppInstances.swift", "$(APP_BUNDLE_ID)"],
+        ["open", "$(INSTALL_APP_DEST)"],
+    ]
+    guard recipeTokenLists == requiredRecipeTokenLists else {
+        try fail(
+            "run-audit failed: make run must preserve the canonical gated build and deployment recipe"
+        )
     }
 
     guard body.contains(#"cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)""#) else {
