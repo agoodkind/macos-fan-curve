@@ -103,7 +103,13 @@ do {
         for (token, value) in replacements {
             contents = contents.replacingOccurrences(of: token, with: value)
         }
-        try contents.write(to: outputURL, atomically: true, encoding: .utf8)
+        // Write only when the rendered content differs. An atomic write replaces the
+        // file with a new mtime even for identical bytes, and this output sits in a
+        // compiled source tree, so an unconditional write would force a recompile on
+        // every generate.
+        if FileManager.default.contents(atPath: outputURL.path) != Data(contents.utf8) {
+            try contents.write(to: outputURL, atomically: true, encoding: .utf8)
+        }
     }
 } catch let failure as Failure {
     FileHandle.standardError.write(Data((failure.description + "\n").utf8))
