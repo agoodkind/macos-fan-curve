@@ -348,11 +348,6 @@ extension InstallationState {
   }
 
   @available(macOS 13.0, *)
-  nonisolated private static func describeHelperStatus(_ status: SMAppService.Status) -> String {
-    describeAgentStatus(status)
-  }
-
-  @available(macOS 13.0, *)
   nonisolated static func currentAgentStatusRawValue() async -> Int {
     await MainActor.run {
       agentService().status.rawValue
@@ -394,27 +389,12 @@ extension InstallationState {
 
   @available(macOS 13.0, *)
   nonisolated static func registerHelperService() async -> HelperServiceMutationResult {
-    await MainActor.run {
-      let service = helperService()
-      let statusBefore = describeHelperStatus(service.status)
-      do {
-        try service.register()
-        return HelperServiceMutationResult(
-          statusBefore: statusBefore,
-          statusAfterRegister: describeHelperStatus(service.status),
-          errorDescription: nil
-        )
-      } catch {
-        log.error(
-          "helper.register.service.failed status=\(statusBefore, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-ui"
-        )
-        return HelperServiceMutationResult(
-          statusBefore: statusBefore,
-          statusAfterRegister: nil,
-          errorDescription: error.localizedDescription
-        )
-      }
-    }
+    log.notice("helper.register.started owner=app")
+    let result = await HelperServiceRegistration.register(service: helperService())
+    log.notice(
+      "helper.register.finished statusBefore=\(result.statusBefore, privacy: .public) statusAfter=\(result.statusAfterRegister ?? "none", privacy: .public) success=\(result.errorDescription == nil, privacy: .public)"
+    )
+    return result
   }
 
   @available(macOS 13.0, *)

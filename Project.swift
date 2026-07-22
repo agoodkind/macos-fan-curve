@@ -93,6 +93,8 @@ let modelTestSources: SourceFilesList = [
   "Sources/Common/RuntimeState.swift",
   "Sources/Common/SetupActionAffordance+Codable.swift",
   "Sources/Models/TemperatureUnit.swift",
+  "Sources/Models/AgentServiceMutationResult.swift",
+  "Sources/Models/HelperServiceRegistration.swift",
   "Sources/Models/TemperatureAxisScale.swift",
   "Sources/Models/SensorState.swift",
   "Sources/Models/CurveColumns.swift",
