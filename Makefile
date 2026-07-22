@@ -144,7 +144,7 @@ app: build
 # state-simulation menu and the FANCURVE_DEV_SCENARIO flag are compiled only into Debug
 # builds, so this is also the simulated-state path.
 run:
-	$(MAKE) SWIFT_MK_SKIP_FETCH=1 CONFIGURATION=Debug app-local
+	$(MAKE) CONFIGURATION=Debug build
 	@rm -rf "$(INSTALL_APP_DEST)"
 	@cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)"
 	@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
@@ -265,6 +265,7 @@ launch-agent-audit: app
 	@Scripts/AuditLaunchAgent.swift "$(APP_DEST)" "$(AGENT_PLIST_NAME)" "$(AGENT_BUNDLE_PROGRAM)" "$(AGENT_LABEL)"
 
 run-audit:
+	@Scripts/AuditMakeRunTests.swift Scripts/AuditMakeRun.swift
 	@Scripts/AuditMakeRun.swift Makefile
 
 settings-layout-audit:
