@@ -61,7 +61,10 @@ do {
     for entry in signingPlan where fileExists(atPath: entry.path) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: swiftMkPath)
-        process.arguments = ["codesign-run", "--mode", "sparkle", entry.path]
+        process.arguments = [
+            "codesign-run", "--mode", "binary",
+            "--preserve-metadata", "identifier,entitlements,flags", entry.path,
+        ]
         var environment = ProcessInfo.processInfo.environment
         environment["SWIFT_MK_SIGN_IDENTITY"] = identity
         process.environment = environment
