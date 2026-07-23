@@ -21,8 +21,6 @@ APP_BUNDLE_ID ?= $(BUNDLE_ID_PREFIX).fancurve
 AGENT_BUNDLE_ID ?= $(BUNDLE_ID_PREFIX).fancurveagent
 SHARED_SUITE_ID ?= $(BUNDLE_ID_PREFIX).fancurve.shared
 DMG_NAME = $(APP_NAME)-$(CONFIGURATION)
-MARKETING_VERSION ?= 0.1.0
-CURRENT_PROJECT_VERSION ?= 1
 SPARKLE_FEED_URL ?= https://goodkind.io/fancurve/appcast.xml
 # Sparkle's Ed25519 PUBLIC key, read from a committed file so the make value
 # stays byte-exact: a whitespace-dirtied SUPublicEDKey reaches Info.plist and
@@ -62,7 +60,7 @@ SWIFT_MK_OWN_RUN := 1
 SWIFT_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 app-local
 # Release artifacts for the shared _release.yml pipeline: the signed DMG into
 # dist/. MARKETING_VERSION/CURRENT_PROJECT_VERSION/RELEASE_TAG arrive as env
-# from the workflow's release-meta job; the ?= declarations above pick them up.
+# from the workflow's release-meta job.
 SWIFT_MK_RELEASE_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 release-assets && cp "$(RELEASE_DMG_PATH)" dist/
 # The project-build recipe writes its index store under BUILD_DIR, so the
 # dead-code gate reads from there. A clean build before the scan keeps the index
@@ -124,9 +122,7 @@ project-build: generate-config-artifacts icons generate-project
 		--configuration $(CONFIGURATION) \
 		--derived-data-path $(BUILD_DIR) \
 		$(XCODE_BUILD_SETTINGS) \
-		$(SWIFT_MK_XCODEBUILD_ARGS) \
-		MARKETING_VERSION="$(MARKETING_VERSION)" \
-		CURRENT_PROJECT_VERSION="$(CURRENT_PROJECT_VERSION)"
+		$(SWIFT_MK_XCODEBUILD_ARGS)
 
 app-local: project-build
 	@mkdir -p $(PRODUCTS_DIR)
