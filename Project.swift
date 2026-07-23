@@ -55,8 +55,6 @@ let projectSettings = Settings.settings(
   base: [
     "SWIFT_VERSION": "6.0",
     "MACOSX_DEPLOYMENT_TARGET": "13.0",
-    "MARKETING_VERSION": "0.1.0",
-    "CURRENT_PROJECT_VERSION": "1",
     "ARCHS": "arm64",
     "APP_DISPLAY_NAME": .string(appDisplayName),
     "HELPER_DISPLAY_NAME": .string(helperDisplayName),
