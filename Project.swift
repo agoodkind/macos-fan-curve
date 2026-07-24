@@ -319,3 +319,5 @@ let project = Project(
     ),
   ]
 )
+
+// Validation: confirm the collapsed swift / Verify gate is green on this consumer.
