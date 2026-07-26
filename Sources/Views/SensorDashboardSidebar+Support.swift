@@ -285,6 +285,7 @@ extension SensorDashboardSidebar {
       }
     }
     .help(boostHelp)
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.boost)
   }
 
   private var boostButtonLabel: String {

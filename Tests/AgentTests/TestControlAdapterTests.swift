@@ -415,6 +415,10 @@ extension TestControlAdapterTests {
     backgroundAgentStatus: TestManagedServiceStatus = .enabled,
     serviceOperation: TestOperationDirective = .succeed,
     hardwareOperation: TestOperationDirective = .succeed,
+    runtimeFlags: TestRuntimeFlags = TestRuntimeFlags(
+      helperReachable: true,
+      telemetryStale: false
+    ),
     xpcFault: TestXPCFault = .noFault
   ) -> TestControlState {
     TestControlState(
@@ -459,10 +463,7 @@ extension TestControlAdapterTests {
         ],
         cpuLoadPercent: 42,
         gpuLoadPercent: 18,
-        runtimeFlags: TestRuntimeFlags(
-          helperReachable: true,
-          telemetryStale: false
-        ),
+        runtimeFlags: runtimeFlags,
         nextOperation: hardwareOperation
       ),
       xpcFault: xpcFault

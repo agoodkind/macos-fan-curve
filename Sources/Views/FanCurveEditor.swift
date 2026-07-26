@@ -193,6 +193,7 @@ struct FanCurveEditor: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .fancurveGlassCard(cornerRadius: FanCurveEditorConstants.cardCornerRadius)
     .clipShape(RoundedRectangle(cornerRadius: FanCurveEditorConstants.cardCornerRadius))
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Curve.editor)
     .onAppear { activePhase = targetActivePhase }
     .onChange(of: model.isActive) { _ in
       withAnimation(
@@ -253,6 +254,7 @@ struct FanCurveEditor: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .padding(FanCurveEditorConstants.degradedPadding)
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.degraded)
   }
 
   func handleHoverPhase(_ phase: HoverPhase, size: CGSize) {

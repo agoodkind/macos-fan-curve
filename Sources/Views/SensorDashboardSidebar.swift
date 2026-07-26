@@ -134,6 +134,7 @@ struct SensorDashboardSidebar: View {
         )
       }
     }
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.temperature)
     .task(id: pendingActionStartDate) {
       guard let pendingAction else { return }
       let remainingNanoseconds = pendingActionMinimumRemainingNanoseconds()
@@ -219,6 +220,7 @@ struct SensorDashboardSidebar: View {
         tint: Color.accentColor,
         assist: assistStates.first { $0.kind == .cpu }
       )
+      .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.cpuLoad)
       usageBlock(
         label: "GPU",
         icon: "memorychip",
@@ -226,6 +228,7 @@ struct SensorDashboardSidebar: View {
         tint: Color.accentColor.opacity(SensorDashboardSidebarConstants.gpuTintOpacity),
         assist: assistStates.first { $0.kind == .gpu }
       )
+      .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.gpuLoad)
     }
   }
 
@@ -254,6 +257,9 @@ struct SensorDashboardSidebar: View {
                 Color.primary.opacity(
                   SensorDashboardSidebarConstants.fanRowStrokeOpacity),
                 lineWidth: SensorDashboardSidebarConstants.fanRowStrokeLineWidth)
+            )
+            .accessibilityIdentifier(
+              AppAccessibilityIdentifier.Dashboard.fanRow(fan.id)
             )
         }
       }
@@ -306,6 +312,7 @@ struct SensorDashboardSidebar: View {
               .tint(Color.accentColor)
               .disabled(boost || pendingAction != nil)
               .help(fanControlToggleHelp)
+              .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.fanControl)
           }
         }
       }

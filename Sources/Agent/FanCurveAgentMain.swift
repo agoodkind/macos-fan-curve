@@ -31,6 +31,8 @@ enum FanCurveAgentMain {
         HelperServiceManagementAdapter()
       }
       let controller = AgentController(fanHardware: fanHardware)
+      controller.runtimeHealthOverrideProvider =
+        AgentTestControlAdapters.runtimeHealthOverrideProvider(mode: runtimeMode)
       let appXPCService = FanCurveAgentXPCService(
         controller: controller,
         helperService: helperService,

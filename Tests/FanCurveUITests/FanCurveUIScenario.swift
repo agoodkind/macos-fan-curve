@@ -1,0 +1,36 @@
+//
+//  FanCurveUIScenario.swift
+//  FanCurveUITests
+//
+//  Created by Codex <noreply@openai.com> on 2026-07-26.
+//  Copyright © 2026, all rights reserved.
+//
+
+import XCTest
+
+@MainActor
+enum FanCurveUIScenario {
+  static func run(
+    in testCase: XCTestCase,
+    _ scenario: (FanCurveUITestDriver) throws -> Void
+  ) throws {
+    testCase.continueAfterFailure = false
+    let driver = try FanCurveUITestDriver(testCase: testCase)
+    defer {
+      do {
+        try driver.terminate()
+      } catch {
+        fanCurveUITestLog.notice(
+          "ui_test.cleanup.termination_failed error=\(error.localizedDescription, privacy: .public) recovery=continue-teardown"
+        )
+      }
+      testCase.continueAfterFailure = true
+    }
+    do {
+      try scenario(driver)
+    } catch {
+      driver.attachFailureArtifacts(name: testCase.name)
+      throw error
+    }
+  }
+}

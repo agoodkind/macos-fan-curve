@@ -84,6 +84,7 @@ struct ContentView: View {
       maxHeight: .infinity
     )
     .background(Color(nsColor: .windowBackgroundColor))
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Application.mainWindow)
     .overlay(alignment: .topTrailing) {
       #if DEBUG
         if FrameProfiler.isEnabledByLaunchConfiguration {
@@ -145,6 +146,7 @@ struct ContentView: View {
       Image(systemName: "gearshape")
     }
     .help("Settings")
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Application.settingsButton)
   }
 
   private var dashboardContent: some View {
@@ -249,6 +251,7 @@ private struct LiveDashboardContent: View {
       .frame(width: sidebarWidth)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.root)
   }
 
   private var presentation: DashboardPresentationState {

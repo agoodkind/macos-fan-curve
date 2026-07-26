@@ -112,6 +112,31 @@
   struct TestRuntimeFlags: Codable, Equatable, Sendable {
     let helperReachable: Bool
     let telemetryStale: Bool
+    let ownershipPreempted: Bool
+
+    init(
+      helperReachable: Bool,
+      telemetryStale: Bool,
+      ownershipPreempted: Bool = false
+    ) {
+      self.helperReachable = helperReachable
+      self.telemetryStale = telemetryStale
+      self.ownershipPreempted = ownershipPreempted
+    }
+
+    init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      helperReachable = try container.decode(Bool.self, forKey: .helperReachable)
+      telemetryStale = try container.decode(Bool.self, forKey: .telemetryStale)
+      ownershipPreempted =
+        try container.decodeIfPresent(Bool.self, forKey: .ownershipPreempted) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+      case helperReachable
+      case telemetryStale
+      case ownershipPreempted
+    }
   }
 
   struct TestHardwareState: Codable, Equatable, Sendable {

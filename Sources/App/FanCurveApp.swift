@@ -6,6 +6,7 @@
 //  Copyright © 2026, all rights reserved.
 //
 
+import AppKit
 import AppLog
 import SwiftUI
 
@@ -76,9 +77,11 @@ struct FanCurveApp: App {
     .commands {
       CommandGroup(replacing: .appSettings) {
         Button("Settings...") {
+          log.info("app.settings.open_requested source=menu")
           openWindow(id: "settings")
         }
         .keyboardShortcut(",")
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Application.settingsCommand)
       }
 
       // Replace the default "About Fan Curve" menu command with one
@@ -86,8 +89,19 @@ struct FanCurveApp: App {
       // in both the menu and Settings > About.
       CommandGroup(replacing: .appInfo) {
         Button("About Fan Curve") {
+          log.info("app.about.open_requested source=menu")
           openWindow(id: "about")
         }
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Application.aboutCommand)
+      }
+
+      CommandGroup(replacing: .appTermination) {
+        Button("Quit Fan Curve") {
+          log.notice("app.quit.requested source=menu")
+          NSApplication.shared.terminate(nil)
+        }
+        .keyboardShortcut("q")
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Application.quitCommand)
       }
 
       CommandGroup(after: .appInfo) {
@@ -109,6 +123,7 @@ struct FanCurveApp: App {
           minHeight: WindowConstants.aboutWindowMinHeight,
           idealHeight: WindowConstants.aboutWindowIdealHeight
         )
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Application.aboutWindow)
     }
     .defaultSize(
       width: WindowConstants.aboutWindowIdealWidth,
@@ -121,6 +136,7 @@ struct FanCurveApp: App {
         .environmentObject(agentClient)
         .environmentObject(curveModel)
         .environmentObject(appUpdater)
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Application.settingsWindow)
     }
     .defaultSize(
       width: WindowConstants.settingsWindowWidth, height: WindowConstants.settingsWindowHeight

@@ -43,6 +43,7 @@ struct AboutContentView: View {
     .formStyle(.grouped)
     .frame(maxWidth: AboutConstants.formMaxWidth)
     .frame(maxWidth: .infinity, alignment: .center)
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Application.aboutWindow)
   }
 
   private var heroSection: some View {

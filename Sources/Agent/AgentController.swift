@@ -35,6 +35,13 @@ actor TickCoordinator {
   }
 }
 
+// MARK: - AgentRuntimeHealthOverride
+
+struct AgentRuntimeHealthOverride: Sendable, Equatable {
+  let now: Date
+  let ownershipPreempted: Bool
+}
+
 /// Runs the curve application loop in the background agent process.
 /// Reads curve config from the shared UserDefaults suite every tick and
 /// applies it via the privileged helper over XPC.
@@ -68,6 +75,7 @@ final class AgentController: @unchecked Sendable {
   var conditionedDemandTemperatureVelocityC: Double = 0
   var lastDemandConditioningTime: Date?
   var runtimeSetupProvider: (@Sendable (AgentSnapshot?) -> RuntimeSetupInputs)?
+  var runtimeHealthOverrideProvider: (@Sendable (Date?) -> AgentRuntimeHealthOverride?)?
   var runtimeStateDidChange: (@Sendable (RuntimeState) -> Void)?
   let acousticRampGovernor = AcousticRampGovernor()
 
@@ -187,9 +195,12 @@ final class AgentController: @unchecked Sendable {
   }
 
   func currentRuntimeStateForXPC() -> RuntimeState {
-    RuntimeState.fromSharedDefaultsSnapshot(
+    let healthOverride = runtimeHealthOverrideProvider?(lastPublishedSnapshot?.timestamp)
+    return RuntimeState.fromSharedDefaultsSnapshot(
       lastPublishedSnapshot,
-      setup: runtimeSetupProvider?(lastPublishedSnapshot) ?? .ready
+      setup: runtimeSetupProvider?(lastPublishedSnapshot) ?? .ready,
+      now: healthOverride?.now ?? Date(),
+      ownershipPreempted: healthOverride?.ownershipPreempted ?? false
     )
   }
 

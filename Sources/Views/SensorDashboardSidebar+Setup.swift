@@ -31,6 +31,7 @@ extension SensorDashboardSidebar {
           action: action
         )
         .help(setupHelp)
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Setup.sidebarAction)
       } else if installState.step == .checking {
         HStack(spacing: SensorDashboardSidebarSetupConstants.checkingStatusRowSpacing) {
           ProgressView()

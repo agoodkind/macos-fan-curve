@@ -38,4 +38,12 @@ final class SetupStateTests: XCTestCase {
 
     expect(setupState) == .backgroundAgentRequired(action: .enableBackgroundAgent)
   }
+
+  func testStaleHealthRejectsFreshTelemetryPresentation() {
+    expect(RuntimeHealth.stale.permitsFreshTelemetry) == false
+  }
+
+  func testOwnershipPreemptionKeepsTelemetryCurrent() {
+    expect(RuntimeHealth.ownershipPreempted.permitsFreshTelemetry) == true
+  }
 }
