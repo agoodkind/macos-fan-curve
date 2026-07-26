@@ -25,6 +25,7 @@ enum ControlledXPCTestValues {
   static let commandedFanRPM: Float = 4_500
   static let commandPriority = 0
   static let initialConnectionCount = 1
+  static let replacementConnectionCount = 2
   static let registeredClientCount = 2
   static let eventCountIncrement = 1
   static let leftActualRPM: Float = 2_100
@@ -147,9 +148,12 @@ final class ControlledXPCHarness {
   private let controller: AgentController
   private let helperService: any HelperServiceManaging
   private let evidenceReader: XPCFaultEvidenceReader
+  let recordsProxyErrorHandlers: Bool
   private let connectionCounter = XPCConnectionCounter()
   private let connectionRegistry = XPCConnectionRegistry()
   private let faultObservations = XPCFaultObservations()
+  let requestDispatchController = XPCRequestDispatchController()
+  let proxyErrorHandlerRecorder = XPCProxyErrorHandlerRecorder()
   private lazy var connectionFactory = XPCConnectionFactory(
     listener: listener,
     counter: connectionCounter,
@@ -175,7 +179,8 @@ final class ControlledXPCHarness {
 
   init(
     backgroundAgentStatus: TestManagedServiceStatus = .enabled,
-    fault: TestXPCFault = .noFault
+    fault: TestXPCFault = .noFault,
+    recordsProxyErrorHandlers: Bool = false
   ) throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent(
@@ -192,6 +197,7 @@ final class ControlledXPCHarness {
       )
     )
     self.evidenceReader = XPCFaultEvidenceReader(store: store)
+    self.recordsProxyErrorHandlers = recordsProxyErrorHandlers
     let activation = TestControlActivation.controlled(
       sessionID: sessionID,
       directory: directory
@@ -256,7 +262,9 @@ final class ControlledXPCHarness {
       serviceName: "anonymous-test-service",
       connectionFactory: { self.connectionFactory.makeConnection() },
       control: appControl,
-      reconnectDelay: ControlledXPCTestValues.reconnectDelay
+      reconnectDelay: ControlledXPCTestValues.reconnectDelay,
+      requestDispatcher: requestDispatchController,
+      remoteProxyProvider: remoteProxyProvider
     )
   }
 }
@@ -354,6 +362,20 @@ extension ControlledXPCHarness {
 
   func invalidateMostRecentClientConnection() {
     connectionRegistry.invalidateMostRecent()
+  }
+
+  func waitForPendingRequestDispatch() async throws {
+    try await waitForCondition("pending XPC request dispatch") {
+      self.requestDispatchController.pendingOperationCount == 1
+    }
+  }
+
+  func waitForReplacementConnection() async throws {
+    try await waitForCondition("replacement XPC connection") {
+      self.connectionFactoryCount
+        >= ControlledXPCTestValues.replacementConnectionCount
+        && self.client.connectionState == .connected
+    }
   }
 
   func publishRuntimeState() {

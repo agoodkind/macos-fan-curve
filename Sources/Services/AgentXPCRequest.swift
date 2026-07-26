@@ -31,6 +31,43 @@ enum AgentXPCRequest: Sendable {
   }
 }
 
+// MARK: - AgentXPCRequestDispatching
+
+@MainActor
+protocol AgentXPCRequestDispatching {
+  func dispatch(_ operation: @escaping @MainActor () -> Void)
+}
+
+// MARK: - ImmediateAgentXPCRequestDispatcher
+
+struct ImmediateAgentXPCRequestDispatcher: AgentXPCRequestDispatching {
+  func dispatch(_ operation: @MainActor () -> Void) {
+    operation()
+  }
+}
+
+// MARK: - AgentXPCRemoteProxyProviding
+
+@MainActor
+protocol AgentXPCRemoteProxyProviding {
+  func remoteProxy(
+    for connection: NSXPCConnection,
+    errorHandler: @escaping @Sendable (Error) -> Void
+  ) -> FanCurveAgentXPCProtocol?
+}
+
+// MARK: - NSXPCRemoteProxyProvider
+
+struct NSXPCRemoteProxyProvider: AgentXPCRemoteProxyProviding {
+  func remoteProxy(
+    for connection: NSXPCConnection,
+    errorHandler: @escaping @Sendable (Error) -> Void
+  ) -> FanCurveAgentXPCProtocol? {
+    connection.remoteObjectProxyWithErrorHandler(errorHandler)
+      as? FanCurveAgentXPCProtocol
+  }
+}
+
 // MARK: - FanCurveAgentConnectionState
 
 enum FanCurveAgentConnectionState: Sendable, Equatable {
@@ -70,6 +107,8 @@ final class AgentXPCReplyResumer: @unchecked Sendable {
   private var continuation: CheckedContinuation<Data?, Error>?
   private var pendingResult: Result<Data?, Error>?
   private var isCompleted = false
+  private var isDispatchClaimed = false
+  private var wasCancelled = false
 
   init(operation: String) {
     self.operation = operation
@@ -95,20 +134,42 @@ final class AgentXPCReplyResumer: @unchecked Sendable {
     complete(.failure(error))
   }
 
+  func claimDispatch() -> Bool {
+    lock.lock()
+    let wasCancelledBeforeDispatch =
+      isCompleted && wasCancelled && !isDispatchClaimed
+    guard !isCompleted, !isDispatchClaimed else {
+      lock.unlock()
+      if wasCancelledBeforeDispatch {
+        fanCurveAgentClientLog.notice(
+          "agent_client.request.dispatch_suppressed operation=\(operation, privacy: .public) reason=cancelled-before-dispatch recovery=skip-request"
+        )
+      }
+      return false
+    }
+    isDispatchClaimed = true
+    lock.unlock()
+    return true
+  }
+
   func cancel() {
     fanCurveAgentClientLog.notice(
       "agent_client.request.cancelled operation=\(operation, privacy: .public) recovery=resume-continuation"
     )
-    resume(throwing: CancellationError())
+    complete(.failure(CancellationError()), cancellation: true)
   }
 
-  private func complete(_ result: Result<Data?, Error>) {
+  private func complete(
+    _ result: Result<Data?, Error>,
+    cancellation: Bool = false
+  ) {
     lock.lock()
     if isCompleted {
       lock.unlock()
       return
     }
     isCompleted = true
+    wasCancelled = cancellation
     guard let continuation else {
       pendingResult = result
       lock.unlock()

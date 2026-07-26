@@ -103,6 +103,69 @@ final class XPCConnectionRegistry: @unchecked Sendable {
   }
 }
 
+// MARK: - XPCRequestDispatchController
+
+@MainActor
+final class XPCRequestDispatchController: AgentXPCRequestDispatching {
+  private var isSuspended = false
+  private var pendingOperations: [@MainActor () -> Void] = []
+
+  var pendingOperationCount: Int {
+    pendingOperations.count
+  }
+
+  func dispatch(_ operation: @escaping @MainActor () -> Void) {
+    if isSuspended {
+      pendingOperations.append(operation)
+      return
+    }
+    operation()
+  }
+
+  func suspend() {
+    isSuspended = true
+  }
+
+  func resumeNext() {
+    guard !pendingOperations.isEmpty else {
+      return
+    }
+    let operation = pendingOperations.removeFirst()
+    operation()
+  }
+}
+
+// MARK: - XPCProxyErrorHandlerRecorder
+
+@MainActor
+final class XPCProxyErrorHandlerRecorder: AgentXPCRemoteProxyProviding {
+  private var handlers: [@Sendable (Error) -> Void] = []
+  private var retainedHandler: (@Sendable (Error) -> Void)?
+
+  func remoteProxy(
+    for connection: NSXPCConnection,
+    errorHandler: @escaping @Sendable (Error) -> Void
+  ) -> FanCurveAgentXPCProtocol? {
+    handlers.append(errorHandler)
+    return connection.remoteObjectProxyWithErrorHandler(errorHandler)
+      as? FanCurveAgentXPCProtocol
+  }
+
+  func retainMostRecentHandler() -> Bool {
+    retainedHandler = handlers.last
+    return retainedHandler != nil
+  }
+
+  func triggerRetainedHandler() {
+    retainedHandler?(
+      NSError(
+        domain: "ControlledXPCStaleProxyError",
+        code: 1
+      )
+    )
+  }
+}
+
 // MARK: - XPCConnectionFactory
 
 @MainActor

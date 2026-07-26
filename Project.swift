@@ -222,8 +222,7 @@ let project = Project(
         "Sources/App/L10n.swift",
         "Sources/Models/**",
         "Sources/Services/Agent*.swift",
-        "Sources/Services/FanCurveAgentClient+RuntimeProperties.swift",
-        "Sources/Services/FanCurveAgentClient.swift",
+        "Sources/Services/FanCurveAgentClient*.swift",
         "Sources/Common/**",
         .glob(
           "Sources/TestControl/**",
@@ -366,8 +365,7 @@ let project = Project(
         "Sources/App/L10n.swift",
         "Sources/Models/**",
         "Sources/Services/Agent*.swift",
-        "Sources/Services/FanCurveAgentClient+RuntimeProperties.swift",
-        "Sources/Services/FanCurveAgentClient.swift",
+        "Sources/Services/FanCurveAgentClient*.swift",
         "Sources/Common/**",
         .glob(
           "Sources/TestControl/**",

@@ -92,30 +92,11 @@
         return []
       }
       do {
-        let data = try Data(contentsOf: url)
-        let lines = data.split(separator: TestControlJSONLines.delimiter)
         let state = try loadState()
-        var events: [TestControlEvent] = []
-        var lastRevision: TestControlRevision?
-        for line in lines {
-          let event = try TestControlCodec.decode(TestControlEvent.self, from: Data(line))
-          guard event.participant == participant else {
-            throw TestControlError.acknowledgmentParticipantMismatch(
-              expected: participant,
-              actual: event.participant
-            )
-          }
-          try validateEventEnvelope(event, against: state)
-          if let lastRevision, event.revision < lastRevision {
-            throw TestControlError.revisionNotIncreasing(
-              current: lastRevision.value,
-              proposed: event.revision.value
-            )
-          }
-          events.append(event)
-          lastRevision = event.revision
-        }
-        return events
+        return try decodeEvents(
+          for: participant,
+          validatingAgainst: state
+        )
       } catch {
         testControlStoreLog.error(
           "test_control.events.load_failed participant=\(participant.rawValue, privacy: .public) path=\(url.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=reject-evidence"
@@ -233,7 +214,6 @@
             actual: event.participant
           )
         }
-        try validateEventEnvelope(event, against: state)
         if let lastRevision, event.revision < lastRevision {
           throw TestControlError.revisionNotIncreasing(
             current: lastRevision.value,
@@ -242,6 +222,23 @@
         }
         events.append(event)
         lastRevision = event.revision
+      }
+      let retainedAppliedRevision = retainedAppliedRevision(
+        in: events,
+        participant: participant,
+        state: state
+      )
+      if let retainedAppliedRevision {
+        testControlStoreLog.notice(
+          "test_control.events.regressed_control_validated participant=\(participant.rawValue, privacy: .public) applied=\(retainedAppliedRevision.value, privacy: .public) proposed=\(state.revision.value, privacy: .public) recovery=retain-rejection-evidence"
+        )
+      }
+      for event in events {
+        try validateEventEnvelope(
+          event,
+          against: state,
+          retainedAppliedRevision: retainedAppliedRevision
+        )
       }
       return events
     }
@@ -278,25 +275,60 @@
 
     private func validateEventEnvelope(
       _ event: TestControlEvent,
-      against state: TestControlState
+      against state: TestControlState,
+      retainedAppliedRevision: TestControlRevision? = nil
     ) throws {
-      if case let .revisionRejected(applied, proposed) = event.payload,
-        event.revision.value == applied,
-        proposed < applied,
-        state.revision.value == proposed
-      {
+      do {
+        try validateEnvelope(
+          sessionID: event.sessionID,
+          revision: event.revision,
+          against: state
+        )
+        return
+      } catch let error as TestControlError {
+        guard case .futureRevision = error else {
+          throw error
+        }
+        guard let retainedAppliedRevision else {
+          throw error
+        }
+        guard event.revision <= retainedAppliedRevision else {
+          throw error
+        }
         try validateEnvelope(
           sessionID: event.sessionID,
           revision: state.revision,
           against: state
         )
-        return
       }
-      try validateEnvelope(
-        sessionID: event.sessionID,
-        revision: event.revision,
-        against: state
-      )
+    }
+
+    private func retainedAppliedRevision(
+      in events: [TestControlEvent],
+      participant: TestControlParticipant,
+      state: TestControlState
+    ) -> TestControlRevision? {
+      events.reversed().first { event in
+        guard event.participant == participant else {
+          return false
+        }
+        guard event.sessionID == state.sessionID else {
+          return false
+        }
+        guard event.revision > state.revision else {
+          return false
+        }
+        guard
+          event.payload
+            == .revisionRejected(
+              applied: event.revision.value,
+              proposed: state.revision.value
+            )
+        else {
+          return false
+        }
+        return true
+      }?.revision
     }
 
     private func hasRevisionRejectionEvidence(

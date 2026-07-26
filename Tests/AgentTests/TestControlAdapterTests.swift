@@ -157,10 +157,12 @@ final class TestControlAdapterTests: XCTestCase {
     let initialState = makeState(sessionID: sessionID, revision: 5)
     let store = try makeStore(state: initialState)
     let runtime = try TestControlRuntime(store: store, participant: .app)
+    runtime.stopMonitoring()
     let initialAcknowledgment = try store.loadAcknowledgment(for: .app)
 
     expect(try runtime.refresh()) == initialState
     expect(try store.loadAcknowledgment(for: .app)) == initialAcknowledgment
+    try runtime.record(.xpcState(.connecting), state: initialState)
 
     let regressedStateData = try TestControlCodec.encode(
       makeState(sessionID: sessionID, revision: 4)
@@ -191,6 +193,33 @@ final class TestControlAdapterTests: XCTestCase {
     )
     expect(try runtime.refresh()) == recoveredState
     expect(try store.loadAcknowledgment(for: .app)?.revision) == 6
+  }
+
+  func testRegressedStateRejectsFutureEventHistoryWithoutRejectionProof() throws {
+    let sessionID = UUID()
+    let initialState = makeState(sessionID: sessionID, revision: 5)
+    let store = try makeStore(state: initialState)
+    try store.appendEvent(
+      TestControlEvent(
+        sessionID: sessionID,
+        revision: 5,
+        participant: .app,
+        payload: .xpcState(.connecting)
+      )
+    )
+    let regressedStateData = try TestControlCodec.encode(
+      makeState(sessionID: sessionID, revision: 4)
+    )
+    try regressedStateData.write(
+      to: store.controlURL,
+      options: .atomic
+    )
+
+    expect {
+      try store.loadEvents(for: .app)
+    }.to(
+      throwError(TestControlError.futureRevision(current: 4, proposed: 5))
+    )
   }
 }
 
@@ -438,55 +467,5 @@ extension TestControlAdapterTests {
       ),
       xpcFault: xpcFault
     )
-  }
-}
-
-// MARK: - TestControlAdapterTestError
-
-private enum TestControlAdapterTestError: Error, Equatable {
-  case acknowledgmentWrite
-  case synchronization
-}
-
-// MARK: - TestControlAtomicWriteProbe
-
-private final class TestControlAtomicWriteProbe: @unchecked Sendable {
-  private let lock = NSLock()
-  private let failingAcknowledgmentRevision: TestControlRevision
-  private var storedFailingRevisionAttemptCount = 0
-
-  init(failingAcknowledgmentRevision: UInt64) {
-    self.failingAcknowledgmentRevision = TestControlRevision(
-      failingAcknowledgmentRevision
-    )
-  }
-
-  var failingRevisionAttemptCount: Int {
-    lock.lock()
-    let count = storedFailingRevisionAttemptCount
-    lock.unlock()
-    return count
-  }
-
-  func write(_ data: Data, to url: URL) throws {
-    var isTargetAcknowledgment = false
-    if url.lastPathComponent == TestControlFile.acknowledgment(for: .app) {
-      let acknowledgment = try TestControlCodec.decode(
-        TestControlAcknowledgment.self,
-        from: data
-      )
-      isTargetAcknowledgment =
-        acknowledgment.revision == failingAcknowledgmentRevision
-    }
-    if isTargetAcknowledgment {
-      lock.lock()
-      storedFailingRevisionAttemptCount += 1
-      let shouldFail = storedFailingRevisionAttemptCount == 1
-      lock.unlock()
-      if shouldFail {
-        throw TestControlAdapterTestError.acknowledgmentWrite
-      }
-    }
-    try data.write(to: url, options: [.atomic])
   }
 }
