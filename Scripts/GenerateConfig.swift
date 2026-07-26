@@ -46,6 +46,33 @@ func optionalEnv(_ key: String, default defaultValue: String = "") -> String {
     ProcessInfo.processInfo.environment[key] ?? defaultValue
 }
 
+func xmlEscaped(_ value: String) -> String {
+    value
+        .replacingOccurrences(of: "&", with: "&amp;")
+        .replacingOccurrences(of: "<", with: "&lt;")
+        .replacingOccurrences(of: ">", with: "&gt;")
+        .replacingOccurrences(of: "\"", with: "&quot;")
+        .replacingOccurrences(of: "'", with: "&apos;")
+}
+
+func testControlEnvironmentBlock() -> String {
+    let configuration = optionalEnv("CONFIGURATION")
+    let path = optionalEnv("FANCURVE_TEST_CONTROL_PATH")
+    guard configuration == "Debug" else {
+        return ""
+    }
+    guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return ""
+    }
+    return """
+        <key>EnvironmentVariables</key>
+        <dict>
+            <key>FANCURVE_TEST_CONTROL_PATH</key>
+            <string>\(xmlEscaped(path))</string>
+        </dict>
+    """
+}
+
 func pacificBuildDate() -> String {
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -88,6 +115,7 @@ do {
         "@@BUILD_DATE@@": pacificBuildDate(),
         "@@SPARKLE_FEED_URL@@": optionalEnv("SPARKLE_FEED_URL"),
         "@@SPARKLE_PUBLIC_ED_KEY@@": optionalEnv("SPARKLE_PUBLIC_ED_KEY"),
+        "@@TEST_CONTROL_ENVIRONMENT@@": testControlEnvironmentBlock(),
     ]
 
     guard let enumerator = FileManager.default.enumerator(atPath: templatesDir) else {

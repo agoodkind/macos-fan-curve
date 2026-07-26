@@ -21,6 +21,7 @@
 	</array>
 	<key>ProcessType</key>
 	<string>Background</string>
+@@TEST_CONTROL_ENVIRONMENT@@
 	<key>StandardOutPath</key>
 	<string>/dev/null</string>
 	<key>StandardErrorPath</key>

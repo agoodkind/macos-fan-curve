@@ -83,6 +83,10 @@ let externalDependencies: [TargetDependency] = [
 
 let modelTestSources: SourceFilesList = [
   .generated("Generated/FanCurve/Config.generated.swift"),
+  .glob(
+    "Sources/TestControl/**",
+    excluding: ["Sources/TestControl/CLI/**"]
+  ),
   "Sources/App/L10n.swift",
   "Sources/Common/SharedConfigKeys.swift",
   "Sources/Common/AgentFanSnapshot.swift",
@@ -146,6 +150,10 @@ let project = Project(
         "Sources/Views/**",
         "Sources/Services/**",
         "Sources/Common/**",
+        .glob(
+          "Sources/TestControl/**",
+          excluding: ["Sources/TestControl/CLI/**"]
+        ),
         .generated("Generated/FanCurve/Config.generated.swift"),
       ],
       resources: [
@@ -213,6 +221,10 @@ let project = Project(
         "Sources/Services/AgentCommandTransport.swift",
         "Sources/Services/FanCurveAgentClient.swift",
         "Sources/Common/**",
+        .glob(
+          "Sources/TestControl/**",
+          excluding: ["Sources/TestControl/CLI/**"]
+        ),
         .generated("Generated/FanCurveAgent/Config.generated.swift"),
       ],
       scripts: [
@@ -222,6 +234,27 @@ let project = Project(
       settings: .settings(
         base: signingSettings.merging([
           "PRODUCT_BUNDLE_IDENTIFIER": .string("$(AGENT_BUNDLE_ID)"),
+          "CREATE_INFOPLIST_SECTION_IN_BINARY": "YES",
+          "SKIP_INSTALL": "YES",
+        ]) { _, new in new }
+      )
+    ),
+    .target(
+      name: "FanCurveTestControl",
+      destinations: [.mac],
+      product: .commandLineTool,
+      bundleId: "$(APP_BUNDLE_ID).test-control",
+      deploymentTargets: macOSDeploymentTarget,
+      infoPlist: .default,
+      sources: [
+        "Sources/TestControl/**"
+      ],
+      dependencies: [
+        .external(name: "AppLog")
+      ],
+      settings: .settings(
+        base: signingSettings.merging([
+          "PRODUCT_BUNDLE_IDENTIFIER": .string("$(APP_BUNDLE_ID).test-control"),
           "CREATE_INFOPLIST_SECTION_IN_BINARY": "YES",
           "SKIP_INSTALL": "YES",
         ]) { _, new in new }
@@ -283,7 +316,25 @@ let project = Project(
       deploymentTargets: macOSDeploymentTarget,
       infoPlist: .default,
       sources: [
-        "Tests/ModelTests/**"
+        .glob(
+          "Tests/ModelTests/**",
+          excluding: ["Tests/ModelTests/TestControl*Tests.swift"]
+        )
+      ],
+      dependencies: [
+        .target(name: "FanCurveModels"),
+        .external(name: "Nimble"),
+      ]
+    ),
+    .target(
+      name: "TestControlContractTests",
+      destinations: [.mac],
+      product: .unitTests,
+      bundleId: "$(APP_BUNDLE_ID).test-control-tests",
+      deploymentTargets: macOSDeploymentTarget,
+      infoPlist: .default,
+      sources: [
+        "Tests/ModelTests/TestControl*Tests.swift"
       ],
       dependencies: [
         .target(name: "FanCurveModels"),
@@ -317,12 +368,31 @@ let project = Project(
   ],
   schemes: [
     .scheme(
+      name: "FanCurveCoverage",
+      shared: true,
+      buildAction: .buildAction(
+        targets: [
+          .target(appName),
+          .target("FanCurveTestControl"),
+        ]
+      ),
+      testAction: .targets(
+        [
+          .testableTarget(target: "ModelTests"),
+          .testableTarget(target: "TestControlContractTests"),
+          .testableTarget(target: "FanCurveAgentTests"),
+        ],
+        configuration: "Debug"
+      )
+    ),
+    .scheme(
       name: appName,
       shared: true,
       buildAction: .buildAction(targets: [.target(appName)]),
       testAction: .targets(
         [
           .testableTarget(target: "ModelTests"),
+          .testableTarget(target: "TestControlContractTests"),
           .testableTarget(target: "FanCurveAgentTests"),
         ],
         configuration: "Debug"
@@ -347,6 +417,22 @@ let project = Project(
       buildAction: .buildAction(targets: [.target("FanCurveAgentTests")]),
       testAction: .targets(
         [.testableTarget(target: "FanCurveAgentTests")],
+        configuration: "Debug"
+      )
+    ),
+    .scheme(
+      name: "FanCurveTestControl",
+      shared: true,
+      buildAction: .buildAction(targets: [.target("FanCurveTestControl")]),
+      runAction: .runAction(configuration: "Debug"),
+      analyzeAction: .analyzeAction(configuration: "Debug")
+    ),
+    .scheme(
+      name: "TestControlContractTests",
+      shared: true,
+      buildAction: .buildAction(targets: [.target("TestControlContractTests")]),
+      testAction: .targets(
+        [.testableTarget(target: "TestControlContractTests")],
         configuration: "Debug"
       )
     ),

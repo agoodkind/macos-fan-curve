@@ -12,6 +12,7 @@ SWIFTLINT_ANALYZE_DERIVED_DATA = $(ANALYZE_BUILD_DIR)/SwiftLintDerivedData
 SWIFTLINT_ANALYZE_LOG = $(ANALYZE_BUILD_DIR)/swiftlint-xcodebuild.log
 APP_NAME = FanCurve
 AGENT_EXECUTABLE_NAME = FanCurveAgent
+TEST_CONTROL_EXECUTABLE_NAME = FanCurveTestControl
 APP_DISPLAY_NAME = Fan Curve
 APP_BUNDLE_NAME = $(APP_DISPLAY_NAME)
 AGENT_DISPLAY_NAME = Fan Curve Background Control
@@ -52,9 +53,9 @@ RELEASE_DMG_PATH = $(PRODUCTS_DIR)/$(RELEASE_DMG_NAME)
 SPARKLE_UPDATES_DIR = $(BUILD_DIR)/sparkle-updates
 SPARKLE_GENERATED_APPCAST = $(SPARKLE_UPDATES_DIR)/appcast.xml
 SPARKLE_ASSET_TAGS = $(SPARKLE_UPDATES_DIR)/asset-tags.tsv
-GENERATE_CONFIG_ENV = SRCROOT="$(CURDIR)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
+GENERATE_CONFIG_ENV = SRCROOT="$(CURDIR)" CONFIGURATION="$(CONFIGURATION)" FANCURVE_TEST_CONTROL_PATH="$(FANCURVE_TEST_CONTROL_PATH)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
 # Signing is owned by swift-mk (XCODE_XCCONFIG_FILE override), not set here.
-XCODE_BUILD_SETTINGS = BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
+XCODE_BUILD_SETTINGS = FANCURVE_TEST_CONTROL_PATH="$(FANCURVE_TEST_CONTROL_PATH)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
 
 SWIFT_MK_MODULES := swift-build.mk swift-release.mk
 # This project defines its own `run` (Debug build deployed to /Applications). The
@@ -84,7 +85,7 @@ SWIFT_AUDIT_EXTRA_CMD := Scripts/Tests/release-track-contract.sh && Scripts/Test
 FANCURVE_GENERATOR := tuist
 SWIFT_XCODE_GENERATOR := $(FANCURVE_GENERATOR)
 SWIFT_XCODE_WORKSPACE := FanCurveApp.xcworkspace
-SWIFT_XCODE_SCHEME := FanCurve
+SWIFT_XCODE_SCHEME := FanCurveCoverage
 # The engine coverage build runs at Debug; the engine derives and owns the rest.
 SWIFT_XCODE_COVERAGE_CONFIGURATION := Debug
 # The tuist Generate Config build phase needs these project build settings in the
@@ -94,7 +95,7 @@ SWIFT_XCODE_BUILD_SETTINGS := $(XCODE_BUILD_SETTINGS)
 
 include bootstrap.mk
 
-.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates generate-sparkle-appcast sparkle-appcast appcast generate-project generate-config-artifacts open-project test-agent test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
+.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates generate-sparkle-appcast sparkle-appcast appcast generate-project generate-config-artifacts open-project test-agent test-control-build test-control-build-local test-control-contract test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
 
 all: app
 
@@ -242,6 +243,31 @@ test-agent: generate-config-artifacts generate-project
 		--generator $(FANCURVE_GENERATOR) \
 		--workspace FanCurveApp.xcworkspace \
 		--scheme FanCurveAgentTests \
+		--configuration Debug \
+		--derived-data-path $(BUILD_DIR) \
+		$(XCODE_BUILD_SETTINGS) \
+		$(SWIFT_MK_XCODEBUILD_ARGS)
+
+test-control-contract: generate-config-artifacts generate-project
+	"$(SWIFT_MK_BIN)" toolchain test \
+		--generator $(FANCURVE_GENERATOR) \
+		--workspace FanCurveApp.xcworkspace \
+		--scheme TestControlContractTests \
+		--configuration Debug \
+		--derived-data-path $(BUILD_DIR) \
+		$(XCODE_BUILD_SETTINGS) \
+		$(SWIFT_MK_XCODEBUILD_ARGS)
+
+test-control-build:
+	$(MAKE) CONFIGURATION=Debug \
+		SWIFT_BUILD_CMD='$(MAKE) test-control-build-local' \
+		build
+
+test-control-build-local: generate-config-artifacts generate-project
+	"$(SWIFT_MK_BIN)" toolchain build \
+		--generator $(FANCURVE_GENERATOR) \
+		--workspace FanCurveApp.xcworkspace \
+		--scheme $(TEST_CONTROL_EXECUTABLE_NAME) \
 		--configuration Debug \
 		--derived-data-path $(BUILD_DIR) \
 		$(XCODE_BUILD_SETTINGS) \
