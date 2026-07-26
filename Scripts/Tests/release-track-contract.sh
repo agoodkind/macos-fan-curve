@@ -43,7 +43,20 @@ assert_contains ".github/workflows/appcast.yml" "workflow_call:"
 assert_contains ".github/workflows/appcast.yml" "release_tag:"
 assert_contains ".github/workflows/appcast.yml" "release_track:"
 assert_contains ".github/workflows/appcast.yml" "Scripts/prepare-appcast-history.sh"
+assert_contains ".github/workflows/appcast.yml" \
+    "uses: agoodkind/swift-makefile/.github/actions/stage-appcast-assets@main"
+# shellcheck disable=SC2016 # The assertion matches literal GitHub Actions syntax.
+assert_contains ".github/workflows/appcast.yml" 'release-track: ${{ inputs.release_track }}'
+assert_contains ".github/workflows/appcast.yml" \
+    "appcast-source: build/sparkle-updates/appcast.xml"
+assert_contains ".github/workflows/appcast.yml" \
+    "public-directory: deploy/appcast-worker/public"
+assert_contains ".github/workflows/appcast.yml" \
+    "stable-feed-url: https://goodkind.io/fancurve/appcast.xml"
+assert_contains ".github/workflows/appcast.yml" \
+    "prerelease-feed-url: https://goodkind.io/fancurve/prerelease/appcast.xml"
 assert_not_contains ".github/workflows/appcast.yml" "git tag --points-at"
+assert_not_contains ".github/workflows/appcast.yml" "public_path="
 # shellcheck disable=SC2016 # The assertion matches literal Make syntax.
 assert_not_contains "Makefile" 'build_version="$$(basename'
 
