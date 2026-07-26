@@ -22,6 +22,7 @@ struct AgentCurveUpdate: Codable, Sendable, Equatable {
 }
 
 enum AgentCommand: Codable, Sendable, Equatable {
+  case installOrRepairHelper
   case openSystemSettings
   case requestFanAuto(fanIndex: UInt)
   case requestFanRPM(AgentFanRPMRequest)
@@ -32,6 +33,8 @@ enum AgentCommand: Codable, Sendable, Equatable {
 
   var logName: String {
     switch self {
+    case .installOrRepairHelper:
+      return "install_or_repair_helper"
     case .openSystemSettings:
       return "open_system_settings"
     case .requestFanAuto:

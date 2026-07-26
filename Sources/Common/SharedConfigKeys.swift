@@ -24,7 +24,6 @@ enum SharedConfigKeys {
   static let gpuLoadAssistCurvePoints = "gpuLoadAssistCurvePoints"
   static let gpuLoadAssistEnabled = "gpuLoadAssistEnabled"
   static let gpuLoadFloorThreshold = "gpuLoadFloorThreshold"
-  static let helperRegistrationFingerprint = "helperRegistrationFingerprint"
   static let inferFanResponseFromGraph = "inferFanResponseFromGraph"
   static let interpolationMode = "interpolationMode"
   static let loadAssistMigrationVersion = "loadAssistMigrationVersion"

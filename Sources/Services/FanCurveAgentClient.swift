@@ -137,6 +137,10 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
     try await send(.setApplyInBackground(enabled))
   }
 
+  func installOrRepairHelper() async throws {
+    try await send(.installOrRepairHelper)
+  }
+
   func openSystemSettings() async throws {
     try await send(.openSystemSettings)
   }
@@ -469,8 +473,8 @@ extension FanCurveAgentClient {
         devBoostOverride = enabled ? .on : .off
       case .setFanControlEnabled(let enabled):
         devCurveOverride = enabled ? .on : .off
-      case .setCurve, .setApplyInBackground, .requestFanRPM, .requestFanAuto,
-        .openSystemSettings:
+      case .installOrRepairHelper, .setCurve, .setApplyInBackground, .requestFanRPM,
+        .requestFanAuto, .openSystemSettings:
         break
       }
       fanCurveAgentClientLog.notice(

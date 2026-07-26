@@ -7,26 +7,34 @@
 
 import AppLog
 import Foundation
-import ServiceManagement
 
 private let agentXPCLog = AppLog.make(category: "FanCurveAgentXPC")
 
 final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
   private let controller: AgentController
+  private let helperService: any HelperServiceManaging
   private let listener: NSXPCListener
   private let callbackLock = NSLock()
   private var eventCallbacks: [FanCurveAgentXPCEventProtocol] = []
 
   init(
     controller: AgentController,
-    serviceName: String = FanCurveAgentXPC.serviceName
+    serviceName: String = FanCurveAgentXPC.serviceName,
+    helperService: any HelperServiceManaging = ServiceManagementAdapters.helper()
   ) {
     self.controller = controller
+    self.helperService = helperService
     self.listener = NSXPCListener(machServiceName: serviceName)
     super.init()
     self.listener.delegate = self
-    self.controller.runtimeSetupProvider = { snapshot in
-      Self.currentRuntimeSetupInputs(snapshot: snapshot)
+    self.controller.runtimeSetupProvider = { [weak self] snapshot in
+      guard let self else {
+        return RuntimeSetupInputs(backgroundAgent: .satisfied, helper: .required)
+      }
+      return Self.currentRuntimeSetupInputs(
+        helperStatus: self.helperService.status,
+        snapshot: snapshot
+      )
     }
     self.controller.runtimeStateDidChange = { [weak self] runtimeState in
       self?.publishRuntimeState(runtimeState)
@@ -193,8 +201,10 @@ extension FanCurveAgentXPCService {
 
   func handleCommand(_ command: AgentCommand) async -> AgentCommandResponse {
     switch command {
+    case .installOrRepairHelper:
+      return await installOrRepairHelperCommandResponse()
     case .openSystemSettings:
-      return openSystemSettingsCommandResponse()
+      return await openSystemSettingsCommandResponse()
     case .requestFanAuto(let fanIndex):
       return await handleFanAutoCommand(fanIndex)
     case .requestFanRPM(let request):
@@ -210,15 +220,36 @@ extension FanCurveAgentXPCService {
     }
   }
 
-  func openSystemSettingsCommandResponse() -> AgentCommandResponse {
+  func installOrRepairHelperCommandResponse() async -> AgentCommandResponse {
+    agentXPCLog.notice("agent.xpc.command.helper_install.started owner=agent")
+    let result = await MainActor.run {
+      HelperServiceRegistration.installOrRepair(service: helperService)
+    }
+    if let errorDescription = result.errorDescription {
+      agentXPCLog.error(
+        "agent.xpc.command.helper_install.failed status=\(result.statusBefore.description, privacy: .public) error=\(errorDescription, privacy: .public) recovery=return-error"
+      )
+      return AgentCommandResponse(accepted: false, message: errorDescription)
+    }
+
+    agentXPCLog.notice(
+      "agent.xpc.command.helper_install.finished status=\(result.statusAfterRegister?.description ?? "unknown", privacy: .public)"
+    )
+    controller.requestTick()
+    return AgentCommandResponse(accepted: true, message: nil)
+  }
+
+  func openSystemSettingsCommandResponse() async -> AgentCommandResponse {
     guard #available(macOS 13.0, *) else {
       return AgentCommandResponse(
         accepted: false,
         message: "System Settings action requires macOS 13"
       )
     }
-    SMAppService.openSystemSettingsLoginItems()
-    agentXPCLog.notice("agent.xpc.command.system_settings.opened")
+    await MainActor.run {
+      helperService.openSystemSettings()
+    }
+    agentXPCLog.notice("agent.xpc.command.system_settings.opened owner=agent")
     return AgentCommandResponse(accepted: true, message: nil)
   }
 
@@ -290,27 +321,25 @@ extension FanCurveAgentXPCService {
   }
 
   static func currentRuntimeSetupInputs(
+    helperStatus: ManagedServiceStatus,
     snapshot: AgentSnapshot?
   ) -> RuntimeSetupInputs {
     RuntimeSetupInputs(
       backgroundAgent: .satisfied,
-      helper: currentHelperRequirement(snapshot: snapshot)
+      helper: currentHelperRequirement(helperStatus: helperStatus, snapshot: snapshot)
     )
   }
 
   static func currentHelperRequirement(
+    helperStatus: ManagedServiceStatus,
     snapshot: AgentSnapshot?
   ) -> RuntimeServiceRequirement {
-    guard #available(macOS 13.0, *) else { return .required }
-    let status = SMAppService.daemon(plistName: generatedHelperDaemonPlistName).status
-    switch status {
+    switch helperStatus {
     case .requiresApproval:
       return .approvalRequired
     case .enabled:
       return snapshot?.helperReachable == true ? .satisfied : .required
-    case .notFound, .notRegistered:
-      return .required
-    default:
+    case .notFound, .notRegistered, .unknown:
       return .required
     }
   }
