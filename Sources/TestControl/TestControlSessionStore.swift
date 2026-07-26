@@ -96,6 +96,16 @@
         events(for: .agent),
       ]
     }
+
+    static var evidenceLocksInOrder: [String] {
+      [
+        sessionLock,
+        acknowledgmentLock(for: .app),
+        acknowledgmentLock(for: .agent),
+        eventsLock(for: .app),
+        eventsLock(for: .agent),
+      ]
+    }
   }
 
   enum TestControlCodec {
@@ -272,6 +282,11 @@
       against state: TestControlState
     ) throws {
       try validateSession(sessionID, expected: state.sessionID)
+      guard revision.value > 0 else {
+        throw TestControlError.invalidControlValue(
+          "Revision must be greater than zero"
+        )
+      }
       guard revision <= state.revision else {
         throw TestControlError.futureRevision(
           current: state.revision.value,
@@ -364,6 +379,21 @@
         "test_control.lock.acquired path=\(lockURL.lastPathComponent, privacy: .public)"
       )
       return try operation()
+    }
+
+    func withExclusiveLocks<T>(
+      fileNames: ArraySlice<String>,
+      operation: () throws -> T
+    ) throws -> T {
+      guard let fileName = fileNames.first else {
+        return try operation()
+      }
+      return try withExclusiveLock(fileName: fileName) {
+        try withExclusiveLocks(
+          fileNames: fileNames.dropFirst(),
+          operation: operation
+        )
+      }
     }
   }
 #endif

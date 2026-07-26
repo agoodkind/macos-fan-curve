@@ -193,7 +193,7 @@ final class TestControlCommandTests: XCTestCase {
         sessionID: sessionID,
         revision: 14,
         participant: .app,
-        payload: .appToAgentCommand(command: "setBoost")
+        payload: .appToAgentCommand(command: .setBoostEnabled)
       )
     )
     try store.appendEvent(
@@ -201,7 +201,7 @@ final class TestControlCommandTests: XCTestCase {
         sessionID: sessionID,
         revision: 14,
         participant: .agent,
-        payload: .hardwareRead(operation: "fanBatch")
+        payload: .hardwareRead(operation: .fanBatch)
       )
     )
 

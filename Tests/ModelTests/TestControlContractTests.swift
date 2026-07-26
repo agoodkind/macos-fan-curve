@@ -136,7 +136,7 @@ final class TestControlContractTests: XCTestCase {
       sessionID: sessionID,
       revision: 5,
       participant: .app,
-      payload: .appToAgentCommand(command: "installOrRepairHelper")
+      payload: .appToAgentCommand(command: .installOrRepairHelper)
     )
     let agentEvent = TestControlEvent(
       sessionID: sessionID,

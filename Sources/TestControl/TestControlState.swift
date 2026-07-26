@@ -229,11 +229,113 @@
     case terminated
   }
 
+  enum TestAppToAgentCommand: Codable, Equatable, Sendable {
+    case installOrRepairHelper
+    case openSystemSettings
+    case requestFanAuto
+    case requestFanRPM
+    case setApplyInBackground
+    case setBoostEnabled
+    case setCurve
+    case setFanControlEnabled
+
+    init(from decoder: Decoder) throws {
+      let container = try decoder.singleValueContainer()
+      let rawValue = try container.decode(String.self)
+      switch rawValue {
+      case "installOrRepairHelper":
+        self = .installOrRepairHelper
+      case "openSystemSettings":
+        self = .openSystemSettings
+      case "requestFanAuto":
+        self = .requestFanAuto
+      case "requestFanRPM":
+        self = .requestFanRPM
+      case "setApplyInBackground":
+        self = .setApplyInBackground
+      case "setBoostEnabled":
+        self = .setBoostEnabled
+      case "setCurve":
+        self = .setCurve
+      case "setFanControlEnabled":
+        self = .setFanControlEnabled
+      default:
+        testControlModelsLog.error(
+          "test_control.app_command.decode_failed raw_value=\(rawValue, privacy: .public) recovery=reject-event"
+        )
+        throw DecodingError.dataCorruptedError(
+          in: container,
+          debugDescription: "Unknown app command: \(rawValue)"
+        )
+      }
+    }
+
+    func encode(to encoder: Encoder) throws {
+      var container = encoder.singleValueContainer()
+      try container.encode(encodedValue)
+    }
+
+    private var encodedValue: String {
+      switch self {
+      case .installOrRepairHelper:
+        return "installOrRepairHelper"
+      case .openSystemSettings:
+        return "openSystemSettings"
+      case .requestFanAuto:
+        return "requestFanAuto"
+      case .requestFanRPM:
+        return "requestFanRPM"
+      case .setApplyInBackground:
+        return "setApplyInBackground"
+      case .setBoostEnabled:
+        return "setBoostEnabled"
+      case .setCurve:
+        return "setCurve"
+      case .setFanControlEnabled:
+        return "setFanControlEnabled"
+      }
+    }
+  }
+
+  enum TestHardwareReadOperation: Codable, Equatable, Sendable {
+    case fanBatch
+    case ownership
+
+    init(from decoder: Decoder) throws {
+      let container = try decoder.singleValueContainer()
+      let rawValue = try container.decode(String.self)
+      switch rawValue {
+      case "fanBatch":
+        self = .fanBatch
+      case "ownership":
+        self = .ownership
+      default:
+        testControlModelsLog.error(
+          "test_control.hardware_operation.decode_failed raw_value=\(rawValue, privacy: .public) recovery=reject-event"
+        )
+        throw DecodingError.dataCorruptedError(
+          in: container,
+          debugDescription: "Unknown hardware read operation: \(rawValue)"
+        )
+      }
+    }
+
+    func encode(to encoder: Encoder) throws {
+      var container = encoder.singleValueContainer()
+      switch self {
+      case .fanBatch:
+        try container.encode("fanBatch")
+      case .ownership:
+        try container.encode("ownership")
+      }
+    }
+  }
+
   enum TestControlEventPayload: Codable, Equatable, Sendable {
-    case appToAgentCommand(command: String)
+    case appToAgentCommand(command: TestAppToAgentCommand)
     case fanAutoReset(fanIndex: Int)
     case fanWrite(fanIndex: Int, rpm: Float, priority: Int)
-    case hardwareRead(operation: String)
+    case hardwareRead(operation: TestHardwareReadOperation)
     case processLifecycle(process: TestControlParticipant, phase: TestProcessLifecyclePhase)
     case serviceMutation(
       service: TestServiceName,

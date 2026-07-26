@@ -95,7 +95,7 @@ SWIFT_XCODE_BUILD_SETTINGS := $(XCODE_BUILD_SETTINGS)
 
 include bootstrap.mk
 
-.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates generate-sparkle-appcast sparkle-appcast appcast generate-project generate-config-artifacts open-project test-agent test-control-build test-control-build-local test-control-contract test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
+.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates generate-sparkle-appcast sparkle-appcast appcast generate-project generate-config-artifacts open-project test-agent test-control-build test-control-build-local test-control-contract test-control-signing test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
 
 all: app
 
@@ -272,6 +272,20 @@ test-control-build-local: generate-config-artifacts generate-project
 		--derived-data-path $(BUILD_DIR) \
 		$(XCODE_BUILD_SETTINGS) \
 		$(SWIFT_MK_XCODEBUILD_ARGS)
+	$(MAKE) test-control-signing
+
+test-control-signing: swift-mk-bin
+	@CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" \
+		DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" \
+		XCODE_XCCONFIG_FILE="$(CURDIR)/.make/signing.xcconfig" \
+		"$(SWIFT_MK_BIN)" verify-signing settings \
+		--workspace FanCurveApp.xcworkspace \
+		--scheme $(TEST_CONTROL_EXECUTABLE_NAME) \
+		--configuration Debug
+	@CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" \
+		DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" \
+		"$(SWIFT_MK_BIN)" verify-signing artifacts \
+		"$(BUILD_DIR)/Build/Products/Debug/$(TEST_CONTROL_EXECUTABLE_NAME)"
 
 format: fmt
 

@@ -8,6 +8,7 @@
 
 #if DEBUG
   import AppLog
+  import Darwin
   import Foundation
 
   extension TestControlSessionStore {
@@ -137,17 +138,56 @@
     }
 
     func exportEvidence(to destination: URL) throws {
+      let publishedDestination = destination.standardizedFileURL
       testControlStoreLog.info(
-        "test_control.evidence.export.started source=\(directory.path, privacy: .public) destination=\(destination.path, privacy: .public)"
+        "test_control.evidence.export.started source=\(directory.path, privacy: .public) destination=\(publishedDestination.path, privacy: .public)"
       )
-      try Self.createSessionDirectory(at: destination)
+      try Self.createSessionDirectory(at: publishedDestination)
       let contents = try FileManager.default.contentsOfDirectory(
-        at: destination,
+        at: publishedDestination,
         includingPropertiesForKeys: nil
       )
       guard contents.isEmpty else {
-        throw TestControlError.evidenceDestinationNotEmpty(destination.path)
+        throw TestControlError.evidenceDestinationNotEmpty(
+          publishedDestination.path
+        )
       }
+      let snapshotDirectory =
+        publishedDestination
+        .deletingLastPathComponent()
+        .appendingPathComponent(
+          ".\(publishedDestination.lastPathComponent).snapshot-\(UUID().uuidString)",
+          isDirectory: true
+        )
+      try Self.createSessionDirectory(at: snapshotDirectory)
+      defer {
+        if FileManager.default.fileExists(atPath: snapshotDirectory.path) {
+          do {
+            try FileManager.default.removeItem(at: snapshotDirectory)
+          } catch {
+            testControlStoreLog.notice(
+              "test_control.evidence.snapshot_cleanup_failed path=\(snapshotDirectory.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=retain-temporary-snapshot"
+            )
+          }
+        }
+      }
+
+      try withExclusiveLocks(
+        fileNames: TestControlFile.evidenceLocksInOrder[...]
+      ) {
+        try copyEvidenceFiles(to: snapshotDirectory)
+        try validateEvidenceSnapshot(at: snapshotDirectory)
+        try publishEvidenceSnapshot(
+          snapshotDirectory,
+          to: publishedDestination
+        )
+      }
+      testControlStoreLog.info(
+        "test_control.evidence.export.completed destination=\(publishedDestination.path, privacy: .public)"
+      )
+    }
+
+    private func copyEvidenceFiles(to snapshotDirectory: URL) throws {
       for fileName in TestControlFile.evidenceFiles {
         let source = directory.appendingPathComponent(fileName)
         guard FileManager.default.fileExists(atPath: source.path) else {
@@ -155,11 +195,40 @@
         }
         try FileManager.default.copyItem(
           at: source,
-          to: destination.appendingPathComponent(fileName)
+          to: snapshotDirectory.appendingPathComponent(fileName)
         )
       }
+      testControlStoreLog.debug(
+        "test_control.evidence.snapshot_copied path=\(snapshotDirectory.path, privacy: .public)"
+      )
+    }
+
+    private func validateEvidenceSnapshot(at snapshotDirectory: URL) throws {
+      let snapshotStore = try TestControlSessionStore.open(
+        at: snapshotDirectory
+      )
+      for participant in TestControlParticipant.allCases {
+        _ = try snapshotStore.loadAcknowledgment(for: participant)
+        _ = try snapshotStore.loadEvents(for: participant)
+      }
+      testControlStoreLog.debug(
+        "test_control.evidence.snapshot_validated path=\(snapshotDirectory.path, privacy: .public)"
+      )
+    }
+
+    private func publishEvidenceSnapshot(
+      _ snapshotDirectory: URL,
+      to destination: URL
+    ) throws {
+      guard Darwin.rename(snapshotDirectory.path, destination.path) == 0 else {
+        let error = POSIXError(.init(rawValue: errno) ?? .EIO)
+        testControlStoreLog.error(
+          "test_control.evidence.publish_failed snapshot=\(snapshotDirectory.path, privacy: .public) destination=\(destination.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=preserve-empty-destination"
+        )
+        throw error
+      }
       testControlStoreLog.info(
-        "test_control.evidence.export.completed destination=\(destination.path, privacy: .public)"
+        "test_control.evidence.published destination=\(destination.path, privacy: .public)"
       )
     }
   }

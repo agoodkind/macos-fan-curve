@@ -255,7 +255,10 @@ let project = Project(
       settings: .settings(
         base: signingSettings.merging([
           "PRODUCT_BUNDLE_IDENTIFIER": .string("$(APP_BUNDLE_ID).test-control"),
+          "CODE_SIGNING_ALLOWED": "YES",
+          "CODE_SIGNING_REQUIRED": "YES",
           "CREATE_INFOPLIST_SECTION_IN_BINARY": "YES",
+          "ENABLE_HARDENED_RUNTIME": "YES",
           "SKIP_INSTALL": "YES",
         ]) { _, new in new }
       )
