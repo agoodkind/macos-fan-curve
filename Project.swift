@@ -212,7 +212,6 @@ let project = Project(
         "Sources/Models/**",
         "Sources/Services/AgentCommandTransport.swift",
         "Sources/Services/FanCurveAgentClient.swift",
-        "Sources/Services/DevToggleOverride.swift",
         "Sources/Common/**",
         .generated("Generated/FanCurveAgent/Config.generated.swift"),
       ],
@@ -291,13 +290,43 @@ let project = Project(
         .external(name: "Nimble"),
       ]
     ),
+    .target(
+      name: "FanCurveAgentTests",
+      destinations: [.mac],
+      product: .unitTests,
+      bundleId: "$(APP_BUNDLE_ID).agent-tests",
+      deploymentTargets: macOSDeploymentTarget,
+      infoPlist: .default,
+      sources: [
+        .glob(
+          "Sources/Agent/**",
+          excluding: ["Sources/Agent/FanCurveAgentMain.swift"]
+        ),
+        "Sources/App/L10n.swift",
+        "Sources/Models/**",
+        "Sources/Services/AgentCommandTransport.swift",
+        "Sources/Services/FanCurveAgentClient.swift",
+        "Sources/Common/**",
+        "Tests/AgentTests/**",
+        .generated("Generated/FanCurveAgent/Config.generated.swift"),
+      ],
+      dependencies: externalDependencies + [
+        .external(name: "Nimble")
+      ]
+    ),
   ],
   schemes: [
     .scheme(
       name: appName,
       shared: true,
       buildAction: .buildAction(targets: [.target(appName)]),
-      testAction: .targets([.testableTarget(target: "ModelTests")], configuration: "Debug"),
+      testAction: .targets(
+        [
+          .testableTarget(target: "ModelTests"),
+          .testableTarget(target: "FanCurveAgentTests"),
+        ],
+        configuration: "Debug"
+      ),
       runAction: .runAction(configuration: "Debug"),
       archiveAction: .archiveAction(configuration: "Release"),
       profileAction: .profileAction(configuration: "Release"),
@@ -311,6 +340,15 @@ let project = Project(
       archiveAction: .archiveAction(configuration: "Release"),
       profileAction: .profileAction(configuration: "Release"),
       analyzeAction: .analyzeAction(configuration: "Debug")
+    ),
+    .scheme(
+      name: "FanCurveAgentTests",
+      shared: true,
+      buildAction: .buildAction(targets: [.target("FanCurveAgentTests")]),
+      testAction: .targets(
+        [.testableTarget(target: "FanCurveAgentTests")],
+        configuration: "Debug"
+      )
     ),
     .scheme(
       name: "SMCFanHelper",

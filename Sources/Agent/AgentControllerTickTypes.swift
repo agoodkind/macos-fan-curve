@@ -11,7 +11,7 @@ import Foundation
 enum AgentControllerTickTypes {
   struct TickTelemetry {
     let active: Bool
-    let result: XPCClient.BatchReadResult
+    let result: FanHardwareBatchRead
     let transitioned: Bool
     let maxCPUTemp: Double
     let cpuLoad: Double

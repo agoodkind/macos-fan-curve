@@ -45,7 +45,7 @@ final class AgentController: @unchecked Sendable {
     case unknown
   }
 
-  let xpcClient = XPCClient(clientName: generatedAgentBundleID)
+  let fanHardware: any FanHardware
   let sharedConfig = SharedConfig()
   let loadSampler = CPULoadSampler()
   let eventWriter = EventArtifactWriter()
@@ -97,6 +97,13 @@ final class AgentController: @unchecked Sendable {
       .map(\.key)
   )
 
+  init(
+    fanHardware: any FanHardware = XPCClient(clientName: generatedAgentBundleID)
+  ) {
+    self.fanHardware = fanHardware
+    agentControllerLog.notice("agent.hardware.configured owner=agent")
+  }
+
   func start() {
     agentControllerLog.notice("agent.started pollInterval=\(pollInterval, privacy: .public)s")
     timer = Timer.scheduledTimer(
@@ -114,17 +121,61 @@ final class AgentController: @unchecked Sendable {
     timer = nil
     unregisterDarwinObserver()
     sharedConfig.clearAgentStatus()
-    xpcClient.shutdown()
+    fanHardware.shutdown()
     agentControllerLog.notice("agent.stopped")
   }
 
   func resetAllFansToAuto() async {
-    _ = await xpcClient.readAndApply(
+    _ = await fanHardware.readAndApply(
       fanCount: cachedFanCount,
       tempKeys: [],
       autoFans: Array(0..<cachedFanCount)
     )
     agentControllerLog.notice("agent.fans.reset.auto")
+  }
+
+  func getOwnership() async throws -> [AgentOwnershipEntry] {
+    agentControllerLog.debug("agent.hardware.ownership.requested")
+    do {
+      let rows = try await fanHardware.getOwnership()
+      agentControllerLog.debug(
+        "agent.hardware.ownership.returned count=\(rows.count, privacy: .public)"
+      )
+      return rows
+    } catch {
+      agentControllerLog.notice(
+        "agent.hardware.ownership.failed error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+      )
+      throw error
+    }
+  }
+
+  func setFanRPM(_ fanIndex: UInt, rpm: Float) async throws {
+    agentControllerLog.info(
+      "agent.hardware.rpm.requested fan=\(fanIndex, privacy: .public) rpm=\(rpm, privacy: .public)"
+    )
+    do {
+      try await fanHardware.setFanRPM(fanIndex, rpm: rpm, priority: nil)
+    } catch {
+      agentControllerLog.notice(
+        "agent.hardware.rpm.failed fan=\(fanIndex, privacy: .public) rpm=\(rpm, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+      )
+      throw error
+    }
+  }
+
+  func setFanAuto(_ fanIndex: UInt) async throws {
+    agentControllerLog.info(
+      "agent.hardware.auto.requested fan=\(fanIndex, privacy: .public)"
+    )
+    do {
+      try await fanHardware.setFanAuto(fanIndex, priority: nil)
+    } catch {
+      agentControllerLog.notice(
+        "agent.hardware.auto.failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+      )
+      throw error
+    }
   }
 
   func currentRuntimeStateForXPC() -> RuntimeState {

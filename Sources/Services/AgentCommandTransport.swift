@@ -63,54 +63,6 @@ private final class AgentCommandReplyResumer: @unchecked Sendable {
 @MainActor
 final class AgentCommandTransport {
   private let encoder = JSONEncoder()
-  private let serviceName: String
-
-  init(serviceName: String) {
-    self.serviceName = serviceName
-  }
-
-  func sendControl(_ command: AgentCommand) async throws {
-    agentCommandTransportLog.notice(
-      "agent_command_transport.control.started kind=\(command.logName, privacy: .public) transport=one-shot-xpc"
-    )
-    let connection = NSXPCConnection(machServiceName: serviceName, options: [])
-    connection.remoteObjectInterface = NSXPCInterface(with: FanCurveAgentXPCProtocol.self)
-    connection.resume()
-    defer {
-      connection.invalidate()
-    }
-
-    do {
-      let data = try encoder.encode(command)
-      let response: AgentCommandResponse =
-        try await withCheckedThrowingContinuation { continuation in
-          let resumer = AgentCommandReplyResumer(continuation)
-          let errorHandler: @Sendable (Error) -> Void = { error in
-            agentCommandTransportLog.error(
-              "agent_command_transport.control_proxy.failed kind=\(command.logName, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-command"
-            )
-            resumer.resume(throwing: error)
-          }
-          guard
-            let proxy = connection.remoteObjectProxyWithErrorHandler(errorHandler)
-              as? FanCurveAgentXPCProtocol
-          else {
-            resumer.resume(throwing: FanCurveAgentClientError.missingRemoteProxy)
-            return
-          }
-          request(commandData: data, using: proxy, resumer: resumer)
-        }
-      try accept(response, for: command)
-      agentCommandTransportLog.notice(
-        "agent_command_transport.control.finished kind=\(command.logName, privacy: .public) transport=one-shot-xpc"
-      )
-    } catch {
-      agentCommandTransportLog.error(
-        "agent_command_transport.control.failed kind=\(command.logName, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-ui"
-      )
-      throw error
-    }
-  }
 
   func send(
     _ command: AgentCommand,
