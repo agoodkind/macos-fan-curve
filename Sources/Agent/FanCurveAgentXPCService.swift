@@ -6,25 +6,53 @@
 //
 
 import AppLog
+import Darwin
 import Foundation
 
 private let agentXPCLog = AppLog.make(category: "FanCurveAgentXPC")
+
+// MARK: - FanCurveAgentXPCService
 
 final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
   private let controller: AgentController
   private let helperService: any HelperServiceManaging
   private let listener: NSXPCListener
+  private let faultController: any FanCurveAgentXPCFaultControlling
+  private let processTerminator: @Sendable () -> Void
   private let callbackLock = NSLock()
   private var eventCallbacks: [FanCurveAgentXPCEventProtocol] = []
+  private var connections: [NSXPCConnection] = []
+
+  convenience init(
+    controller: AgentController,
+    serviceName: String = FanCurveAgentXPC.serviceName,
+    helperService: any HelperServiceManaging = ServiceManagementAdapters.helper(),
+    faultController: any FanCurveAgentXPCFaultControlling =
+      ProductionAgentXPCFaultControl(),
+    processTerminator: @escaping @Sendable () -> Void = { Darwin.exit(0) }
+  ) {
+    self.init(
+      controller: controller,
+      listener: NSXPCListener(machServiceName: serviceName),
+      helperService: helperService,
+      faultController: faultController,
+      processTerminator: processTerminator
+    )
+  }
 
   init(
     controller: AgentController,
-    serviceName: String = FanCurveAgentXPC.serviceName,
-    helperService: any HelperServiceManaging = ServiceManagementAdapters.helper()
+    listener: NSXPCListener,
+    helperService: any HelperServiceManaging,
+    faultController: any FanCurveAgentXPCFaultControlling =
+      ProductionAgentXPCFaultControl(),
+    processTerminator: @escaping @Sendable () -> Void = { Darwin.exit(0) }
   ) {
     self.controller = controller
     self.helperService = helperService
-    self.listener = NSXPCListener(machServiceName: serviceName)
+    self.listener = listener
+    self.faultController = faultController
+    self.processTerminator = processTerminator
     super.init()
     self.listener.delegate = self
     self.controller.runtimeSetupProvider = { [weak self] snapshot in
@@ -61,11 +89,14 @@ extension FanCurveAgentXPCService: NSXPCListenerDelegate {
     connection.remoteObjectInterface = NSXPCInterface(with: FanCurveAgentXPCEventProtocol.self)
     connection.invalidationHandler = {
       agentXPCLog.info("agent.xpc.connection.invalidated")
-      self.clearEventCallbacks(reason: "connection-invalidated")
+      self.removeConnection(connection, reason: "connection-invalidated")
     }
     connection.interruptionHandler = {
       agentXPCLog.info("agent.xpc.connection.interrupted")
-      self.clearEventCallbacks(reason: "connection-interrupted")
+      self.removeConnection(connection, reason: "connection-interrupted")
+    }
+    callbackLock.withLock {
+      connections.append(connection)
     }
     connection.resume()
     agentXPCLog.info("agent.xpc.connection.accepted")
@@ -76,6 +107,22 @@ extension FanCurveAgentXPCService: NSXPCListenerDelegate {
 extension FanCurveAgentXPCService: FanCurveAgentXPCProtocol {
   func getCurrentState(reply: @Sendable (Bool, Data?, String?) -> Void) {
     agentXPCLog.debug("agent.xpc.current_state.requested")
+    let faultEffect = faultController.consumeFault(at: .currentState)
+    switch faultEffect {
+    case .malformedInitialState:
+      agentXPCLog.notice(
+        "agent.xpc.current_state.fault_injected kind=malformed_initial_state"
+      )
+      reply(true, Data("{".utf8), nil)
+      return
+    case .terminateAgent:
+      agentXPCLog.notice("agent.xpc.current_state.fault_injected kind=interruption")
+      processTerminator()
+      reply(false, nil, "Controlled agent process exited")
+      return
+    default:
+      break
+    }
     let runtimeState = controller.currentRuntimeStateForXPC()
 
     do {
@@ -121,8 +168,19 @@ extension FanCurveAgentXPCService: FanCurveAgentXPCProtocol {
     do {
       let command = try JSONDecoder().decode(AgentCommand.self, from: commandData)
       agentXPCLog.info("agent.xpc.command.received kind=\(command.logName, privacy: .public)")
+      let faultEffect = faultController.consumeFault(at: .command)
+      if case .rejectCommand = faultEffect {
+        agentXPCLog.notice("agent.xpc.command.fault_injected kind=rejected_command")
+        reply(false, nil, "Controlled command rejected")
+        return
+      }
       Task {
         let response = await self.handleCommand(command)
+        if case .malformedReply = faultEffect {
+          agentXPCLog.notice("agent.xpc.command.fault_injected kind=malformed_reply")
+          reply(true, Data("{".utf8), nil)
+          return
+        }
         do {
           let data = try JSONEncoder().encode(response)
           reply(response.accepted, data, response.message)
@@ -347,10 +405,29 @@ extension FanCurveAgentXPCService {
   func publishRuntimeState(_ runtimeState: RuntimeState) {
     let callbacks = currentEventCallbacks()
     guard !callbacks.isEmpty else { return }
+    let faultEffect = faultController.consumeFault(at: .runtimeEvent)
+    if case .invalidateConnection = faultEffect {
+      agentXPCLog.notice("agent.xpc.events.fault_injected kind=invalidation")
+      invalidateConnections()
+      return
+    }
     do {
-      let data = try JSONEncoder().encode(runtimeState)
+      let encodedState = try JSONEncoder().encode(runtimeState)
+      let data: Data
+      if case .malformedEvent = faultEffect {
+        data = Data("{".utf8)
+        agentXPCLog.notice("agent.xpc.events.fault_injected kind=malformed_event")
+      } else {
+        data = encodedState
+      }
       for callback in callbacks {
         callback.agentRuntimeStateDidUpdate(data)
+        if case .duplicateEvent = faultEffect {
+          callback.agentRuntimeStateDidUpdate(data)
+        }
+      }
+      if case .duplicateEvent = faultEffect {
+        agentXPCLog.notice("agent.xpc.events.fault_injected kind=duplicate_event")
       }
       agentXPCLog.debug(
         "agent.xpc.events.runtime_state.sent callbacks=\(callbacks.count, privacy: .public)"
@@ -368,10 +445,25 @@ extension FanCurveAgentXPCService {
     return eventCallbacks
   }
 
-  func clearEventCallbacks(reason: String) {
-    callbackLock.lock()
-    eventCallbacks.removeAll()
-    callbackLock.unlock()
-    agentXPCLog.info("agent.xpc.events.cleared reason=\(reason, privacy: .public)")
+  func removeConnection(_ connection: NSXPCConnection, reason: String) {
+    callbackLock.withLock {
+      connections.removeAll { $0 === connection }
+      eventCallbacks.removeAll()
+    }
+    agentXPCLog.info(
+      "agent.xpc.events.cleared reason=\(reason, privacy: .public)"
+    )
+  }
+
+  func invalidateConnections() {
+    let currentConnections = callbackLock.withLock {
+      let result = connections
+      connections.removeAll()
+      eventCallbacks.removeAll()
+      return result
+    }
+    for connection in currentConnections {
+      connection.invalidate()
+    }
   }
 }

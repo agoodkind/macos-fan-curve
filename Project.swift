@@ -81,11 +81,17 @@ let externalDependencies: [TargetDependency] = [
   .external(name: "SMCFanProtocol"),
 ]
 
+let testControlAdapterSourceExclusions: [Path] = [
+  "Sources/TestControl/CLI/**",
+  "Sources/TestControl/Controlled*.swift",
+  "Sources/TestControl/*Adapters.swift",
+]
+
 let modelTestSources: SourceFilesList = [
   .generated("Generated/FanCurve/Config.generated.swift"),
   .glob(
     "Sources/TestControl/**",
-    excluding: ["Sources/TestControl/CLI/**"]
+    excluding: testControlAdapterSourceExclusions
   ),
   "Sources/App/L10n.swift",
   "Sources/Common/SharedConfigKeys.swift",
@@ -150,10 +156,7 @@ let project = Project(
         "Sources/Views/**",
         "Sources/Services/**",
         "Sources/Common/**",
-        .glob(
-          "Sources/TestControl/**",
-          excluding: ["Sources/TestControl/CLI/**"]
-        ),
+        "Sources/TestControl/TestControl*.swift",
         .generated("Generated/FanCurve/Config.generated.swift"),
       ],
       resources: [
@@ -247,7 +250,10 @@ let project = Project(
       deploymentTargets: macOSDeploymentTarget,
       infoPlist: .default,
       sources: [
-        "Sources/TestControl/**"
+        .glob(
+          "Sources/TestControl/**",
+          excluding: Array(testControlAdapterSourceExclusions.dropFirst())
+        )
       ],
       dependencies: [
         .external(name: "AppLog")
@@ -361,6 +367,10 @@ let project = Project(
         "Sources/Services/AgentCommandTransport.swift",
         "Sources/Services/FanCurveAgentClient.swift",
         "Sources/Common/**",
+        .glob(
+          "Sources/TestControl/**",
+          excluding: ["Sources/TestControl/CLI/**"]
+        ),
         "Tests/AgentTests/**",
         .generated("Generated/FanCurveAgent/Config.generated.swift"),
       ],

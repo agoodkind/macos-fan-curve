@@ -85,21 +85,312 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
   @Published private(set) var lastError: String?
 
   private var connection: NSXPCConnection?
+  private var connectionTask: Task<Void, Never>?
   private var reconnectTask: Task<Void, Never>?
   private let serviceName: String
+  private let connectionFactory: @MainActor () -> NSXPCConnection
+  private let control: any FanCurveAgentClientControlling
+  private let reconnectDelay: TimeInterval
   private let commandTransport = AgentCommandTransport()
   private let decoder = JSONDecoder()
+  private var stopped = false
+  private var connectionGeneration: UInt64 = 0
 
-  init(serviceName: String = FanCurveAgentXPC.serviceName) {
+  init(
+    serviceName: String = FanCurveAgentXPC.serviceName,
+    connectionFactory: (@MainActor () -> NSXPCConnection)? = nil,
+    control: any FanCurveAgentClientControlling =
+      ProductionAgentClientControl(),
+    reconnectDelay: TimeInterval = 1
+  ) {
     self.serviceName = serviceName
+    self.connectionFactory =
+      connectionFactory ?? {
+        NSXPCConnection(machServiceName: serviceName, options: [])
+      }
+    self.control = control
+    self.reconnectDelay = reconnectDelay
     super.init()
   }
 
   func start() {
     guard connection == nil else { return }
-    connect()
+    stopped = false
+    switch control.connectionGate() {
+    case .allowed:
+      connect()
+    case .refused(let reason):
+      control.recordEvent(.connectionAttemptGated)
+      connectionState = .failed(reason)
+      lastError = reason
+      fanCurveAgentClientLog.notice(
+        "agent_client.connection.gated reason=\(reason, privacy: .public) recovery=wait-for-explicit-retry"
+      )
+    }
   }
 
+  func stop() {
+    stopped = true
+    connectionTask?.cancel()
+    connectionTask = nil
+    reconnectTask?.cancel()
+    reconnectTask = nil
+    let activeConnection = connection
+    connection = nil
+    activeConnection?.interruptionHandler = nil
+    activeConnection?.invalidationHandler = nil
+    activeConnection?.invalidate()
+    connectionState = .disconnected
+    fanCurveAgentClientLog.info("agent_client.connection.stopped")
+  }
+
+  nonisolated func agentRuntimeStateDidUpdate(_ stateData: Data) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        return
+      }
+      do {
+        let state = try decoder.decode(RuntimeState.self, from: stateData)
+        control.recordEvent(.runtimeEventAccepted)
+        apply(runtimeState: state)
+      } catch {
+        control.recordEvent(.runtimeEventRejected)
+        lastError = error.localizedDescription
+        fanCurveAgentClientLog.error(
+          "agent_client.state.decode_failed error=\(error.localizedDescription, privacy: .public) recovery=keep-last-state"
+        )
+      }
+    }
+  }
+
+  private func connect() {
+    guard !stopped else { return }
+    connectionState = .connecting
+    control.recordEvent(.connecting)
+    let nextConnection = connectionFactory()
+    connectionGeneration += 1
+    let nextConnectionGeneration = connectionGeneration
+    configure(nextConnection, generation: nextConnectionGeneration)
+    connection = nextConnection
+    nextConnection.resume()
+    fanCurveAgentClientLog.notice(
+      "agent_client.connection.started service=\(serviceName, privacy: .public)")
+    if control.consumeReconnectFault() {
+      fanCurveAgentClientLog.notice(
+        "agent_client.connection.fault_injected kind=reconnect recovery=invalidate-connection"
+      )
+      nextConnection.invalidate()
+      return
+    }
+    startConnectionTask(
+      nextConnection: nextConnection,
+      generation: nextConnectionGeneration
+    )
+  }
+
+  private func configure(
+    _ nextConnection: NSXPCConnection,
+    generation: UInt64
+  ) {
+    nextConnection.remoteObjectInterface = NSXPCInterface(with: FanCurveAgentXPCProtocol.self)
+    nextConnection.exportedInterface = NSXPCInterface(with: FanCurveAgentXPCEventProtocol.self)
+    nextConnection.exportedObject = self
+    nextConnection.interruptionHandler = { @Sendable [weak self] in
+      DispatchQueue.main.async {
+        self?.handleDisconnect(generation, reason: "interrupted")
+      }
+    }
+    nextConnection.invalidationHandler = { @Sendable [weak self] in
+      DispatchQueue.main.async {
+        self?.handleDisconnect(generation, reason: "invalidated")
+      }
+    }
+  }
+
+  private func startConnectionTask(
+    nextConnection: NSXPCConnection,
+    generation: UInt64
+  ) {
+    connectionTask = Task { @MainActor [weak self] in
+      guard let self else {
+        return
+      }
+      do {
+        try await registerForEvents()
+        try await refreshCurrentState()
+        guard
+          !Task.isCancelled,
+          !stopped,
+          connectionGeneration == generation
+        else {
+          return
+        }
+        connectionTask = nil
+        connectionState = .connected
+        control.recordEvent(.connected)
+        lastError = nil
+        fanCurveAgentClientLog.notice("agent_client.connection.ready")
+      } catch {
+        guard !stopped, connectionGeneration == generation else {
+          return
+        }
+        connectionTask = nil
+        connection = nil
+        nextConnection.invalidate()
+        lastError = error.localizedDescription
+        connectionState = .failed(error.localizedDescription)
+        fanCurveAgentClientLog.notice(
+          "agent_client.connection.failed error=\(error.localizedDescription, privacy: .public) recovery=schedule-reconnect"
+        )
+        scheduleReconnect()
+      }
+    }
+  }
+
+  private func registerForEvents() async throws {
+    try await withCheckedThrowingContinuation { continuation in
+      let resumer = AgentVoidReplyResumer(continuation)
+      guard let proxy = remoteProxy(resumer: resumer) else { return }
+      proxy.registerForEvents { success, errorMessage in
+        resumer.resume(success: success, errorMessage: errorMessage)
+      }
+    }
+    fanCurveAgentClientLog.debug("agent_client.events.registered")
+  }
+
+  private func refreshCurrentState() async throws {
+    let proxy = try remoteProxy()
+    let state: RuntimeState = try await withCheckedThrowingContinuation { continuation in
+      proxy.getCurrentState { success, data, errorMessage in
+        if let errorMessage, !success {
+          continuation.resume(
+            throwing: FanCurveAgentClientError.commandRejected(errorMessage))
+          return
+        }
+        guard success, let data else {
+          continuation.resume(throwing: FanCurveAgentClientError.invalidReply)
+          return
+        }
+        do {
+          let state = try JSONDecoder().decode(RuntimeState.self, from: data)
+          continuation.resume(returning: state)
+        } catch {
+          fanCurveAgentClientLog.error(
+            "agent_client.current_state.decode_failed error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+          )
+          continuation.resume(throwing: error)
+        }
+      }
+    }
+    apply(runtimeState: state)
+  }
+
+  private func send(_ command: AgentCommand) async throws {
+    control.recordCommand(command)
+    let proxy = try remoteProxy()
+    try await commandTransport.send(command, to: proxy)
+  }
+
+  private func remoteProxy() throws -> FanCurveAgentXPCProtocol {
+    guard let connection else { throw FanCurveAgentClientError.connectionUnavailable }
+    guard
+      let proxy = connection.remoteObjectProxyWithErrorHandler(
+        Self.makeRemoteProxyErrorHandler(client: self)
+      ) as? FanCurveAgentXPCProtocol
+    else {
+      throw FanCurveAgentClientError.missingRemoteProxy
+    }
+    return proxy
+  }
+
+  private func remoteProxy(resumer: AgentVoidReplyResumer) -> FanCurveAgentXPCProtocol? {
+    guard let connection else {
+      resumer.resume(throwing: FanCurveAgentClientError.connectionUnavailable)
+      return nil
+    }
+    let errorHandler: @Sendable (Error) -> Void = { [weak self] error in
+      resumer.resume(throwing: error)
+      self?.handleRemoteProxyFailure(error)
+    }
+    guard
+      let proxy = connection.remoteObjectProxyWithErrorHandler(errorHandler)
+        as? FanCurveAgentXPCProtocol
+    else {
+      resumer.resume(throwing: FanCurveAgentClientError.missingRemoteProxy)
+      return nil
+    }
+    return proxy
+  }
+
+  nonisolated private static func makeRemoteProxyErrorHandler(
+    client: FanCurveAgentClient
+  ) -> @Sendable (Error) -> Void {
+    { [weak client] error in
+      client?.handleRemoteProxyFailure(error)
+    }
+  }
+
+  nonisolated private func handleRemoteProxyFailure(_ error: Error) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      let activeConnection = connection
+      connection = nil
+      activeConnection?.invalidate()
+      lastError = error.localizedDescription
+      connectionState = .failed(error.localizedDescription)
+      fanCurveAgentClientLog.notice(
+        "agent_client.proxy.failed error=\(error.localizedDescription, privacy: .public) recovery=schedule-reconnect"
+      )
+      scheduleReconnect()
+    }
+  }
+
+  private func apply(runtimeState state: RuntimeState) {
+    runtimeState = state
+    snapshot = state.snapshot
+    connectionState = .connected
+    lastError = nil
+    fanCurveAgentClientLog.debug("agent_client.state.updated")
+  }
+
+  private func handleDisconnect(_ disconnectedGeneration: UInt64, reason: String) {
+    guard connectionGeneration == disconnectedGeneration, connection != nil else {
+      return
+    }
+    connection = nil
+    connectionState = .disconnected
+    control.recordEvent(.disconnected)
+    fanCurveAgentClientLog.notice(
+      "agent_client.connection.disconnected reason=\(reason, privacy: .public) recovery=schedule-reconnect"
+    )
+    scheduleReconnect()
+  }
+
+  private func scheduleReconnect() {
+    guard !stopped, reconnectTask == nil else { return }
+    control.recordEvent(.reconnectScheduled)
+    let delay = reconnectDelay
+    reconnectTask = Task { @MainActor [weak self] in
+      let clock = ContinuousClock()
+      do {
+        try await clock.sleep(for: .seconds(delay))
+      } catch {
+        fanCurveAgentClientLog.notice(
+          "agent_client.reconnect.cancelled recovery=skip-reconnect"
+        )
+        return
+      }
+      guard let self else { return }
+      reconnectTask = nil
+      guard !stopped, connection == nil else { return }
+      connect()
+    }
+  }
+}
+
+// MARK: - Commands
+
+extension FanCurveAgentClient {
   func setFanControlEnabled(_ enabled: Bool) async throws {
     try await send(.setFanControlEnabled(enabled))
   }
@@ -159,190 +450,9 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
       }
     }
   }
-
-  nonisolated func agentRuntimeStateDidUpdate(_ stateData: Data) {
-    Task { @MainActor in
-      do {
-        let state = try decoder.decode(RuntimeState.self, from: stateData)
-        apply(runtimeState: state)
-      } catch {
-        lastError = error.localizedDescription
-        fanCurveAgentClientLog.error(
-          "agent_client.state.decode_failed error=\(error.localizedDescription, privacy: .public) recovery=keep-last-state"
-        )
-      }
-    }
-  }
-
-  private func connect() {
-    connectionState = .connecting
-    let nextConnection = NSXPCConnection(machServiceName: serviceName, options: [])
-    nextConnection.remoteObjectInterface = NSXPCInterface(with: FanCurveAgentXPCProtocol.self)
-    nextConnection.exportedInterface = NSXPCInterface(with: FanCurveAgentXPCEventProtocol.self)
-    nextConnection.exportedObject = self
-    nextConnection.interruptionHandler = { @Sendable [weak self] in
-      Task { @MainActor in
-        self?.handleDisconnect(reason: "interrupted")
-      }
-    }
-    nextConnection.invalidationHandler = { @Sendable [weak self] in
-      Task { @MainActor in
-        self?.handleDisconnect(reason: "invalidated")
-      }
-    }
-    connection = nextConnection
-    nextConnection.resume()
-    fanCurveAgentClientLog.notice(
-      "agent_client.connection.started service=\(serviceName, privacy: .public)")
-    Task {
-      do {
-        try await registerForEvents()
-        try await refreshCurrentState()
-        connectionState = .connected
-        lastError = nil
-        fanCurveAgentClientLog.notice("agent_client.connection.ready")
-      } catch {
-        lastError = error.localizedDescription
-        connectionState = .failed(error.localizedDescription)
-        fanCurveAgentClientLog.notice(
-          "agent_client.connection.failed error=\(error.localizedDescription, privacy: .public) recovery=schedule-reconnect"
-        )
-        scheduleReconnect()
-      }
-    }
-  }
-
-  private func registerForEvents() async throws {
-    try await withCheckedThrowingContinuation { continuation in
-      let resumer = AgentVoidReplyResumer(continuation)
-      guard let proxy = remoteProxy(resumer: resumer) else { return }
-      proxy.registerForEvents { success, errorMessage in
-        resumer.resume(success: success, errorMessage: errorMessage)
-      }
-    }
-    fanCurveAgentClientLog.debug("agent_client.events.registered")
-  }
-
-  private func refreshCurrentState() async throws {
-    let proxy = try remoteProxy()
-    let state: RuntimeState = try await withCheckedThrowingContinuation { continuation in
-      proxy.getCurrentState { success, data, errorMessage in
-        if let errorMessage, !success {
-          continuation.resume(
-            throwing: FanCurveAgentClientError.commandRejected(errorMessage))
-          return
-        }
-        guard success, let data else {
-          continuation.resume(throwing: FanCurveAgentClientError.invalidReply)
-          return
-        }
-        do {
-          let state = try JSONDecoder().decode(RuntimeState.self, from: data)
-          continuation.resume(returning: state)
-        } catch {
-          fanCurveAgentClientLog.error(
-            "agent_client.current_state.decode_failed error=\(error.localizedDescription, privacy: .public) recovery=propagate"
-          )
-          continuation.resume(throwing: error)
-        }
-      }
-    }
-    apply(runtimeState: state)
-  }
-
-  private func send(_ command: AgentCommand) async throws {
-    let proxy = try remoteProxy()
-    try await commandTransport.send(command, to: proxy)
-  }
-
-  private func remoteProxy() throws -> FanCurveAgentXPCProtocol {
-    guard let connection else { throw FanCurveAgentClientError.connectionUnavailable }
-    guard
-      let proxy = connection.remoteObjectProxyWithErrorHandler(
-        Self.makeRemoteProxyErrorHandler(client: self)
-      ) as? FanCurveAgentXPCProtocol
-    else {
-      throw FanCurveAgentClientError.missingRemoteProxy
-    }
-    return proxy
-  }
-
-  private func remoteProxy(resumer: AgentVoidReplyResumer) -> FanCurveAgentXPCProtocol? {
-    guard let connection else {
-      resumer.resume(throwing: FanCurveAgentClientError.connectionUnavailable)
-      return nil
-    }
-    let errorHandler: @Sendable (Error) -> Void = { [weak self] error in
-      resumer.resume(throwing: error)
-      self?.handleRemoteProxyFailure(error)
-    }
-    guard
-      let proxy = connection.remoteObjectProxyWithErrorHandler(errorHandler)
-        as? FanCurveAgentXPCProtocol
-    else {
-      resumer.resume(throwing: FanCurveAgentClientError.missingRemoteProxy)
-      return nil
-    }
-    return proxy
-  }
-
-  nonisolated private static func makeRemoteProxyErrorHandler(
-    client: FanCurveAgentClient
-  ) -> @Sendable (Error) -> Void {
-    { [weak client] error in
-      client?.handleRemoteProxyFailure(error)
-    }
-  }
-
-  nonisolated private func handleRemoteProxyFailure(_ error: Error) {
-    Task { @MainActor [weak self] in
-      self?.lastError = error.localizedDescription
-      self?.connectionState = .failed(error.localizedDescription)
-      fanCurveAgentClientLog.notice(
-        "agent_client.proxy.failed error=\(error.localizedDescription, privacy: .public) recovery=schedule-reconnect"
-      )
-      self?.scheduleReconnect()
-    }
-  }
-
-  private func apply(runtimeState state: RuntimeState) {
-    runtimeState = state
-    snapshot = state.snapshot
-    connectionState = .connected
-    lastError = nil
-    fanCurveAgentClientLog.debug("agent_client.state.updated")
-  }
-
-  private func handleDisconnect(reason: String) {
-    connection = nil
-    connectionState = .disconnected
-    fanCurveAgentClientLog.notice(
-      "agent_client.connection.disconnected reason=\(reason, privacy: .public) recovery=schedule-reconnect"
-    )
-    scheduleReconnect()
-  }
-
-  private func scheduleReconnect() {
-    guard reconnectTask == nil else { return }
-    reconnectTask = Task { [weak self] in
-      let clock = ContinuousClock()
-      do {
-        try await clock.sleep(for: .seconds(1))
-      } catch {
-        fanCurveAgentClientLog.notice(
-          "agent_client.reconnect.cancelled recovery=skip-reconnect"
-        )
-        return
-      }
-      await MainActor.run {
-        guard let self else { return }
-        self.reconnectTask = nil
-        guard self.connection == nil else { return }
-        self.connect()
-      }
-    }
-  }
 }
+
+// MARK: - Runtime properties
 
 extension FanCurveAgentClient {
   var isFresh: Bool {

@@ -124,7 +124,7 @@
     let nextOperation: TestOperationDirective
   }
 
-  enum TestXPCFault: String, Codable, Equatable, Sendable {
+  enum TestXPCFault: String, Codable, Equatable, Hashable, Sendable {
     case duplicateEvent = "duplicate_event"
     case interruption
     case invalidation
@@ -227,6 +227,16 @@
     case launched
     case ready
     case terminated
+  }
+
+  enum TestXPCStateEvent: String, Codable, Equatable, Sendable {
+    case connected
+    case connecting
+    case connectionAttemptGated = "connection_attempt_gated"
+    case disconnected
+    case reconnectScheduled = "reconnect_scheduled"
+    case runtimeEventAccepted = "runtime_event_accepted"
+    case runtimeEventRejected = "runtime_event_rejected"
   }
 
   enum TestAppToAgentCommand: Codable, Equatable, Sendable {
@@ -337,12 +347,14 @@
     case fanWrite(fanIndex: Int, rpm: Float, priority: Int)
     case hardwareRead(operation: TestHardwareReadOperation)
     case processLifecycle(process: TestControlParticipant, phase: TestProcessLifecyclePhase)
+    case revisionRejected(applied: UInt64, proposed: UInt64)
     case serviceMutation(
       service: TestServiceName,
       operation: TestServiceOperation,
       result: TestOperationDirective
     )
     case xpcFault(TestXPCFault)
+    case xpcState(TestXPCStateEvent)
 
     var kind: TestControlEventKind {
       switch self {
@@ -356,10 +368,14 @@
         return .hardwareRead
       case .processLifecycle:
         return .processLifecycle
+      case .revisionRejected:
+        return .revisionRejected
       case .serviceMutation:
         return .serviceMutation
       case .xpcFault:
         return .xpcFault
+      case .xpcState:
+        return .xpcState
       }
     }
   }
@@ -370,8 +386,10 @@
     case fanWrite = "fan_write"
     case hardwareRead = "hardware_read"
     case processLifecycle = "process_lifecycle"
+    case revisionRejected = "revision_rejected"
     case serviceMutation = "service_mutation"
     case xpcFault = "xpc_fault"
+    case xpcState = "xpc_state"
   }
 
   struct TestControlEvent: Codable, Equatable, Sendable {
