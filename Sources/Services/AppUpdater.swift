@@ -5,8 +5,11 @@
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-24.
 //
 
+import AppLog
 import Combine
 import Sparkle
+
+private let appUpdaterLog = AppLog.make(category: "AppUpdater")
 
 @MainActor
 final class AppUpdater: ObservableObject {
@@ -16,17 +19,27 @@ final class AppUpdater: ObservableObject {
   private(set) var updaterController: SPUStandardUpdaterController?
 
   var isConfigured: Bool {
-    !generatedSparkleFeedURL.isEmpty && !generatedSparklePublicEDKey.isEmpty
+    Self.updatesEnabledForBuild
+      && !generatedSparkleFeedURL.isEmpty
+      && !generatedSparklePublicEDKey.isEmpty
   }
 
   init() {
-    guard isConfigured else { return }
+    guard Self.updatesEnabledForBuild else {
+      appUpdaterLog.info("app_updater.disabled reason=debug_build")
+      return
+    }
+    guard isConfigured else {
+      appUpdaterLog.notice("app_updater.disabled reason=missing_release_configuration")
+      return
+    }
 
     let controller = SPUStandardUpdaterController(
       startingUpdater: true,
       updaterDelegate: nil,
       userDriverDelegate: nil)
     updaterController = controller
+    appUpdaterLog.info("app_updater.started")
 
     controller.updater.publisher(for: \.canCheckForUpdates)
       .receive(on: RunLoop.main)
@@ -43,5 +56,13 @@ final class AppUpdater: ObservableObject {
 
   func setAutomaticallyChecksForUpdates(_ enabled: Bool) {
     updaterController?.updater.automaticallyChecksForUpdates = enabled
+  }
+
+  private static var updatesEnabledForBuild: Bool {
+    #if DEBUG
+      false
+    #else
+      true
+    #endif
   }
 }

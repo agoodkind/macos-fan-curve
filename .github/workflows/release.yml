@@ -4,20 +4,21 @@ on:
   push:
     branches:
       - main
-    paths:
-      - Sources/**
-      - Tests/**
-      - Project.swift
-      - Workspace.swift
-      - Tuist.swift
-      - Tuist/**
-      - Config/**
-      - Scripts/**
-      - Templates/**
-      - Makefile
-      - .tool-versions
-      - .github/workflows/release.yml
   workflow_dispatch:
+    inputs:
+      candidate_tag:
+        description: Published pre-release tag to promote
+        required: false
+        type: string
+      source_sha:
+        description: Emergency source commit
+        required: false
+        type: string
+      allow_source_sha:
+        description: Acknowledge an emergency source commit
+        required: true
+        default: false
+        type: boolean
 
 # The caller must grant every permission the called workflow's jobs request.
 permissions:
@@ -30,8 +31,22 @@ jobs:
   release:
     uses: agoodkind/swift-makefile/.github/workflows/_release.yml@main
     with:
+      runner: macos-26
+      release-track: ${{ github.event_name == 'push' && 'prerelease' || 'stable' }}
+      candidate-tag: ${{ inputs.candidate_tag || '' }}
+      candidate-asset-pattern: "FanCurve-*.dmg"
+      source-sha: ${{ inputs.source_sha || '' }}
+      allow-source-sha: ${{ inputs.allow_source_sha || false }}
       signing-identity-name: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
       apple-team-id: H3BMXM4W7H
       notarize-pattern: "*.dmg"
       sbom-subject-path: "Products/Fan Curve.app"
+    secrets: inherit
+
+  appcast:
+    needs: release
+    uses: ./.github/workflows/appcast.yml
+    with:
+      release_tag: ${{ needs.release.outputs['release-tag'] }}
+      release_track: ${{ needs.release.outputs['release-track'] }}
     secrets: inherit

@@ -34,7 +34,9 @@ struct AboutContentView: View {
   var body: some View {
     Form {
       heroSection
-      softwareUpdatesSection
+      if appUpdater.isConfigured {
+        softwareUpdatesSection
+      }
       contactSection
       buildDetailsSection
     }
@@ -82,29 +84,21 @@ struct AboutContentView: View {
         set: { appUpdater.setAutomaticallyChecksForUpdates($0) }
       )
     )
-    .disabled(!appUpdater.isConfigured)
   }
 
-  @ViewBuilder
   private var updateStatusContent: some View {
-    if appUpdater.isConfigured {
-      SettingsAccessoryRow(accessoryWidth: AboutConstants.updateStatusAccessoryWidth) {
-        VStack(alignment: .leading, spacing: AboutConstants.updateStatusContentSpacing) {
-          Label(updateStatusLabel, systemImage: updateStatusIcon)
-            .foregroundColor(statusColor)
-            .symbolRenderingMode(.hierarchical)
-          Text("Updates are delivered automatically from goodkind.io.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-      } accessory: {
-        Button("Check Now") { appUpdater.checkForUpdates() }
-          .disabled(!appUpdater.canCheckForUpdates)
+    SettingsAccessoryRow(accessoryWidth: AboutConstants.updateStatusAccessoryWidth) {
+      VStack(alignment: .leading, spacing: AboutConstants.updateStatusContentSpacing) {
+        Label(updateStatusLabel, systemImage: updateStatusIcon)
+          .foregroundColor(statusColor)
+          .symbolRenderingMode(.hierarchical)
+        Text("Updates are delivered automatically from goodkind.io.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
-    } else {
-      Label("Software updates are available in release builds.", systemImage: "hammer")
-        .foregroundStyle(.secondary)
-        .symbolRenderingMode(.hierarchical)
+    } accessory: {
+      Button("Check Now") { appUpdater.checkForUpdates() }
+        .disabled(!appUpdater.canCheckForUpdates)
     }
   }
 
