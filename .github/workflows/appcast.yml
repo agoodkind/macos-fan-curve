@@ -78,23 +78,14 @@ jobs:
           path: build/sparkle-updates/appcast.xml
           if-no-files-found: error
 
-      - name: Stage appcast asset
-        env:
-          RELEASE_TRACK: ${{ inputs.release_track }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ "$RELEASE_TRACK" == "prerelease" ]]; then
-              public_path="deploy/appcast-worker/public/prerelease/appcast.xml"
-          elif [[ "$RELEASE_TRACK" == "stable" ]]; then
-              public_path="deploy/appcast-worker/public/appcast.xml"
-          else
-              printf 'Unknown release track: %s\n' "$RELEASE_TRACK" >&2
-              exit 1
-          fi
-          mkdir -p "$(dirname "$public_path")"
-          cp build/sparkle-updates/appcast.xml "$public_path"
+      - name: Stage appcast assets
+        uses: agoodkind/swift-makefile/.github/actions/stage-appcast-assets@main
+        with:
+          release-track: ${{ inputs.release_track }}
+          appcast-source: build/sparkle-updates/appcast.xml
+          public-directory: deploy/appcast-worker/public
+          stable-feed-url: https://goodkind.io/fancurve/appcast.xml
+          prerelease-feed-url: https://goodkind.io/fancurve/prerelease/appcast.xml
 
       - uses: actions/setup-node@v7
         with:
