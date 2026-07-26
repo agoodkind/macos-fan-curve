@@ -21,13 +21,17 @@ APP_BUNDLE_ID ?= $(BUNDLE_ID_PREFIX).fancurve
 AGENT_BUNDLE_ID ?= $(BUNDLE_ID_PREFIX).fancurveagent
 SHARED_SUITE_ID ?= $(BUNDLE_ID_PREFIX).fancurve.shared
 DMG_NAME = $(APP_NAME)-$(CONFIGURATION)
-SPARKLE_FEED_URL ?= https://goodkind.io/fancurve/appcast.xml
+RELEASE_TRACK ?= stable
+ARTIFACT_VERSION ?= Release
+SPARKLE_APPCAST_FEED_PATH = $(if $(filter prerelease,$(RELEASE_TRACK)),prerelease/appcast.xml,appcast.xml)
+SPARKLE_FEED_URL = https://goodkind.io/fancurve/$(SPARKLE_APPCAST_FEED_PATH)
 # Sparkle's Ed25519 PUBLIC key, read from a committed file so the make value
 # stays byte-exact: a whitespace-dirtied SUPublicEDKey reaches Info.plist and
 # generate_appcast then sees a key mismatch and silently emits an unsigned
 # appcast, which bricks every shipped updater.
 SPARKLE_PUBLIC_ED_KEY ?= $(shell cat Config/sparkle.pub 2>/dev/null)
 RELEASE_TAG ?= $(CURRENT_PROJECT_VERSION)-$(shell git rev-parse --short HEAD)
+GH_REPOSITORY ?= agoodkind/macos-fan-curve
 # The DMG signs with the same identity as the app unless overridden.
 DMG_SIGN_IDENTITY ?= $(CODE_SIGN_IDENTITY)
 DMG_VOLUME_NAME = $(APP_DISPLAY_NAME)
@@ -43,11 +47,11 @@ AGENT_BUNDLED_PLIST ?= $(APP_DEST)/Contents/Library/LaunchAgents/$(AGENT_PLIST_N
 AGENT_BUNDLE_PROGRAM = Contents/MacOS/FanCurveAgent
 ICON_HASH_STAMP = $(BUILD_DIR)/.app-icon.sha
 DMG_PATH = $(PRODUCTS_DIR)/$(DMG_NAME).dmg
-RELEASE_DMG_NAME = $(APP_NAME)-$(CURRENT_PROJECT_VERSION).dmg
+RELEASE_DMG_NAME = $(APP_NAME)-$(ARTIFACT_VERSION).dmg
 RELEASE_DMG_PATH = $(PRODUCTS_DIR)/$(RELEASE_DMG_NAME)
 SPARKLE_UPDATES_DIR = $(BUILD_DIR)/sparkle-updates
-SPARKLE_APPCAST_PATH = $(SPARKLE_UPDATES_DIR)/appcast.xml
-GITHUB_RELEASE_BASE_URL ?= https://github.com/agoodkind/macos-fan-curve/releases/download/$(RELEASE_TAG)/
+SPARKLE_GENERATED_APPCAST = $(SPARKLE_UPDATES_DIR)/appcast.xml
+SPARKLE_ASSET_TAGS = $(SPARKLE_UPDATES_DIR)/asset-tags.tsv
 GENERATE_CONFIG_ENV = SRCROOT="$(CURDIR)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
 # Signing is owned by swift-mk (XCODE_XCCONFIG_FILE override), not set here.
 XCODE_BUILD_SETTINGS = BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" APP_BUNDLE_ID="$(APP_BUNDLE_ID)" AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" SHARED_SUITE_ID="$(SHARED_SUITE_ID)" HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)"
@@ -73,6 +77,7 @@ SWIFT_ANALYZE_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 xcode-analyze swiftlint-analy
 SWIFT_FORMAT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTLINT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTCHECK_EXTRA_TARGETS := $(SWIFT_FORMAT_FILES)
+SWIFT_AUDIT_EXTRA_CMD := Scripts/Tests/release-track-contract.sh && Scripts/Tests/select-appcast-releases.sh && Scripts/Tests/prepare-appcast-history.sh && Scripts/Tests/rewrite-appcast-urls.sh
 
 # Generator names are data, bound to variables so no recipe line names a build
 # tool directly; every build/test/analyze routes through the swift-mk toolchain.
@@ -89,7 +94,7 @@ SWIFT_XCODE_BUILD_SETTINGS := $(XCODE_BUILD_SETTINGS)
 
 include bootstrap.mk
 
-.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates sparkle-appcast appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
+.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates generate-sparkle-appcast sparkle-appcast appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
 
 all: app
 
@@ -180,38 +185,48 @@ prepare-sparkle-updates:
 	@rm -rf "$(SPARKLE_UPDATES_DIR)"
 	@mkdir -p "$(SPARKLE_UPDATES_DIR)"
 	@cp "$(RELEASE_DMG_PATH)" "$(SPARKLE_UPDATES_DIR)/"
+	@printf '%s\t%s\n' "$(RELEASE_TAG)" "$(RELEASE_DMG_NAME)" > "$(SPARKLE_ASSET_TAGS)"
+	@$(MAKE) generate-sparkle-appcast
+
+generate-sparkle-appcast:
+	@test -s "$(SPARKLE_ASSET_TAGS)"
+	@test "$$(find "$(SPARKLE_UPDATES_DIR)" -maxdepth 1 -name '$(APP_NAME)-*.dmg' -print | wc -l | tr -d ' ')" -gt 0
 	@if [ -z "$${SPARKLE_PRIVATE_KEY_FILE:-}" ] || [ ! -s "$${SPARKLE_PRIVATE_KEY_FILE:-}" ]; then \
-		echo "prepare-sparkle-updates: SPARKLE_PRIVATE_KEY_FILE must point at the Ed25519 private key."; \
+		echo "generate-sparkle-appcast: SPARKLE_PRIVATE_KEY_FILE must point at the Ed25519 private key."; \
 		echo "  Shipped apps embed SUPublicEDKey, so an unsigned appcast bricks every update."; \
 		exit 1; \
 	fi
 	@SPARKLE_APPCAST_TOOL="$$(Scripts/FindSparkleTool.swift "$(BUILD_DIR)" generate_appcast)"; \
 	"$${SPARKLE_APPCAST_TOOL}" \
 		--ed-key-file "$${SPARKLE_PRIVATE_KEY_FILE}" \
-		--download-url-prefix "$(GITHUB_RELEASE_BASE_URL)" \
+		--download-url-prefix "https://github.com/$(GH_REPOSITORY)/releases/download/__RELEASE_TAG__/" \
 		"$(SPARKLE_UPDATES_DIR)"
-	@unsigned="$$(awk '/<enclosure /{ if ($$0 !~ /sparkle:edSignature="/) print }' "$(SPARKLE_APPCAST_PATH)")"; \
+	@Scripts/RewriteAppcastURLs.swift \
+		--appcast "$(SPARKLE_GENERATED_APPCAST)" \
+		--mapping "$(SPARKLE_ASSET_TAGS)" \
+		--repository "$(GH_REPOSITORY)"
+	@unsigned="$$(awk '/<enclosure /{ if ($$0 !~ /sparkle:edSignature="/) print }' "$(SPARKLE_GENERATED_APPCAST)")"; \
 	if [ -n "$$unsigned" ]; then \
-		echo "prepare-sparkle-updates: generate_appcast produced unsigned enclosures:"; \
+		echo "generate-sparkle-appcast: generate_appcast produced unsigned enclosures:"; \
 		echo "$$unsigned"; \
 		echo "  This means the private key does not pair with SUPublicEDKey ($(SPARKLE_PUBLIC_ED_KEY))."; \
 		exit 1; \
 	fi
-	@echo "prepare-sparkle-updates: every enclosure carries an EdDSA signature."
+	@echo "generate-sparkle-appcast: every enclosure carries an EdDSA signature."
 
 sparkle-appcast: release-assets prepare-sparkle-updates
 
 # Regenerate the appcast for an already-published release: download its DMG,
-# derive the build version from the asset name, and run the Sparkle generator.
+# derive the artifact version from the asset name, and run the Sparkle generator.
 # RELEASE_TAG names the release; SPARKLE_PRIVATE_KEY_FILE (optional) signs.
 appcast:
 	@if [ -z "$(strip $(RELEASE_TAG))" ]; then echo "appcast: RELEASE_TAG is required"; exit 1; fi
 	@mkdir -p $(PRODUCTS_DIR)
 	gh release download "$(RELEASE_TAG)" --pattern "$(APP_NAME)-*.dmg" --dir $(PRODUCTS_DIR) --clobber
 	@dmg="$$(ls $(PRODUCTS_DIR)/$(APP_NAME)-*.dmg | sed -n 1p)"; \
-	build_version="$$(basename "$$dmg" .dmg | sed 's/^$(APP_NAME)-//')"; \
+	artifact_version="$$(basename "$$dmg" .dmg | sed 's/^$(APP_NAME)-//')"; \
 	$(MAKE) SWIFT_MK_SKIP_FETCH=1 prepare-sparkle-updates \
-		CURRENT_PROJECT_VERSION="$$build_version" \
+		ARTIFACT_VERSION="$$artifact_version" \
 		RELEASE_TAG="$(RELEASE_TAG)"
 
 test-local: generate-config-artifacts generate-project

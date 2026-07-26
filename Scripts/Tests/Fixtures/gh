@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+    api)
+        printf '['
+        cat "${FAKE_RELEASES_PATH:?FAKE_RELEASES_PATH is required}"
+        printf ']\n'
+        ;;
+    release)
+        shift
+        if [[ "${1:-}" != "download" ]]; then
+            printf 'fake gh: unsupported release operation\n' >&2
+            exit 1
+        fi
+        shift
+        release_tag="${1:?release tag is required}"
+        shift
+        asset_name=""
+        destination=""
+        while (($# > 0)); do
+            case "$1" in
+                --pattern)
+                    asset_name="${2:?asset name is required}"
+                    shift 2
+                    ;;
+                --dir)
+                    destination="${2:?destination is required}"
+                    shift 2
+                    ;;
+                --repo)
+                    shift 2
+                    ;;
+                *)
+                    printf 'fake gh: unsupported argument %s\n' "$1" >&2
+                    exit 1
+                    ;;
+            esac
+        done
+        if [[ -z "${asset_name}" || -z "${destination}" ]]; then
+            printf 'fake gh: download target is incomplete\n' >&2
+            exit 1
+        fi
+        mkdir -p "${destination}"
+        printf '%s\n' "${release_tag}" > "${destination}/${asset_name}"
+        ;;
+    *)
+        printf 'fake gh: unsupported command %s\n' "${1:-}" >&2
+        exit 1
+        ;;
+esac

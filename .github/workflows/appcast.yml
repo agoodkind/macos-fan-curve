@@ -1,29 +1,34 @@
 name: Deploy Appcast
 
-# Deploys the Sparkle appcast to the Cloudflare worker. Event plumbing stays
-# here (it is inherently caller-side); the appcast generation itself is the
-# `make appcast` target.
-# Triggers:
-#   - workflow_run: fires after the Release workflow completes. This is the path that
-#     runs for normal releases, since the release is created with the bot GITHUB_TOKEN,
-#     which cannot fire a `release:` event.
-#   - release (published): covers releases cut manually / outside the Release workflow.
-#   - workflow_dispatch: manual redeploy of a given tag.
 on:
-  release:
-    types:
-      - published
-  workflow_run:
-    workflows:
-      - Release
-    types:
-      - completed
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+      release_track:
+        required: true
+        type: string
+    secrets:
+      SPARKLE_PRIVATE_ED_KEY:
+        required: true
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Release tag to redeploy appcast from
+        description: Exact release tag whose appcast deployment should be retried
         required: true
         type: string
+      release_track:
+        description: Release track
+        required: true
+        type: choice
+        options:
+          - prerelease
+          - stable
 
 env:
   XCODE_VERSION: "latest-stable"
@@ -31,48 +36,12 @@ env:
 
 jobs:
   deploy-appcast:
-    # On the workflow_run path, only deploy when the Release run succeeded.
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: macos-latest
     permissions:
       contents: read
 
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Resolve release tag
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          RELEASE_EVENT_TAG: ${{ github.event.release.tag_name }}
-          DISPATCH_TAG: ${{ inputs.release_tag }}
-          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          case "$EVENT_NAME" in
-            release)
-                tag="$RELEASE_EVENT_TAG"
-                ;;
-            workflow_dispatch)
-                tag="$DISPATCH_TAG"
-                ;;
-            workflow_run)
-                tag="$(git tag --points-at "$RUN_HEAD_SHA" | sed -n 1p)"
-                ;;
-            *)
-                tag=""
-                ;;
-          esac
-
-          if [[ -z "$tag" ]]; then
-              echo "Could not resolve a release tag for event '$EVENT_NAME'" >&2
-              exit 1
-          fi
-
-          printf 'RELEASE_TAG=%s\n' "$tag" >> "$GITHUB_ENV"
 
       - uses: agoodkind/swift-makefile/.github/actions/setup-build-env@main
         with:
@@ -82,8 +51,17 @@ jobs:
       - name: Install Tuist dependencies
         run: make install-dependencies
 
+      - name: Download release history
+        env:
+          GH_REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_TRACK: ${{ inputs.release_track }}
+          SPARKLE_UPDATES_DIR: build/sparkle-updates
+        run: Scripts/prepare-appcast-history.sh
+
       - name: Generate Sparkle appcast
         env:
+          GH_REPOSITORY: ${{ github.repository }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
         shell: bash
         run: |
@@ -92,17 +70,31 @@ jobs:
           key_path="$RUNNER_TEMP/sparkle_private_key"
           printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key_path"
           export SPARKLE_PRIVATE_KEY_FILE="$key_path"
-
-          make appcast RELEASE_TAG="$RELEASE_TAG"
+          make generate-sparkle-appcast
 
       - uses: actions/upload-artifact@v7
         with:
-          name: appcast
+          name: appcast-${{ inputs.release_track }}
           path: build/sparkle-updates/appcast.xml
           if-no-files-found: error
 
       - name: Stage appcast asset
-        run: cp build/sparkle-updates/appcast.xml deploy/appcast-worker/public/appcast.xml
+        env:
+          RELEASE_TRACK: ${{ inputs.release_track }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$RELEASE_TRACK" == "prerelease" ]]; then
+              public_path="deploy/appcast-worker/public/prerelease/appcast.xml"
+          elif [[ "$RELEASE_TRACK" == "stable" ]]; then
+              public_path="deploy/appcast-worker/public/appcast.xml"
+          else
+              printf 'Unknown release track: %s\n' "$RELEASE_TRACK" >&2
+              exit 1
+          fi
+          mkdir -p "$(dirname "$public_path")"
+          cp build/sparkle-updates/appcast.xml "$public_path"
 
       - uses: actions/setup-node@v7
         with:

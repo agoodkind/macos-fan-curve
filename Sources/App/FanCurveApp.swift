@@ -82,10 +82,12 @@ struct FanCurveApp: App {
       }
 
       CommandGroup(after: .appInfo) {
-        Button("Check for Updates…") {
-          appUpdater.checkForUpdates()
+        if appUpdater.isConfigured {
+          Button("Check for Updates…") {
+            appUpdater.checkForUpdates()
+          }
+          .disabled(!appUpdater.canCheckForUpdates)
         }
-        .disabled(!appUpdater.isConfigured || !appUpdater.canCheckForUpdates)
       }
 
       #if DEBUG

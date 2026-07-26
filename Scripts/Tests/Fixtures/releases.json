@@ -1,0 +1,72 @@
+[
+  {
+    "tag_name": "26.7.27-pre.202607261300+ccccccc",
+    "draft": false,
+    "prerelease": true,
+    "assets": [
+      {
+        "name": "source-code.zip"
+      }
+    ]
+  },
+  {
+    "tag_name": "26.7.26-pre.202607261200+aaaaaaa",
+    "draft": false,
+    "prerelease": true,
+    "assets": [
+      {
+        "name": "FanCurve-26.7.26-pre.202607261200-aaaaaaa.dmg"
+      }
+    ]
+  },
+  {
+    "tag_name": "26.7.26",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "FanCurve-26.7.26.dmg"
+      }
+    ]
+  },
+  {
+    "tag_name": "26.7.25-pre.202607252300+bbbbbbb",
+    "draft": false,
+    "prerelease": true,
+    "assets": [
+      {
+        "name": "FanCurve-26.7.25-pre.202607252300-bbbbbbb.dmg"
+      }
+    ]
+  },
+  {
+    "tag_name": "26.7.26-r1",
+    "draft": true,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "FanCurve-26.7.26-r1.dmg"
+      }
+    ]
+  },
+  {
+    "tag_name": "202607230506-57-971f910",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "FanCurve-20260723050687.dmg"
+      }
+    ]
+  },
+  {
+    "tag_name": "26.7.24",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "FanCurve-26.7.24.dmg"
+      }
+    ]
+  }
+]
