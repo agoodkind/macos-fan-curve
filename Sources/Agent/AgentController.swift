@@ -46,7 +46,7 @@ final class AgentController: @unchecked Sendable {
   }
 
   let fanHardware: any FanHardware
-  let sharedConfig = SharedConfig()
+  let sharedConfig: SharedConfig
   let loadSampler = CPULoadSampler()
   let eventWriter = EventArtifactWriter()
   let tickCoordinator = TickCoordinator()
@@ -98,9 +98,11 @@ final class AgentController: @unchecked Sendable {
   )
 
   init(
-    fanHardware: any FanHardware = XPCClient(clientName: generatedAgentBundleID)
+    fanHardware: any FanHardware = XPCClient(clientName: generatedAgentBundleID),
+    sharedConfig: SharedConfig = SharedConfig()
   ) {
     self.fanHardware = fanHardware
+    self.sharedConfig = sharedConfig
     agentControllerLog.notice("agent.hardware.configured owner=agent")
   }
 
@@ -156,6 +158,9 @@ final class AgentController: @unchecked Sendable {
     )
     do {
       try await fanHardware.setFanRPM(fanIndex, rpm: rpm, priority: nil)
+      agentControllerLog.info(
+        "agent.hardware.rpm.succeeded fan=\(fanIndex, privacy: .public) rpm=\(rpm, privacy: .public)"
+      )
     } catch {
       agentControllerLog.notice(
         "agent.hardware.rpm.failed fan=\(fanIndex, privacy: .public) rpm=\(rpm, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=propagate"
@@ -170,6 +175,9 @@ final class AgentController: @unchecked Sendable {
     )
     do {
       try await fanHardware.setFanAuto(fanIndex, priority: nil)
+      agentControllerLog.info(
+        "agent.hardware.auto.succeeded fan=\(fanIndex, privacy: .public)"
+      )
     } catch {
       agentControllerLog.notice(
         "agent.hardware.auto.failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=propagate"

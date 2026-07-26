@@ -8,10 +8,32 @@
 
 import Foundation
 import Nimble
+import OSLog
 import XCTest
 
 final class AgentControllerFanHardwareTests: XCTestCase {
-  func testTelemetryReadUsesInjectedFanHardware() async {
+  private var defaultsSuiteName = ""
+  private var isolatedDefaults: UserDefaults?
+  private var isolatedSharedConfig: SharedConfig?
+
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    defaultsSuiteName = "io.goodkind.fancurve.agent-tests.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuiteName))
+    defaults.removePersistentDomain(forName: defaultsSuiteName)
+    isolatedDefaults = defaults
+    isolatedSharedConfig = SharedConfig(defaults: defaults)
+  }
+
+  override func tearDownWithError() throws {
+    isolatedDefaults?.removePersistentDomain(forName: defaultsSuiteName)
+    isolatedSharedConfig = nil
+    isolatedDefaults = nil
+    defaultsSuiteName = ""
+    try super.tearDownWithError()
+  }
+
+  func testTelemetryReadUsesInjectedFanHardware() async throws {
     let fan = FanInfo(
       actualRPM: 2_500,
       targetRPM: 2_700,
@@ -25,7 +47,7 @@ final class AgentControllerFanHardwareTests: XCTestCase {
         temps: ["TC0P": 72]
       )
     )
-    let controller = AgentController(fanHardware: hardware)
+    let controller = try makeController(fanHardware: hardware)
     controller.cachedFanCount = 1
 
     let telemetry = await controller.readTickTelemetry()
@@ -40,9 +62,24 @@ final class AgentControllerFanHardwareTests: XCTestCase {
     expect(telemetry.result.temps["TC0P"]) == 72
   }
 
-  func testTickCommandsUseInjectedFanHardwareWithExactPriority() async {
+  func testTelemetryReadWritesAgentStatusToInjectedSharedConfig() async throws {
     let hardware = RecordingFanHardware()
-    let controller = AgentController(fanHardware: hardware)
+    let controller = try makeController(fanHardware: hardware)
+    let defaults = try XCTUnwrap(isolatedDefaults)
+    defaults.set("existing diagnostic", forKey: SharedConfigKeys.agentLastError)
+
+    _ = await controller.readTickTelemetry()
+
+    expect(defaults.integer(forKey: SharedConfigKeys.agentPID))
+      == Int(ProcessInfo.processInfo.processIdentifier)
+    expect(defaults.double(forKey: SharedConfigKeys.agentLastTick)) > 0
+    expect(defaults.string(forKey: SharedConfigKeys.agentExecutableHash)) != nil
+    expect(defaults.string(forKey: SharedConfigKeys.agentLastError)) == nil
+  }
+
+  func testTickCommandsUseInjectedFanHardwareWithExactPriority() async throws {
+    let hardware = RecordingFanHardware()
+    let controller = try makeController(fanHardware: hardware)
     let actions = AgentControllerTickTypes.FanActions(
       setFans: [(index: 1, rpm: 4_200)],
       autoFans: [0],
@@ -73,7 +110,7 @@ final class AgentControllerFanHardwareTests: XCTestCase {
       )
     ]
     let hardware = RecordingFanHardware(ownership: ownership)
-    let controller = AgentController(fanHardware: hardware)
+    let controller = try makeController(fanHardware: hardware)
 
     try await controller.setFanRPM(1, rpm: 4_800)
     try await controller.setFanAuto(0)
@@ -88,9 +125,29 @@ final class AgentControllerFanHardwareTests: XCTestCase {
     expect(hardware.ownershipReadCount) == 1
   }
 
-  func testResetAllFansToAutoUsesInjectedFanHardwareForEveryFan() async {
+  func testSuccessfulManualCommandsWriteCompletionLogs() async throws {
+    let logStore = try OSLogStore(scope: .currentProcessIdentifier)
+    let logPosition = logStore.position(date: Date())
     let hardware = RecordingFanHardware()
-    let controller = AgentController(fanHardware: hardware)
+    let controller = try makeController(fanHardware: hardware)
+
+    try await controller.setFanRPM(1, rpm: 4_800)
+    try await controller.setFanAuto(0)
+
+    var messages: [String] = []
+    for entry in try logStore.getEntries(at: logPosition) {
+      guard let logEntry = entry as? OSLogEntryLog else { continue }
+      messages.append(logEntry.composedMessage)
+    }
+    expect(messages.contains { $0.contains("agent.hardware.rpm.succeeded fan=1 rpm=4800") })
+      == true
+    expect(messages.contains { $0.contains("agent.hardware.auto.succeeded fan=0") })
+      == true
+  }
+
+  func testResetAllFansToAutoUsesInjectedFanHardwareForEveryFan() async throws {
+    let hardware = RecordingFanHardware()
+    let controller = try makeController(fanHardware: hardware)
     controller.cachedFanCount = 3
 
     await controller.resetAllFansToAuto()
@@ -101,6 +158,16 @@ final class AgentControllerFanHardwareTests: XCTestCase {
     expect(request.setFans).to(beEmpty())
     expect(request.autoFans) == [0, 1, 2]
     expect(request.priority) == nil
+  }
+
+  private func makeController(
+    fanHardware: any FanHardware
+  ) throws -> AgentController {
+    let sharedConfig = try XCTUnwrap(isolatedSharedConfig)
+    return AgentController(
+      fanHardware: fanHardware,
+      sharedConfig: sharedConfig
+    )
   }
 }
 

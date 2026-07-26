@@ -23,7 +23,11 @@ struct SharedConfig {
   let defaults: UserDefaults
 
   init() {
-    self.defaults = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+    self.init(defaults: UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard)
+  }
+
+  init(defaults: UserDefaults) {
+    self.defaults = defaults
     LoadAssistStore.migrateLegacyIfNeeded(defaults: self.defaults)
   }
 
