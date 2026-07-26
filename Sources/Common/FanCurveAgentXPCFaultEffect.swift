@@ -13,6 +13,7 @@ import Foundation
 enum FanCurveAgentXPCFaultBoundary: Sendable {
   case command
   case currentState
+  case ownership
   case runtimeEvent
 }
 

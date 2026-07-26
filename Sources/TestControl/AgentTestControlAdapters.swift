@@ -95,7 +95,9 @@
         return .malformedReply
       case (.command, .rejectedCommand):
         return .rejectCommand
-      case (.currentState, .interruption):
+      case (.command, .interruption),
+        (.currentState, .interruption),
+        (.ownership, .interruption):
         return .terminateAgent
       case (.currentState, .malformedInitialState):
         return .malformedInitialState

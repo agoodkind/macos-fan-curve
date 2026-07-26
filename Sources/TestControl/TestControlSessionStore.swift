@@ -22,6 +22,20 @@
     static let delimiter: UInt8 = 0x0A
   }
 
+  struct TestControlStoreOperations: @unchecked Sendable {
+    let atomicWrite: @Sendable (Data, URL) throws -> Void
+    let synchronize: @Sendable (FileHandle) throws -> Void
+
+    static let live = TestControlStoreOperations(
+      atomicWrite: { data, url in
+        try data.write(to: url, options: [.atomic])
+      },
+      synchronize: { handle in
+        try handle.synchronize()
+      }
+    )
+  }
+
   enum TestControlError: Error, Equatable, LocalizedError {
     case acknowledgmentParticipantMismatch(
       expected: TestControlParticipant,
@@ -122,16 +136,28 @@
 
   struct TestControlSessionStore: Equatable, Sendable {
     let directory: URL
+    let operations: TestControlStoreOperations
+
+    static func == (
+      lhs: TestControlSessionStore,
+      rhs: TestControlSessionStore
+    ) -> Bool {
+      lhs.directory == rhs.directory
+    }
 
     static func initialize(
       at directory: URL,
-      initialState: TestControlState = .initial()
+      initialState: TestControlState = .initial(),
+      operations: TestControlStoreOperations = .live
     ) throws -> TestControlSessionStore {
       testControlStoreLog.info(
         "test_control.session.initialize.started path=\(directory.path, privacy: .public) session=\(initialState.sessionID.uuidString, privacy: .public) revision=\(initialState.revision.value, privacy: .public)"
       )
       try createSessionDirectory(at: directory)
-      let store = TestControlSessionStore(directory: directory.standardizedFileURL)
+      let store = TestControlSessionStore(
+        directory: directory.standardizedFileURL,
+        operations: operations
+      )
       try store.withExclusiveLock(fileName: TestControlFile.sessionLock) {
         guard !FileManager.default.fileExists(atPath: store.controlURL.path) else {
           throw TestControlError.controlStateAlreadyExists(store.controlURL.path)
@@ -145,8 +171,14 @@
       return store
     }
 
-    static func open(at directory: URL) throws -> TestControlSessionStore {
-      let store = TestControlSessionStore(directory: directory.standardizedFileURL)
+    static func open(
+      at directory: URL,
+      operations: TestControlStoreOperations = .live
+    ) throws -> TestControlSessionStore {
+      let store = TestControlSessionStore(
+        directory: directory.standardizedFileURL,
+        operations: operations
+      )
       testControlStoreLog.info(
         "test_control.session.open.started path=\(store.directory.path, privacy: .public)"
       )
@@ -304,7 +336,7 @@
     func writeAtomically<T: Encodable>(_ value: T, to url: URL) throws {
       do {
         let data = try TestControlCodec.encode(value)
-        try data.write(to: url, options: [.atomic])
+        try operations.atomicWrite(data, url)
         try FileManager.default.setAttributes(
           [.posixPermissions: TestControlFilePermissions.regularFile],
           ofItemAtPath: url.path
@@ -350,6 +382,14 @@
       } catch {
         testControlStoreLog.error(
           "test_control.file.append_failed path=\(url.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=abort-operation"
+        )
+        throw error
+      }
+      do {
+        try operations.synchronize(handle)
+      } catch {
+        testControlStoreLog.error(
+          "test_control.file.synchronize_failed path=\(url.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=propagate-and-suppress-effect"
         )
         throw error
       }

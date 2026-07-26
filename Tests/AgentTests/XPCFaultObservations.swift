@@ -83,16 +83,42 @@ final class XPCConnectionCounter: @unchecked Sendable {
   }
 }
 
+// MARK: - XPCConnectionRegistry
+
+final class XPCConnectionRegistry: @unchecked Sendable {
+  private let lock = NSLock()
+  private var connections: [NSXPCConnection] = []
+
+  func append(_ connection: NSXPCConnection) {
+    lock.withLock {
+      connections.append(connection)
+    }
+  }
+
+  func invalidateMostRecent() {
+    let connection = lock.withLock {
+      connections.last
+    }
+    connection?.invalidate()
+  }
+}
+
 // MARK: - XPCConnectionFactory
 
 @MainActor
 final class XPCConnectionFactory {
   private weak var listener: NSXPCListener?
   private let counter: XPCConnectionCounter
+  private let registry: XPCConnectionRegistry
 
-  init(listener: NSXPCListener, counter: XPCConnectionCounter) {
+  init(
+    listener: NSXPCListener,
+    counter: XPCConnectionCounter,
+    registry: XPCConnectionRegistry
+  ) {
     self.listener = listener
     self.counter = counter
+    self.registry = registry
   }
 
   func makeConnection() -> NSXPCConnection {
@@ -100,7 +126,9 @@ final class XPCConnectionFactory {
       return NSXPCConnection(machServiceName: "invalid", options: [])
     }
     counter.increment()
-    return NSXPCConnection(listenerEndpoint: listener.endpoint)
+    let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
+    registry.append(connection)
+    return connection
   }
 }
 

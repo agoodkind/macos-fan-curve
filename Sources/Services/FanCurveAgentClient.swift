@@ -9,72 +9,10 @@ import AppLog
 import Combine
 import Foundation
 
-private let fanCurveAgentClientLog = AppLog.make(category: "FanCurveAgentClient")
+let fanCurveAgentClientLog = AppLog.make(category: "FanCurveAgentClient")
 
-private enum FanCurveAgentClientConstants {
+enum FanCurveAgentClientConstants {
   static let snapshotFreshnessWindow: TimeInterval = 5
-}
-
-private final class AgentVoidReplyResumer: @unchecked Sendable {
-  private let lock = NSLock()
-  private var continuation: CheckedContinuation<Void, Error>?
-
-  init(_ continuation: CheckedContinuation<Void, Error>) {
-    self.continuation = continuation
-  }
-
-  func resume(success: Bool, errorMessage: String?) {
-    if success {
-      resume()
-      return
-    }
-    resume(
-      throwing: FanCurveAgentClientError.commandRejected(errorMessage ?? "Command rejected")
-    )
-  }
-
-  func resume() {
-    lock.lock()
-    defer { lock.unlock() }
-    guard let continuation else { return }
-    self.continuation = nil
-    continuation.resume()
-  }
-
-  func resume(throwing error: Error) {
-    lock.lock()
-    defer { lock.unlock() }
-    guard let continuation else { return }
-    self.continuation = nil
-    continuation.resume(throwing: error)
-  }
-}
-
-enum FanCurveAgentConnectionState: Sendable, Equatable {
-  case connected
-  case connecting
-  case disconnected
-  case failed(String)
-}
-
-enum FanCurveAgentClientError: LocalizedError {
-  case commandRejected(String)
-  case connectionUnavailable
-  case invalidReply
-  case missingRemoteProxy
-
-  var errorDescription: String? {
-    switch self {
-    case .commandRejected(let message):
-      return message
-    case .connectionUnavailable:
-      return "FanCurveAgent XPC connection is unavailable"
-    case .invalidReply:
-      return "FanCurveAgent returned an invalid reply"
-    case .missingRemoteProxy:
-      return "FanCurveAgent remote proxy is unavailable"
-    }
-  }
 }
 
 @MainActor
@@ -93,8 +31,13 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
   private let reconnectDelay: TimeInterval
   private let commandTransport = AgentCommandTransport()
   private let decoder = JSONDecoder()
+  private var pendingRequests: [UUID: AgentXPCReplyResumer] = [:]
   private var stopped = false
   private var connectionGeneration: UInt64 = 0
+
+  var pendingRequestCount: Int {
+    pendingRequests.count
+  }
 
   init(
     serviceName: String = FanCurveAgentXPC.serviceName,
@@ -116,17 +59,7 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
   func start() {
     guard connection == nil else { return }
     stopped = false
-    switch control.connectionGate() {
-    case .allowed:
-      connect()
-    case .refused(let reason):
-      control.recordEvent(.connectionAttemptGated)
-      connectionState = .failed(reason)
-      lastError = reason
-      fanCurveAgentClientLog.notice(
-        "agent_client.connection.gated reason=\(reason, privacy: .public) recovery=wait-for-explicit-retry"
-      )
-    }
+    connect()
   }
 
   func stop() {
@@ -135,6 +68,7 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
     connectionTask = nil
     reconnectTask?.cancel()
     reconnectTask = nil
+    cancelPendingRequests(reason: "client-stop")
     let activeConnection = connection
     connection = nil
     activeConnection?.interruptionHandler = nil
@@ -165,6 +99,9 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
 
   private func connect() {
     guard !stopped else { return }
+    guard connectionIsAllowed() else {
+      return
+    }
     connectionState = .connecting
     control.recordEvent(.connecting)
     let nextConnection = connectionFactory()
@@ -246,64 +183,126 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
       }
     }
   }
+}
 
+extension FanCurveAgentClient {
   private func registerForEvents() async throws {
-    try await withCheckedThrowingContinuation { continuation in
-      let resumer = AgentVoidReplyResumer(continuation)
-      guard let proxy = remoteProxy(resumer: resumer) else { return }
-      proxy.registerForEvents { success, errorMessage in
-        resumer.resume(success: success, errorMessage: errorMessage)
-      }
-    }
+    _ = try await performRequest(.registerEvents)
     fanCurveAgentClientLog.debug("agent_client.events.registered")
   }
 
   private func refreshCurrentState() async throws {
-    let proxy = try remoteProxy()
-    let state: RuntimeState = try await withCheckedThrowingContinuation { continuation in
-      proxy.getCurrentState { success, data, errorMessage in
-        if let errorMessage, !success {
-          continuation.resume(
-            throwing: FanCurveAgentClientError.commandRejected(errorMessage))
-          return
-        }
-        guard success, let data else {
-          continuation.resume(throwing: FanCurveAgentClientError.invalidReply)
-          return
-        }
-        do {
-          let state = try JSONDecoder().decode(RuntimeState.self, from: data)
-          continuation.resume(returning: state)
-        } catch {
-          fanCurveAgentClientLog.error(
-            "agent_client.current_state.decode_failed error=\(error.localizedDescription, privacy: .public) recovery=propagate"
-          )
-          continuation.resume(throwing: error)
-        }
-      }
+    let stateData = try await performRequest(.currentState)
+    guard let stateData else {
+      throw FanCurveAgentClientError.invalidReply
+    }
+    let state: RuntimeState
+    do {
+      state = try JSONDecoder().decode(RuntimeState.self, from: stateData)
+    } catch {
+      fanCurveAgentClientLog.error(
+        "agent_client.current_state.decode_failed error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+      )
+      throw error
     }
     apply(runtimeState: state)
   }
 
   private func send(_ command: AgentCommand) async throws {
     control.recordCommand(command)
-    let proxy = try remoteProxy()
-    try await commandTransport.send(command, to: proxy)
-  }
-
-  private func remoteProxy() throws -> FanCurveAgentXPCProtocol {
-    guard let connection else { throw FanCurveAgentClientError.connectionUnavailable }
-    guard
-      let proxy = connection.remoteObjectProxyWithErrorHandler(
-        Self.makeRemoteProxyErrorHandler(client: self)
-      ) as? FanCurveAgentXPCProtocol
-    else {
-      throw FanCurveAgentClientError.missingRemoteProxy
+    let commandData = try commandTransport.encode(command)
+    let responseData = try await performRequest(
+      .command(commandData, name: command.logName)
+    )
+    guard let responseData else {
+      throw FanCurveAgentClientError.invalidReply
     }
-    return proxy
+    let response = try commandTransport.decode(responseData)
+    try commandTransport.accept(response, for: command)
   }
 
-  private func remoteProxy(resumer: AgentVoidReplyResumer) -> FanCurveAgentXPCProtocol? {
+  private func performRequest(_ request: AgentXPCRequest) async throws -> Data? {
+    let requestID = UUID()
+    let resumer = AgentXPCReplyResumer(operation: request.operation)
+    pendingRequests[requestID] = resumer
+    defer {
+      pendingRequests.removeValue(forKey: requestID)
+    }
+    return try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation { continuation in
+        resumer.install(continuation)
+        guard let proxy = remoteProxy(resumer: resumer) else {
+          return
+        }
+        start(request, using: proxy, resumer: resumer)
+      }
+    } onCancel: {
+      resumer.cancel()
+    }
+  }
+
+  private func start(
+    _ request: AgentXPCRequest,
+    using proxy: FanCurveAgentXPCProtocol,
+    resumer: AgentXPCReplyResumer
+  ) {
+    switch request {
+    case .registerEvents:
+      proxy.registerForEvents { success, errorMessage in
+        resumer.resume(success: success, errorMessage: errorMessage)
+      }
+    case .currentState:
+      proxy.getCurrentState { success, data, errorMessage in
+        Self.resumeDataReply(
+          resumer,
+          success: success,
+          data: data,
+          errorMessage: errorMessage
+        )
+      }
+    case .command(let commandData, _):
+      let transport = commandTransport
+      proxy.sendCommand(commandData) { success, responseData, errorMessage in
+        transport.resume(
+          resumer,
+          success: success,
+          responseData: responseData,
+          errorMessage: errorMessage
+        )
+      }
+    case .ownership:
+      proxy.getOwnership { success, data, errorMessage in
+        Self.resumeDataReply(
+          resumer,
+          success: success,
+          data: data,
+          errorMessage: errorMessage
+        )
+      }
+    }
+  }
+
+  nonisolated private static func resumeDataReply(
+    _ resumer: AgentXPCReplyResumer,
+    success: Bool,
+    data: Data?,
+    errorMessage: String?
+  ) {
+    if let errorMessage, !success {
+      resumer.resume(
+        throwing: FanCurveAgentClientError.commandRejected(errorMessage))
+      return
+    }
+    guard success, let data else {
+      resumer.resume(throwing: FanCurveAgentClientError.invalidReply)
+      return
+    }
+    resumer.resume(returning: data)
+  }
+
+  private func remoteProxy(
+    resumer: AgentXPCReplyResumer
+  ) -> FanCurveAgentXPCProtocol? {
     guard let connection else {
       resumer.resume(throwing: FanCurveAgentClientError.connectionUnavailable)
       return nil
@@ -322,17 +321,10 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
     return proxy
   }
 
-  nonisolated private static func makeRemoteProxyErrorHandler(
-    client: FanCurveAgentClient
-  ) -> @Sendable (Error) -> Void {
-    { [weak client] error in
-      client?.handleRemoteProxyFailure(error)
-    }
-  }
-
   nonisolated private func handleRemoteProxyFailure(_ error: Error) {
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
+      cancelPendingRequests(reason: "remote-proxy-failure", error: error)
       let activeConnection = connection
       connection = nil
       activeConnection?.invalidate()
@@ -357,6 +349,10 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
     guard connectionGeneration == disconnectedGeneration, connection != nil else {
       return
     }
+    cancelPendingRequests(
+      reason: reason,
+      error: FanCurveAgentClientError.connectionUnavailable
+    )
     connection = nil
     connectionState = .disconnected
     control.recordEvent(.disconnected)
@@ -384,6 +380,42 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
       reconnectTask = nil
       guard !stopped, connection == nil else { return }
       connect()
+    }
+  }
+
+  private func connectionIsAllowed() -> Bool {
+    switch control.connectionGate() {
+    case .allowed:
+      return true
+    case .refused(let reason):
+      control.recordEvent(.connectionAttemptGated)
+      connectionState = .failed(reason)
+      lastError = reason
+      fanCurveAgentClientLog.notice(
+        "agent_client.connection.gated reason=\(reason, privacy: .public) recovery=wait-for-explicit-retry"
+      )
+      return false
+    }
+  }
+
+  private func cancelPendingRequests(
+    reason: String,
+    error: Error = CancellationError()
+  ) {
+    let requests = Array(pendingRequests.values)
+    pendingRequests.removeAll()
+    guard !requests.isEmpty else {
+      return
+    }
+    fanCurveAgentClientLog.notice(
+      "agent_client.requests.cancelling count=\(requests.count, privacy: .public) reason=\(reason, privacy: .public) recovery=resume-continuations"
+    )
+    for request in requests {
+      if error is CancellationError {
+        request.cancel()
+      } else {
+        request.resume(throwing: error)
+      }
     }
   }
 }
@@ -426,57 +458,17 @@ extension FanCurveAgentClient {
   }
 
   func getOwnership() async throws -> [AgentOwnershipEntry] {
-    let proxy = try remoteProxy()
-    return try await withCheckedThrowingContinuation { continuation in
-      proxy.getOwnership { success, data, errorMessage in
-        if let errorMessage, !success {
-          continuation.resume(
-            throwing: FanCurveAgentClientError.commandRejected(errorMessage))
-          return
-        }
-        guard success, let data else {
-          continuation.resume(throwing: FanCurveAgentClientError.invalidReply)
-          return
-        }
-        do {
-          let rows = try JSONDecoder().decode([AgentOwnershipEntry].self, from: data)
-          continuation.resume(returning: rows)
-        } catch {
-          fanCurveAgentClientLog.error(
-            "agent_client.ownership.decode_failed error=\(error.localizedDescription, privacy: .public) recovery=propagate"
-          )
-          continuation.resume(throwing: error)
-        }
-      }
+    let ownershipData = try await performRequest(.ownership)
+    guard let ownershipData else {
+      throw FanCurveAgentClientError.invalidReply
+    }
+    do {
+      return try JSONDecoder().decode([AgentOwnershipEntry].self, from: ownershipData)
+    } catch {
+      fanCurveAgentClientLog.error(
+        "agent_client.ownership.decode_failed error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+      )
+      throw error
     }
   }
-}
-
-// MARK: - Runtime properties
-
-extension FanCurveAgentClient {
-  var isFresh: Bool {
-    guard let snapshot else { return false }
-    return Date().timeIntervalSince(snapshot.timestamp)
-      < FanCurveAgentClientConstants.snapshotFreshnessWindow
-  }
-
-  var governingTemperature: Double { snapshot?.governingTemperatureC ?? 0 }
-  var committedTemperature: Double { snapshot?.committedTemperatureC ?? 0 }
-  var rawPressureTemperature: Double? { snapshot?.rawPressureTemperatureC }
-  var fans: [AgentFanSnapshot] { snapshot?.fans ?? [] }
-  var cpuLoadPercent: Double { snapshot?.cpuLoadPercent ?? 0 }
-  var gpuLoadPercent: Double { snapshot?.gpuLoadPercent ?? 0 }
-  var baseCurvePercent: Double { snapshot?.baseCurvePercent ?? 0 }
-  var rawBaselinePercent: Double { snapshot?.rawBaselinePercent ?? 0 }
-  var semanticDemandPercent: Double? { snapshot?.semanticDemandPercent }
-  var semanticDemandTemperature: Double? { snapshot?.semanticDemandTemperatureC }
-  var commandedTargetPercent: Double {
-    snapshot?.commandedTargetPercent ?? snapshot?.committedPercent ?? 0
-  }
-  var assistFloorPercent: Double? { snapshot?.assistFloorPercent }
-  var activeAssistKinds: [LoadAssistKind] { snapshot?.activeAssistKinds ?? [] }
-  var helperReachable: Bool { snapshot?.helperReachable ?? false }
-  var boostEnabled: Bool { snapshot?.boostEnabled ?? false }
-  var curveActive: Bool { snapshot?.curveActive ?? false }
 }

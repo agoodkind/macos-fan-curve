@@ -31,7 +31,9 @@
     private let faultLock = NSLock()
     private let monitorLock = NSLock()
     private let monitorQueue: DispatchQueue
+    private let monitorCancellationGroup = DispatchGroup()
     private var appliedState: TestControlState
+    private var pendingAcknowledgment: TestControlAcknowledgment?
     private var consumedFaults: Set<String> = []
     private var monitorSource: DispatchSourceFileSystemObject?
 
@@ -73,9 +75,7 @@
         return
       }
       source.cancel()
-      monitorQueue.sync {
-        dispatchPrecondition(condition: .onQueue(monitorQueue))
-      }
+      monitorCancellationGroup.wait()
       testControlRuntimeLog.info(
         "test_control.runtime.monitor_stopped participant=\(participant.rawValue, privacy: .public) path=\(store.directory.path, privacy: .public)"
       )
@@ -117,6 +117,7 @@
         )
       }
       guard proposedState.revision > appliedState.revision else {
+        try retryPendingAcknowledgment(for: proposedState.revision)
         testControlRuntimeLog.debug(
           "test_control.runtime.revision_idempotent participant=\(participant.rawValue, privacy: .public) revision=\(proposedState.revision.value, privacy: .public)"
         )
@@ -124,13 +125,21 @@
       }
 
       appliedState = proposedState
-      try store.writeAcknowledgment(
-        TestControlAcknowledgment(
-          sessionID: proposedState.sessionID,
-          revision: proposedState.revision.value,
-          participant: participant
-        )
+      let acknowledgment = TestControlAcknowledgment(
+        sessionID: proposedState.sessionID,
+        revision: proposedState.revision.value,
+        participant: participant
       )
+      pendingAcknowledgment = acknowledgment
+      do {
+        try store.writeAcknowledgment(acknowledgment)
+        pendingAcknowledgment = nil
+      } catch {
+        testControlRuntimeLog.error(
+          "test_control.runtime.acknowledgment_pending participant=\(participant.rawValue, privacy: .public) revision=\(proposedState.revision.value, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=retry-on-equal-revision"
+        )
+        throw error
+      }
       testControlRuntimeLog.notice(
         "test_control.runtime.revision_applied participant=\(participant.rawValue, privacy: .public) revision=\(proposedState.revision.value, privacy: .public)"
       )
@@ -177,6 +186,32 @@
       }
     }
 
+    private func retryPendingAcknowledgment(
+      for revision: TestControlRevision
+    ) throws {
+      guard let acknowledgment = pendingAcknowledgment else {
+        return
+      }
+      guard acknowledgment.revision == revision else {
+        return
+      }
+      testControlRuntimeLog.notice(
+        "test_control.runtime.acknowledgment_retry.started participant=\(participant.rawValue, privacy: .public) revision=\(revision.value, privacy: .public)"
+      )
+      do {
+        try store.writeAcknowledgment(acknowledgment)
+        pendingAcknowledgment = nil
+        testControlRuntimeLog.notice(
+          "test_control.runtime.acknowledgment_retry.completed participant=\(participant.rawValue, privacy: .public) revision=\(revision.value, privacy: .public)"
+        )
+      } catch {
+        testControlRuntimeLog.error(
+          "test_control.runtime.acknowledgment_retry.failed participant=\(participant.rawValue, privacy: .public) revision=\(revision.value, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=retain-pending-acknowledgment"
+        )
+        throw error
+      }
+    }
+
     private func startMonitoring() throws {
       let descriptor = Darwin.open(store.directory.path, O_EVTONLY)
       guard descriptor >= 0 else {
@@ -187,6 +222,8 @@
         eventMask: [.attrib, .delete, .extend, .rename, .write],
         queue: monitorQueue
       )
+      let cancellationGroup = monitorCancellationGroup
+      cancellationGroup.enter()
       source.setEventHandler { [weak self] in
         guard let self else { return }
         do {
@@ -199,6 +236,7 @@
       }
       source.setCancelHandler {
         _ = Darwin.close(descriptor)
+        cancellationGroup.leave()
       }
       monitorLock.withLock {
         monitorSource = source

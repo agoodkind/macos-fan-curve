@@ -15,10 +15,18 @@ private let controlledXPCIntegrationTestLog = AppLog.make(
   category: "ControlledXPCIntegrationTests"
 )
 
-private enum ControlledXPCTestValues {
+enum ControlledXPCTestValues {
   static let connectionTimeoutSeconds = 2
   static let pollingIntervalMilliseconds = 10
   static let reconnectDelay: TimeInterval = 0.01
+  static let controlledRevision: UInt64 = 2
+  static let commandedFanIndex: UInt = 1
+  static let commandedFanEventIndex = 1
+  static let commandedFanRPM: Float = 4_500
+  static let commandPriority = 0
+  static let initialConnectionCount = 1
+  static let registeredClientCount = 2
+  static let eventCountIncrement = 1
   static let leftActualRPM: Float = 2_100
   static let leftTargetRPM: Float = 2_200
   static let leftMinimumRPM: Float = 1_200
@@ -37,44 +45,6 @@ private enum ControlledXPCTestValues {
 
 @MainActor
 final class TestControlXPCIntegrationTests: XCTestCase {
-  func testControlledCommandsTraverseRealXPCAndWriteParticipantEvidence() async throws {
-    let harness = try ControlledXPCHarness()
-    defer { harness.stop() }
-    try await harness.startAndWaitUntilConnected()
-
-    try await harness.client.setFanRPM(1, rpm: 4_500)
-    try await harness.client.setFanAuto(0)
-    let ownership = try await harness.client.getOwnership()
-
-    expect(ownership.map(\.clientName)) == ["FanCurveAgent"]
-    let appPayloads = try harness.store.loadEvents(for: .app).map(\.payload)
-    let agentPayloads = try harness.store.loadEvents(for: .agent).map(\.payload)
-    expect(appPayloads).to(contain(.appToAgentCommand(command: .requestFanRPM)))
-    expect(appPayloads).to(contain(.appToAgentCommand(command: .requestFanAuto)))
-    expect(agentPayloads).to(contain(.fanWrite(fanIndex: 1, rpm: 4_500, priority: 0)))
-    expect(agentPayloads).to(contain(.fanAutoReset(fanIndex: 0)))
-    expect(harness.connectionFactoryCount) == 1
-  }
-
-  func testCommandFaultsAreOneShotAndRecordedBeforeTheirReplyEffect() async throws {
-    for fault in [TestXPCFault.rejectedCommand, .malformedReply] {
-      let harness = try ControlledXPCHarness(fault: fault)
-      try await harness.startAndWaitUntilConnected()
-
-      let firstError = await captureError {
-        try await harness.client.setBoostEnabled(true)
-      }
-      expect(firstError) != nil
-      try await harness.client.setBoostEnabled(true)
-
-      expect(harness.faultEvidenceObservedBeforeEffect[fault]) == true
-      let consumedFaults = try harness.store.loadEvents(for: .agent)
-        .filter { $0.payload == .xpcFault(fault) }
-      expect(consumedFaults).to(haveCount(1))
-      harness.stop()
-    }
-  }
-
   func testMalformedInitialStateFaultIsOneShotAcrossReconnect() async throws {
     try await verifyStartupFault(.malformedInitialState)
   }
@@ -129,17 +99,6 @@ final class TestControlXPCIntegrationTests: XCTestCase {
     expect(harness.connectionFactoryCount) == 1
   }
 
-  private func captureError(
-    operation: () async throws -> Void
-  ) async -> Error? {
-    do {
-      try await operation()
-      return nil
-    } catch {
-      return error
-    }
-  }
-
   private func verifyStartupFault(_ fault: TestXPCFault) async throws {
     let harness = try ControlledXPCHarness(fault: fault)
     defer { harness.stop() }
@@ -166,6 +125,7 @@ final class TestControlXPCIntegrationTests: XCTestCase {
     }
     if fault == .interruption {
       expect(harness.processTerminationCount) == 1
+      expect(harness.client.pendingRequestCount) == 0
     }
   }
 }
@@ -173,7 +133,7 @@ final class TestControlXPCIntegrationTests: XCTestCase {
 // MARK: - ControlledXPCHarness
 
 @MainActor
-private final class ControlledXPCHarness {
+final class ControlledXPCHarness {
   let store: TestControlSessionStore
   private(set) lazy var client = makeClient()
 
@@ -188,7 +148,13 @@ private final class ControlledXPCHarness {
   private let helperService: any HelperServiceManaging
   private let evidenceReader: XPCFaultEvidenceReader
   private let connectionCounter = XPCConnectionCounter()
+  private let connectionRegistry = XPCConnectionRegistry()
   private let faultObservations = XPCFaultObservations()
+  private lazy var connectionFactory = XPCConnectionFactory(
+    listener: listener,
+    counter: connectionCounter,
+    registry: connectionRegistry
+  )
   private var serviceStarted = false
 
   var connectionFactoryCount: Int {
@@ -201,6 +167,10 @@ private final class ControlledXPCHarness {
 
   var faultEvidenceObservedBeforeEffect: [TestXPCFault: Bool] {
     faultObservations.evidenceByFault
+  }
+
+  var registeredEventCallbackCount: Int {
+    service.currentEventCallbacks().count
   }
 
   init(
@@ -282,16 +252,21 @@ private final class ControlledXPCHarness {
       mode: appMode,
       faultObserver: appFaultObserver.observe
     )
-    let connectionFactory = XPCConnectionFactory(
-      listener: listener,
-      counter: connectionCounter
-    )
     return FanCurveAgentClient(
       serviceName: "anonymous-test-service",
-      connectionFactory: { connectionFactory.makeConnection() },
+      connectionFactory: { self.connectionFactory.makeConnection() },
       control: appControl,
       reconnectDelay: ControlledXPCTestValues.reconnectDelay
     )
+  }
+}
+
+// MARK: - ControlledXPCHarness operations
+
+@MainActor
+extension ControlledXPCHarness {
+  func makeAdditionalClient() -> FanCurveAgentClient {
+    makeClient()
   }
 
   func start() {
@@ -308,12 +283,16 @@ private final class ControlledXPCHarness {
   }
 
   func waitUntilConnected() async throws {
+    try await waitUntilConnected(client)
+  }
+
+  func waitUntilConnected(_ candidateClient: FanCurveAgentClient) async throws {
     let clock = ContinuousClock()
     let deadline = clock.now.advanced(
       by: .seconds(ControlledXPCTestValues.connectionTimeoutSeconds)
     )
     while clock.now < deadline {
-      if client.connectionState == .connected {
+      if candidateClient.connectionState == .connected {
         return
       }
       try await clock.sleep(
@@ -323,9 +302,68 @@ private final class ControlledXPCHarness {
     throw TestControlError.timeout("real XPC client connection")
   }
 
+  func waitForConnectionState(
+    _ expectedState: FanCurveAgentConnectionState
+  ) async throws {
+    try await waitForCondition("XPC connection state") {
+      self.client.connectionState == expectedState
+    }
+  }
+
+  func waitForRegisteredEventCallbackCount(_ expectedCount: Int) async throws {
+    try await waitForCondition("registered XPC event callback count") {
+      self.registeredEventCallbackCount == expectedCount
+    }
+  }
+
+  func waitForAcceptedRuntimeEventCount(_ expectedCount: Int) async throws {
+    try await waitForCondition("accepted runtime event count") {
+      try self.acceptedRuntimeEventCount() >= expectedCount
+    }
+  }
+
+  func acceptedRuntimeEventCount() throws -> Int {
+    try store.loadEvents(for: .app)
+      .filter { $0.payload == .xpcState(.runtimeEventAccepted) }
+      .count
+  }
+
+  func applyState(
+    revision: UInt64,
+    backgroundAgentStatus: TestManagedServiceStatus = .enabled,
+    fault: TestXPCFault = .noFault
+  ) throws {
+    try store.apply(
+      makeState(
+        revision: revision,
+        backgroundAgentStatus: backgroundAgentStatus,
+        fault: fault
+      )
+    )
+    _ = try store.waitForAcknowledgment(
+      participant: .agent,
+      revision: revision,
+      timeout: 1
+    )
+    _ = try store.waitForAcknowledgment(
+      participant: .app,
+      revision: revision,
+      timeout: 1
+    )
+  }
+
+  func invalidateMostRecentClientConnection() {
+    connectionRegistry.invalidateMostRecent()
+  }
+
+  func publishRuntimeState() {
+    service.publishRuntimeState(controller.currentRuntimeStateForXPC())
+  }
+
   func stop() {
     client.stop()
     listener.invalidate()
+    service.invalidateConnections()
     if case .controlled(let runtime) = appMode {
       runtime.stopMonitoring()
     }
@@ -334,7 +372,11 @@ private final class ControlledXPCHarness {
     }
     defaults.removePersistentDomain(forName: defaultsSuiteName)
     do {
-      try FileManager.default.removeItem(at: store.directory)
+      try store.withExclusiveLocks(
+        fileNames: TestControlFile.evidenceLocksInOrder[...]
+      ) {
+        try FileManager.default.removeItem(at: store.directory)
+      }
     } catch {
       controlledXPCIntegrationTestLog.error(
         "test_control.xpc.cleanup_failed path=\(store.directory.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=report-test-failure"
@@ -357,6 +399,25 @@ private final class ControlledXPCHarness {
       backgroundAgentStatus: backgroundAgentStatus,
       fault: fault
     )
+  }
+
+  private func waitForCondition(
+    _ description: String,
+    condition: () throws -> Bool
+  ) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(
+      by: .seconds(ControlledXPCTestValues.connectionTimeoutSeconds)
+    )
+    while clock.now < deadline {
+      if try condition() {
+        return
+      }
+      try await clock.sleep(
+        for: .milliseconds(ControlledXPCTestValues.pollingIntervalMilliseconds)
+      )
+    }
+    throw TestControlError.timeout(description)
   }
 
   private static func makeState(

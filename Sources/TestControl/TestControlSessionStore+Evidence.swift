@@ -57,9 +57,8 @@
           )
         }
         let state = try loadState()
-        try validateEnvelope(
-          sessionID: acknowledgment.sessionID,
-          revision: acknowledgment.revision,
+        try validateAcknowledgmentEnvelope(
+          acknowledgment,
           against: state
         )
         return acknowledgment
@@ -106,11 +105,7 @@
               actual: event.participant
             )
           }
-          try validateEnvelope(
-            sessionID: event.sessionID,
-            revision: event.revision,
-            against: state
-          )
+          try validateEventEnvelope(event, against: state)
           if let lastRevision, event.revision < lastRevision {
             throw TestControlError.revisionNotIncreasing(
               current: lastRevision.value,
@@ -199,11 +194,7 @@
       _ event: TestControlEvent,
       validatingAgainst state: TestControlState
     ) throws {
-      try validateEnvelope(
-        sessionID: event.sessionID,
-        revision: event.revision,
-        against: state
-      )
+      try validateEventEnvelope(event, against: state)
       let existingEvents = try decodeEvents(
         for: event.participant,
         validatingAgainst: state
@@ -242,11 +233,7 @@
             actual: event.participant
           )
         }
-        try validateEnvelope(
-          sessionID: event.sessionID,
-          revision: event.revision,
-          against: state
-        )
+        try validateEventEnvelope(event, against: state)
         if let lastRevision, event.revision < lastRevision {
           throw TestControlError.revisionNotIncreasing(
             current: lastRevision.value,
@@ -257,6 +244,99 @@
         lastRevision = event.revision
       }
       return events
+    }
+
+    private func validateAcknowledgmentEnvelope(
+      _ acknowledgment: TestControlAcknowledgment,
+      against state: TestControlState
+    ) throws {
+      do {
+        try validateEnvelope(
+          sessionID: acknowledgment.sessionID,
+          revision: acknowledgment.revision,
+          against: state
+        )
+      } catch let error as TestControlError {
+        guard case .futureRevision = error else {
+          throw error
+        }
+        guard
+          try hasRevisionRejectionEvidence(
+            participant: acknowledgment.participant,
+            sessionID: acknowledgment.sessionID,
+            appliedRevision: acknowledgment.revision,
+            proposedRevision: state.revision
+          )
+        else {
+          throw error
+        }
+        testControlStoreLog.notice(
+          "test_control.ack.regressed_control_validated participant=\(acknowledgment.participant.rawValue, privacy: .public) applied=\(acknowledgment.revision.value, privacy: .public) proposed=\(state.revision.value, privacy: .public) recovery=retain-rejection-evidence"
+        )
+      }
+    }
+
+    private func validateEventEnvelope(
+      _ event: TestControlEvent,
+      against state: TestControlState
+    ) throws {
+      if case let .revisionRejected(applied, proposed) = event.payload,
+        event.revision.value == applied,
+        proposed < applied,
+        state.revision.value == proposed
+      {
+        try validateEnvelope(
+          sessionID: event.sessionID,
+          revision: state.revision,
+          against: state
+        )
+        return
+      }
+      try validateEnvelope(
+        sessionID: event.sessionID,
+        revision: event.revision,
+        against: state
+      )
+    }
+
+    private func hasRevisionRejectionEvidence(
+      participant: TestControlParticipant,
+      sessionID: UUID,
+      appliedRevision: TestControlRevision,
+      proposedRevision: TestControlRevision
+    ) throws -> Bool {
+      let url = eventsURL(for: participant)
+      guard FileManager.default.fileExists(atPath: url.path) else {
+        return false
+      }
+      let data = try Data(contentsOf: url)
+      let lines = data.split(separator: TestControlJSONLines.delimiter)
+      for line in lines {
+        let event = try TestControlCodec.decode(
+          TestControlEvent.self,
+          from: Data(line)
+        )
+        guard event.participant == participant else {
+          continue
+        }
+        guard event.sessionID == sessionID else {
+          continue
+        }
+        guard event.revision == appliedRevision else {
+          continue
+        }
+        guard
+          event.payload
+            == .revisionRejected(
+              applied: appliedRevision.value,
+              proposed: proposedRevision.value
+            )
+        else {
+          continue
+        }
+        return true
+      }
+      return false
     }
 
     private func validateEvidenceSnapshot(at snapshotDirectory: URL) throws {

@@ -169,6 +169,20 @@ final class TestControlAdapterTests: XCTestCase {
     expect { try runtime.refresh() }.to(
       throwError(TestControlError.revisionNotIncreasing(current: 5, proposed: 4))
     )
+    expect(try store.loadEvents(for: .app).map(\.payload)).to(
+      contain(.revisionRejected(applied: 5, proposed: 4))
+    )
+    let evidenceDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(
+        "FanCurveRegressedEvidence-\(UUID().uuidString)",
+        isDirectory: true
+      )
+    temporaryDirectories.append(evidenceDirectory)
+    try store.exportEvidence(to: evidenceDirectory)
+    let exportedStore = try TestControlSessionStore.open(at: evidenceDirectory)
+    expect(try exportedStore.loadEvents(for: .app).map(\.payload)).to(
+      contain(.revisionRejected(applied: 5, proposed: 4))
+    )
 
     let recoveredState = makeState(sessionID: sessionID, revision: 6)
     try TestControlCodec.encode(recoveredState).write(
@@ -177,9 +191,66 @@ final class TestControlAdapterTests: XCTestCase {
     )
     expect(try runtime.refresh()) == recoveredState
     expect(try store.loadAcknowledgment(for: .app)?.revision) == 6
-    expect(try store.loadEvents(for: .app).map(\.payload)).to(
-      contain(.revisionRejected(applied: 5, proposed: 4))
+  }
+}
+
+// MARK: - Runtime persistence failures
+
+extension TestControlAdapterTests {
+  func testRuntimeRetriesEqualRevisionAcknowledgmentAfterWriteFailure() throws {
+    let sessionID = UUID()
+    let writeProbe = TestControlAtomicWriteProbe(
+      failingAcknowledgmentRevision: 2
     )
+    let operations = TestControlStoreOperations(
+      atomicWrite: { data, url in
+        try writeProbe.write(data, to: url)
+      },
+      synchronize: TestControlStoreOperations.live.synchronize
+    )
+    let store = try makeStore(
+      state: makeState(sessionID: sessionID, revision: 1),
+      operations: operations
+    )
+    let runtime = try TestControlRuntime(store: store, participant: .app)
+    runtime.stopMonitoring()
+    let proposedState = makeState(sessionID: sessionID, revision: 2)
+    try store.apply(proposedState)
+
+    expect { try runtime.refresh() }.to(
+      throwError(TestControlAdapterTestError.acknowledgmentWrite)
+    )
+    expect(try runtime.refresh()) == proposedState
+    expect(try store.loadAcknowledgment(for: .app)?.revision) == 2
+    expect(writeProbe.failingRevisionAttemptCount) == 2
+  }
+
+  func testFaultEffectIsSuppressedWhenEventSynchronizationFails() throws {
+    let sessionID = UUID()
+    let operations = TestControlStoreOperations(
+      atomicWrite: TestControlStoreOperations.live.atomicWrite
+    ) { _ in
+      throw TestControlAdapterTestError.synchronization
+    }
+    let store = try makeStore(
+      state: makeState(
+        sessionID: sessionID,
+        revision: 1,
+        xpcFault: .interruption
+      ),
+      operations: operations
+    )
+    let runtime = try TestControlRuntime(store: store, participant: .agent)
+    runtime.stopMonitoring()
+    let observation = TestControlBooleanObservation()
+    let controller = TestControlAgentXPCFaultController(
+      mode: .controlled(runtime)
+    ) { _ in
+      observation.record()
+    }
+
+    expect(controller.consumeFault(at: .currentState)) == .inactive
+    expect(observation.value) == false
   }
 
   func testAppAndAgentAcknowledgeANewerRevisionWithoutAnAdapterOperation() throws {
@@ -292,14 +363,21 @@ extension TestControlAdapterTests {
     }
   }
 
-  func makeStore(state: TestControlState) throws -> TestControlSessionStore {
+  func makeStore(
+    state: TestControlState,
+    operations: TestControlStoreOperations = .live
+  ) throws -> TestControlSessionStore {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent(
         "FanCurveControlledAdapters-\(UUID().uuidString)",
         isDirectory: true
       )
     temporaryDirectories.append(directory)
-    return try TestControlSessionStore.initialize(at: directory, initialState: state)
+    return try TestControlSessionStore.initialize(
+      at: directory,
+      initialState: state,
+      operations: operations
+    )
   }
 
   private func makeState(
@@ -307,7 +385,8 @@ extension TestControlAdapterTests {
     revision: UInt64,
     backgroundAgentStatus: TestManagedServiceStatus = .enabled,
     serviceOperation: TestOperationDirective = .succeed,
-    hardwareOperation: TestOperationDirective = .succeed
+    hardwareOperation: TestOperationDirective = .succeed,
+    xpcFault: TestXPCFault = .noFault
   ) -> TestControlState {
     TestControlState(
       sessionID: sessionID,
@@ -357,7 +436,57 @@ extension TestControlAdapterTests {
         ),
         nextOperation: hardwareOperation
       ),
-      xpcFault: .noFault
+      xpcFault: xpcFault
     )
+  }
+}
+
+// MARK: - TestControlAdapterTestError
+
+private enum TestControlAdapterTestError: Error, Equatable {
+  case acknowledgmentWrite
+  case synchronization
+}
+
+// MARK: - TestControlAtomicWriteProbe
+
+private final class TestControlAtomicWriteProbe: @unchecked Sendable {
+  private let lock = NSLock()
+  private let failingAcknowledgmentRevision: TestControlRevision
+  private var storedFailingRevisionAttemptCount = 0
+
+  init(failingAcknowledgmentRevision: UInt64) {
+    self.failingAcknowledgmentRevision = TestControlRevision(
+      failingAcknowledgmentRevision
+    )
+  }
+
+  var failingRevisionAttemptCount: Int {
+    lock.lock()
+    let count = storedFailingRevisionAttemptCount
+    lock.unlock()
+    return count
+  }
+
+  func write(_ data: Data, to url: URL) throws {
+    var isTargetAcknowledgment = false
+    if url.lastPathComponent == TestControlFile.acknowledgment(for: .app) {
+      let acknowledgment = try TestControlCodec.decode(
+        TestControlAcknowledgment.self,
+        from: data
+      )
+      isTargetAcknowledgment =
+        acknowledgment.revision == failingAcknowledgmentRevision
+    }
+    if isTargetAcknowledgment {
+      lock.lock()
+      storedFailingRevisionAttemptCount += 1
+      let shouldFail = storedFailingRevisionAttemptCount == 1
+      lock.unlock()
+      if shouldFail {
+        throw TestControlAdapterTestError.acknowledgmentWrite
+      }
+    }
+    try data.write(to: url, options: [.atomic])
   }
 }
