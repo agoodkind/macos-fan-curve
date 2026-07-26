@@ -18,10 +18,6 @@ enum ServiceManagementAdapters {
   static func backgroundAgent() -> any BackgroundAgentServiceManaging {
     BackgroundAgentServiceManagementAdapter()
   }
-
-  static func helper() -> any HelperServiceManaging {
-    HelperServiceManagementAdapter()
-  }
 }
 
 // MARK: - BackgroundAgentServiceManagementAdapter
@@ -65,51 +61,6 @@ final class BackgroundAgentServiceManagementAdapter: BackgroundAgentServiceManag
 
   func openSystemSettings() {
     serviceManagementAdaptersLog.notice("agent.service.settings.opened")
-    SMAppService.openSystemSettingsLoginItems()
-  }
-}
-
-// MARK: - HelperServiceManagementAdapter
-
-final class HelperServiceManagementAdapter: HelperServiceManaging {
-  private let service: SMAppService
-
-  init(plistName: String = generatedHelperDaemonPlistName) {
-    self.service = SMAppService.daemon(plistName: plistName)
-  }
-
-  var status: ManagedServiceStatus {
-    ManagedServiceStatus(service.status)
-  }
-
-  func register() throws {
-    serviceManagementAdaptersLog.notice("helper.service.register.started")
-    do {
-      try service.register()
-      serviceManagementAdaptersLog.notice("helper.service.register.finished")
-    } catch {
-      serviceManagementAdaptersLog.error(
-        "helper.service.register.failed error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-agent"
-      )
-      throw error
-    }
-  }
-
-  func unregister() throws {
-    serviceManagementAdaptersLog.notice("helper.service.unregister.started")
-    do {
-      try service.unregister()
-      serviceManagementAdaptersLog.notice("helper.service.unregister.finished")
-    } catch {
-      serviceManagementAdaptersLog.error(
-        "helper.service.unregister.failed error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-agent"
-      )
-      throw error
-    }
-  }
-
-  func openSystemSettings() {
-    serviceManagementAdaptersLog.notice("helper.service.settings.opened")
     SMAppService.openSystemSettingsLoginItems()
   }
 }

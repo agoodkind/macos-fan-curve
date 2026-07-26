@@ -87,11 +87,12 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
   private var connection: NSXPCConnection?
   private var reconnectTask: Task<Void, Never>?
   private let serviceName: String
-  private let encoder = JSONEncoder()
+  private let commandTransport: AgentCommandTransport
   private let decoder = JSONDecoder()
 
   init(serviceName: String = FanCurveAgentXPC.serviceName) {
     self.serviceName = serviceName
+    self.commandTransport = AgentCommandTransport(serviceName: serviceName)
     super.init()
   }
 
@@ -273,41 +274,18 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
   private func send(_ command: AgentCommand) async throws {
     #if DEBUG
       if isDevSimulating {
-        applyDevCommand(command)
-        return
+        switch command.devScenarioRoute {
+        case .controlXPC:
+          try await commandTransport.sendControl(command)
+          return
+        case .simulation:
+          applyDevCommand(command)
+          return
+        }
       }
     #endif
     let proxy = try remoteProxy()
-    let data = try encoder.encode(command)
-    let response: AgentCommandResponse =
-      try await withCheckedThrowingContinuation { continuation in
-        proxy.sendCommand(data) { success, responseData, errorMessage in
-          if let errorMessage, !success {
-            continuation.resume(
-              throwing: FanCurveAgentClientError.commandRejected(errorMessage))
-            return
-          }
-          guard success, let responseData else {
-            continuation.resume(throwing: FanCurveAgentClientError.invalidReply)
-            return
-          }
-          do {
-            let response = try JSONDecoder().decode(
-              AgentCommandResponse.self, from: responseData)
-            continuation.resume(returning: response)
-          } catch {
-            fanCurveAgentClientLog.error(
-              "agent_client.command.response_decode_failed error=\(error.localizedDescription, privacy: .public) recovery=propagate"
-            )
-            continuation.resume(throwing: error)
-          }
-        }
-      }
-    guard response.accepted else {
-      throw FanCurveAgentClientError.commandRejected(response.message ?? "Command rejected")
-    }
-    fanCurveAgentClientLog.info(
-      "agent_client.command.sent kind=\(command.logName, privacy: .public)")
+    try await commandTransport.send(command, to: proxy)
   }
 
   private func remoteProxy() throws -> FanCurveAgentXPCProtocol {

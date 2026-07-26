@@ -82,12 +82,14 @@ let externalDependencies: [TargetDependency] = [
 ]
 
 let modelTestSources: SourceFilesList = [
+  .generated("Generated/FanCurve/Config.generated.swift"),
   "Sources/App/L10n.swift",
   "Sources/Common/SharedConfigKeys.swift",
   "Sources/Common/AgentFanSnapshot.swift",
   "Sources/Common/AgentControllerMode.swift",
   "Sources/Common/AgentSnapshot.swift",
   "Sources/Common/AppVisibilityState.swift",
+  "Sources/Common/FanCurveAgentXPCProtocol.swift",
   "Sources/Common/ManagedService.swift",
   "Sources/Common/RuntimeState.swift",
   "Sources/Common/SetupActionAffordance+Codable.swift",
@@ -208,6 +210,7 @@ let project = Project(
         "Sources/Agent/**",
         "Sources/App/L10n.swift",
         "Sources/Models/**",
+        "Sources/Services/AgentCommandTransport.swift",
         "Sources/Services/FanCurveAgentClient.swift",
         "Sources/Services/DevToggleOverride.swift",
         "Sources/Common/**",

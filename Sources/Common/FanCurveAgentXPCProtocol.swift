@@ -21,6 +21,13 @@ struct AgentCurveUpdate: Codable, Sendable, Equatable {
   let interpolationMode: InterpolationMode
 }
 
+// MARK: - AgentCommandDevScenarioRoute
+
+enum AgentCommandDevScenarioRoute: Sendable, Equatable {
+  case controlXPC
+  case simulation
+}
+
 enum AgentCommand: Codable, Sendable, Equatable {
   case installOrRepairHelper
   case openSystemSettings
@@ -49,6 +56,16 @@ enum AgentCommand: Codable, Sendable, Equatable {
       return "set_curve"
     case .setFanControlEnabled:
       return "set_fan_control_enabled"
+    }
+  }
+
+  var devScenarioRoute: AgentCommandDevScenarioRoute {
+    switch self {
+    case .installOrRepairHelper, .openSystemSettings:
+      return .controlXPC
+    case .requestFanAuto, .requestFanRPM, .setApplyInBackground, .setBoostEnabled,
+      .setCurve, .setFanControlEnabled:
+      return .simulation
     }
   }
 }
