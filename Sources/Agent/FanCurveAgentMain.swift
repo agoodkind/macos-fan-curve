@@ -22,8 +22,24 @@ enum FanCurveAgentMain {
     log.notice(
       "agent.starting pid=\(ProcessInfo.processInfo.processIdentifier, privacy: .public)")
 
-    let controller = AgentController()
-    let appXPCService = FanCurveAgentXPCService(controller: controller)
+    #if DEBUG
+      let runtimeMode = TestControlProcessRuntimes.agent
+      let fanHardware = AgentTestControlAdapters.fanHardware(mode: runtimeMode) {
+        XPCClient(clientName: generatedAgentBundleID)
+      }
+      let helperService = AgentTestControlAdapters.helperService(mode: runtimeMode) {
+        HelperServiceManagementAdapter()
+      }
+      let controller = AgentController(fanHardware: fanHardware)
+      let appXPCService = FanCurveAgentXPCService(
+        controller: controller,
+        helperService: helperService,
+        faultController: TestControlAgentXPCFaultController(mode: runtimeMode)
+      )
+    #else
+      let controller = AgentController()
+      let appXPCService = FanCurveAgentXPCService(controller: controller)
+    #endif
 
     installSignalHandler(SIGTERM, controller: controller)
     installSignalHandler(SIGINT, controller: controller)

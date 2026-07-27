@@ -57,9 +57,8 @@
           )
         }
         let state = try loadState()
-        try validateEnvelope(
-          sessionID: acknowledgment.sessionID,
-          revision: acknowledgment.revision,
+        try validateAcknowledgmentEnvelope(
+          acknowledgment,
           against: state
         )
         return acknowledgment
@@ -74,24 +73,16 @@
     func appendEvent(_ event: TestControlEvent) throws {
       try withExclusiveLock(fileName: TestControlFile.eventsLock(for: event.participant)) {
         let state = try loadState()
-        try validateEnvelope(
-          sessionID: event.sessionID,
-          revision: event.revision,
-          against: state
-        )
-        let existingEvents = try loadEvents(for: event.participant)
-        if let current = existingEvents.last, event.revision < current.revision {
-          throw TestControlError.revisionNotIncreasing(
-            current: current.revision.value,
-            proposed: event.revision.value
-          )
-        }
-        var data = try TestControlCodec.encode(event)
-        data.append(TestControlJSONLines.delimiter)
-        try append(data, to: eventsURL(for: event.participant))
-        testControlStoreLog.info(
-          "test_control.event.appended participant=\(event.participant.rawValue, privacy: .public) kind=\(event.kind.rawValue, privacy: .public) session=\(event.sessionID.uuidString, privacy: .public) revision=\(event.revision.value, privacy: .public)"
-        )
+        try appendEventLocked(event, validatingAgainst: state)
+      }
+    }
+
+    func appendRuntimeEvent(
+      _ event: TestControlEvent,
+      validatingAgainst appliedState: TestControlState
+    ) throws {
+      try withExclusiveLock(fileName: TestControlFile.eventsLock(for: event.participant)) {
+        try appendEventLocked(event, validatingAgainst: appliedState)
       }
     }
 
@@ -101,34 +92,11 @@
         return []
       }
       do {
-        let data = try Data(contentsOf: url)
-        let lines = data.split(separator: TestControlJSONLines.delimiter)
         let state = try loadState()
-        var events: [TestControlEvent] = []
-        var lastRevision: TestControlRevision?
-        for line in lines {
-          let event = try TestControlCodec.decode(TestControlEvent.self, from: Data(line))
-          guard event.participant == participant else {
-            throw TestControlError.acknowledgmentParticipantMismatch(
-              expected: participant,
-              actual: event.participant
-            )
-          }
-          try validateEnvelope(
-            sessionID: event.sessionID,
-            revision: event.revision,
-            against: state
-          )
-          if let lastRevision, event.revision < lastRevision {
-            throw TestControlError.revisionNotIncreasing(
-              current: lastRevision.value,
-              proposed: event.revision.value
-            )
-          }
-          events.append(event)
-          lastRevision = event.revision
-        }
-        return events
+        return try decodeEvents(
+          for: participant,
+          validatingAgainst: state
+        )
       } catch {
         testControlStoreLog.error(
           "test_control.events.load_failed participant=\(participant.rawValue, privacy: .public) path=\(url.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=reject-evidence"
@@ -201,6 +169,206 @@
       testControlStoreLog.debug(
         "test_control.evidence.snapshot_copied path=\(snapshotDirectory.path, privacy: .public)"
       )
+    }
+
+    private func appendEventLocked(
+      _ event: TestControlEvent,
+      validatingAgainst state: TestControlState
+    ) throws {
+      try validateEventEnvelope(event, against: state)
+      let existingEvents = try decodeEvents(
+        for: event.participant,
+        validatingAgainst: state
+      )
+      if let current = existingEvents.last, event.revision < current.revision {
+        throw TestControlError.revisionNotIncreasing(
+          current: current.revision.value,
+          proposed: event.revision.value
+        )
+      }
+      var data = try TestControlCodec.encode(event)
+      data.append(TestControlJSONLines.delimiter)
+      try append(data, to: eventsURL(for: event.participant))
+      testControlStoreLog.info(
+        "test_control.event.appended participant=\(event.participant.rawValue, privacy: .public) kind=\(event.kind.rawValue, privacy: .public) session=\(event.sessionID.uuidString, privacy: .public) revision=\(event.revision.value, privacy: .public)"
+      )
+    }
+
+    private func decodeEvents(
+      for participant: TestControlParticipant,
+      validatingAgainst state: TestControlState
+    ) throws -> [TestControlEvent] {
+      let url = eventsURL(for: participant)
+      guard FileManager.default.fileExists(atPath: url.path) else {
+        return []
+      }
+      let data = try Data(contentsOf: url)
+      let lines = data.split(separator: TestControlJSONLines.delimiter)
+      var events: [TestControlEvent] = []
+      var lastRevision: TestControlRevision?
+      for line in lines {
+        let event = try TestControlCodec.decode(TestControlEvent.self, from: Data(line))
+        guard event.participant == participant else {
+          throw TestControlError.acknowledgmentParticipantMismatch(
+            expected: participant,
+            actual: event.participant
+          )
+        }
+        if let lastRevision, event.revision < lastRevision {
+          throw TestControlError.revisionNotIncreasing(
+            current: lastRevision.value,
+            proposed: event.revision.value
+          )
+        }
+        events.append(event)
+        lastRevision = event.revision
+      }
+      let retainedAppliedRevision = retainedAppliedRevision(
+        in: events,
+        participant: participant,
+        state: state
+      )
+      if let retainedAppliedRevision {
+        testControlStoreLog.notice(
+          "test_control.events.regressed_control_validated participant=\(participant.rawValue, privacy: .public) applied=\(retainedAppliedRevision.value, privacy: .public) proposed=\(state.revision.value, privacy: .public) recovery=retain-rejection-evidence"
+        )
+      }
+      for event in events {
+        try validateEventEnvelope(
+          event,
+          against: state,
+          retainedAppliedRevision: retainedAppliedRevision
+        )
+      }
+      return events
+    }
+
+    private func validateAcknowledgmentEnvelope(
+      _ acknowledgment: TestControlAcknowledgment,
+      against state: TestControlState
+    ) throws {
+      do {
+        try validateEnvelope(
+          sessionID: acknowledgment.sessionID,
+          revision: acknowledgment.revision,
+          against: state
+        )
+      } catch let error as TestControlError {
+        guard case .futureRevision = error else {
+          throw error
+        }
+        guard
+          try hasRevisionRejectionEvidence(
+            participant: acknowledgment.participant,
+            sessionID: acknowledgment.sessionID,
+            appliedRevision: acknowledgment.revision,
+            proposedRevision: state.revision
+          )
+        else {
+          throw error
+        }
+        testControlStoreLog.notice(
+          "test_control.ack.regressed_control_validated participant=\(acknowledgment.participant.rawValue, privacy: .public) applied=\(acknowledgment.revision.value, privacy: .public) proposed=\(state.revision.value, privacy: .public) recovery=retain-rejection-evidence"
+        )
+      }
+    }
+
+    private func validateEventEnvelope(
+      _ event: TestControlEvent,
+      against state: TestControlState,
+      retainedAppliedRevision: TestControlRevision? = nil
+    ) throws {
+      do {
+        try validateEnvelope(
+          sessionID: event.sessionID,
+          revision: event.revision,
+          against: state
+        )
+        return
+      } catch let error as TestControlError {
+        guard case .futureRevision = error else {
+          throw error
+        }
+        guard let retainedAppliedRevision else {
+          throw error
+        }
+        guard event.revision <= retainedAppliedRevision else {
+          throw error
+        }
+        try validateEnvelope(
+          sessionID: event.sessionID,
+          revision: state.revision,
+          against: state
+        )
+      }
+    }
+
+    private func retainedAppliedRevision(
+      in events: [TestControlEvent],
+      participant: TestControlParticipant,
+      state: TestControlState
+    ) -> TestControlRevision? {
+      events.reversed().first { event in
+        guard event.participant == participant else {
+          return false
+        }
+        guard event.sessionID == state.sessionID else {
+          return false
+        }
+        guard event.revision > state.revision else {
+          return false
+        }
+        guard
+          event.payload
+            == .revisionRejected(
+              applied: event.revision.value,
+              proposed: state.revision.value
+            )
+        else {
+          return false
+        }
+        return true
+      }?.revision
+    }
+
+    private func hasRevisionRejectionEvidence(
+      participant: TestControlParticipant,
+      sessionID: UUID,
+      appliedRevision: TestControlRevision,
+      proposedRevision: TestControlRevision
+    ) throws -> Bool {
+      let url = eventsURL(for: participant)
+      guard FileManager.default.fileExists(atPath: url.path) else {
+        return false
+      }
+      let data = try Data(contentsOf: url)
+      let lines = data.split(separator: TestControlJSONLines.delimiter)
+      for line in lines {
+        let event = try TestControlCodec.decode(
+          TestControlEvent.self,
+          from: Data(line)
+        )
+        guard event.participant == participant else {
+          continue
+        }
+        guard event.sessionID == sessionID else {
+          continue
+        }
+        guard event.revision == appliedRevision else {
+          continue
+        }
+        guard
+          event.payload
+            == .revisionRejected(
+              applied: appliedRevision.value,
+              proposed: proposedRevision.value
+            )
+        else {
+          continue
+        }
+        return true
+      }
+      return false
     }
 
     private func validateEvidenceSnapshot(at snapshotDirectory: URL) throws {

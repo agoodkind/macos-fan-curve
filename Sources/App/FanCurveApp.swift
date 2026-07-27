@@ -26,7 +26,7 @@ private enum WindowConstants {
 
 @main
 struct FanCurveApp: App {
-  @StateObject private var agentClient = FanCurveAgentClient()
+  @StateObject private var agentClient: FanCurveAgentClient
   @StateObject private var curveModel = FanCurveModel()
   @StateObject private var appUpdater = AppUpdater()
 
@@ -34,6 +34,15 @@ struct FanCurveApp: App {
     AppLog.bootstrap(subsystem: "io.goodkind.fan")
     #if DEBUG
       FrameProfiler.shared.startIfEnabled()
+      _agentClient = StateObject(
+        wrappedValue: FanCurveAgentClient(
+          control: TestControlAgentClientController(
+            mode: TestControlProcessRuntimes.app
+          )
+        )
+      )
+    #else
+      _agentClient = StateObject(wrappedValue: FanCurveAgentClient())
     #endif
 
     // First-run default for the background control preference. Keeping

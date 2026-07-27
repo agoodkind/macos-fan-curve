@@ -16,7 +16,15 @@ private let serviceManagementAdaptersLog = AppLog.make(category: "ServiceManagem
 
 enum ServiceManagementAdapters {
   static func backgroundAgent() -> any BackgroundAgentServiceManaging {
-    BackgroundAgentServiceManagementAdapter()
+    #if DEBUG
+      return TestControlAdapters.backgroundAgentService(
+        mode: TestControlProcessRuntimes.app
+      ) {
+        BackgroundAgentServiceManagementAdapter()
+      }
+    #else
+      return BackgroundAgentServiceManagementAdapter()
+    #endif
   }
 }
 
