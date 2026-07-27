@@ -168,13 +168,19 @@
 - Run `make tart-e2e-debug` and `make tart-e2e-release-smoke`.
 - Commit the completed slice.
 
-### Task 7: Rebase, verify, review, and prepare the pull request
+### Task 7: Rebase, verify, review, and submit the stack
+
+This task originally called for one pull request covering every slice. That produced a
+single change of roughly 11,300 insertions across 96 files, which is not reviewable. The
+work ships as a Graphite stack instead, one pull request per task boundary, because each
+task was already built and reviewed as a unit and therefore compiles on its own.
 
 **Requirements:**
-- Fetch and rebase onto `origin/main` with `rebase.gpgSign=true`.
+- Fetch and restack onto `origin/main` with `rebase.gpgSign=true`.
 - Run `make test`, `make build`, `make format-check`, `make log-audit`, `make launch-agent-audit`, `make run-audit`, `make verify`, and `make run`.
-- Re-run both Tart targets after the rebase.
+- Re-run the end-to-end targets after the restack.
 - Verify each commit in `origin/main..HEAD` with `git verify-commit` and confirm its raw `gpgsig` header.
 - Run a whole-branch code review and fix all load-bearing findings.
-- Draft one pull request describing the original stuck UI, production ownership defect, repair behavior, controlled Debug coverage, and real Release smoke.
-- Present the final pull request draft for confirmation before creating it.
+- Give each pull request in the stack its own description covering only that slice. The
+  bottom slice carries the narrative: the original stuck UI and the production ownership
+  defect it fixes.
