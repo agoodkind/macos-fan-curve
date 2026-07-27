@@ -146,3 +146,91 @@ evidence.
   production app without `FANCURVE_TEST_CONTROL_PATH`.
 
 No `xcodebuild` or `xctest` process from these attempts remains running.
+
+## Fix round 1
+
+Fix round 1 completed on 2026-07-27 at 02:36 CEST.
+
+### Findings addressed
+
+1. Canonical launch validation now obtains the process identifier from the
+   launched app's main accessibility element, resolves that exact
+   `NSRunningApplication`, verifies its bundle identifier, and compares its
+   resolved executable URL with
+   `/Applications/Fan Curve.app/Contents/MacOS/FanCurve`.
+2. The control scenario reads persistent toggle values and control point frames
+   through XCUI, registers cleanup before the first mutation, restores changes
+   in last-in, first-out order, and continues termination when cleanup fails.
+3. The UI runner now validates that the canonical installed Background Agent
+   plist contains the exact requested `FANCURVE_TEST_CONTROL_PATH` before
+   starting XCTest. Typed fixture tests cover a valid plist, a missing plist,
+   a missing environment variable, and a mismatched session path.
+4. The About window and reusable About content now have distinct accessibility
+   identifiers.
+5. Runtime scenarios now cover helper unreachability with
+   `helperReachable: false` separately from a reachable helper whose hardware
+   operation fails.
+6. Background Agent and helper setup mutation failures now propagate exact
+   errors to `Setup.error`, and the setup scenarios assert those visible
+   messages.
+7. Protocol scenarios now require typed app evidence for command rejection,
+   malformed command replies, and malformed initial state. They also assert
+   duplicate event counts, disconnect and reconnect lifecycle evidence, and
+   visible recovery state.
+8. Scenario initialization now sits inside the failure artifact boundary.
+   Initialization failures retain a screenshot and export session evidence
+   when possible, while the diagnostic preserves both the original
+   initialization error and any later export error.
+
+The `TestControlContractTests` scheme now excludes `FanCurveUITests`.
+`make test-ui-build` is the canonical build-only gate for the hostless UI test
+target.
+
+### RED and GREEN evidence
+
+The first focused build failed because `XCUIApplication` does not expose the
+assumed `processID` API. The replacement obtains the exact launched process
+identifier from the app's accessibility value and resolves it through
+`NSRunningApplication`.
+
+The first source contract attempt also exposed an explicit `self` compile
+requirement. Later build-only RED runs caught a 64-line function, an invalid
+catch binding, and a redundant local return. Each focused gate failed before
+the corresponding correction.
+
+After the corrections, `make test-ui-build` passed all static gates and produced
+the signed `FanCurveUITests` runner. `make test-control-build`,
+`make log-audit`, `make launch-agent-audit`, `make run-audit`, and `make run`
+also passed.
+
+`make run-audit` first failed while fetching `.swiftlint.yml`, then passed on
+the immediate retry. This appears to have been an external fetch failure rather
+than a repository failure.
+
+### Live validation limit
+
+`make test-control-contract` and `make test-agent` built and signed their test
+bundles, but the host XCTest service did not start a test method within 60
+seconds. Both attempts were interrupted with status 130. `make test` and
+`make verify` were not repeated because they use the same blocked host XCTest
+service.
+
+The live `make test-ui` scenario run remains deferred to Task 6. The Tart guest
+must authorize UI automation before it can provide behavioral RED and GREEN
+evidence for menu discovery, tab discovery, drag gestures, setup transitions,
+protocol recovery, and participant synchronization.
+
+### Commit evidence
+
+Implementation commit:
+`954b01e4938ec0a846d64ba24a0612f6357e6f21`.
+
+`git verify-commit 954b01e` reported a good SSH signature for
+`alex@goodkind.io`. The raw commit object contains a `gpgsig` SSH signature
+header and the required `Co-authored-by: Codex <noreply@openai.com>` trailer.
+
+### Remaining concerns
+
+No code defect remains known from the fix review. Live XCUI behavior remains
+unverified on this host because XCTest automation authorization is blocked.
+Task 6 owns that behavioral validation in Tart.
