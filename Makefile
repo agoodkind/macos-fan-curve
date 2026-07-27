@@ -17,6 +17,17 @@ UI_TEST_SESSION_PATH ?=
 UI_TEST_RESULT_BUNDLE_PATH ?=
 UI_TEST_DERIVED_DATA_PATH = $(CURDIR)/$(BUILD_DIR)/UITests
 UI_TEST_CANONICAL_APP_PATH = /Applications/Fan Curve.app
+SERVICE_SMOKE_DERIVED_DATA_PATH = $(CURDIR)/$(BUILD_DIR)/ServiceSmoke
+# The end-to-end runner (Scripts/EndToEndVM.swift) holds no VM-tool-specific
+# logic; it drives whatever provider script E2E_VM_PROVIDER names. Tart is the
+# provider shipped in this repo, so it is the default, but overriding these two
+# variables swaps the backing VM tool without editing the runner or the guest
+# workflow. See Docs/e2e-vm-provider-contract.md.
+E2E_VM_PROVIDER ?= $(CURDIR)/Scripts/vm-providers/tart-provider.sh
+E2E_VM_BASE_IMAGE ?= fan-curve-e2e-20260725
+E2E_RELEASE_APP_SOURCE ?=
+E2E_RELEASE_XCTESTRUN_PATH ?=
+E2E_RELEASE_RESULT_BUNDLE_PATH ?=
 APP_DISPLAY_NAME = Fan Curve
 APP_BUNDLE_NAME = $(APP_DISPLAY_NAME)
 AGENT_DISPLAY_NAME = Fan Curve Background Control
@@ -99,7 +110,7 @@ SWIFT_XCODE_BUILD_SETTINGS := $(XCODE_BUILD_SETTINGS)
 
 include bootstrap.mk
 
-.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates generate-sparkle-appcast sparkle-appcast appcast generate-project generate-config-artifacts open-project test-agent test-control-build test-control-build-local test-control-contract test-control-signing test-local test-ui test-ui-build test-ui-build-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
+.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app install-e2e-release-app dmg release-assets prepare-sparkle-updates generate-sparkle-appcast sparkle-appcast appcast generate-project generate-config-artifacts open-project test-agent test-control-build test-control-build-local test-control-contract test-control-signing test-local test-service-smoke test-service-smoke-build test-service-smoke-build-local test-service-smoke-prebuilt test-e2e-harness test-ui test-ui-build test-ui-build-local e2e-debug e2e-release-smoke format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
 
 all: app
 
@@ -158,6 +169,15 @@ run:
 install-app: app
 	@rm -rf "$(INSTALL_APP_DEST)"
 	@cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)"
+
+# Install a host-built Developer ID artifact into the guest without rebuilding
+# it there; the Release smoke guest workflow calls this with the app staged by
+# the host runner's prepareReleaseArtifacts step.
+install-e2e-release-app:
+	@test -n "$(E2E_RELEASE_APP_SOURCE)"
+	@test -d "$(E2E_RELEASE_APP_SOURCE)"
+	@rm -rf "$(INSTALL_APP_DEST)"
+	@/usr/bin/ditto "$(E2E_RELEASE_APP_SOURCE)" "$(INSTALL_APP_DEST)"
 
 dmg: app
 	@mkdir -p "$(PRODUCTS_DIR)"
@@ -262,6 +282,48 @@ test-control-contract: generate-config-artifacts generate-project
 		$(XCODE_BUILD_SETTINGS) \
 		$(SWIFT_MK_XCODEBUILD_ARGS)
 
+test-e2e-harness:
+	@Scripts/EndToEndVMContractTests.swift
+
+test-service-smoke: generate-config-artifacts generate-project
+	@rm -rf "$(SERVICE_SMOKE_DERIVED_DATA_PATH)"
+	"$(SWIFT_MK_BIN)" toolchain test \
+		--generator $(FANCURVE_GENERATOR) \
+		--workspace FanCurveApp.xcworkspace \
+		--scheme FanCurveServiceSmokeTests \
+		--configuration Release \
+		--destination "platform=macOS,arch=arm64" \
+		--derived-data-path "$(SERVICE_SMOKE_DERIVED_DATA_PATH)" \
+		$(XCODE_BUILD_SETTINGS) \
+		$(SWIFT_MK_XCODEBUILD_ARGS)
+
+test-service-smoke-build:
+	$(MAKE) CONFIGURATION=Release \
+		SWIFT_BUILD_CMD='$(MAKE) test-service-smoke-build-local' \
+		build
+
+test-service-smoke-build-local: generate-config-artifacts generate-project
+	"$(SWIFT_MK_BIN)" toolchain build-for-testing \
+		--generator $(FANCURVE_GENERATOR) \
+		--workspace FanCurveApp.xcworkspace \
+		--scheme FanCurveServiceSmokeTests \
+		--configuration Release \
+		--derived-data-path "$(SERVICE_SMOKE_DERIVED_DATA_PATH)" \
+		$(XCODE_BUILD_SETTINGS) \
+		$(SWIFT_MK_XCODEBUILD_ARGS)
+
+# swift-mk does not expose test-without-building, so this canonical Make target
+# runs the already signed xctestrun without allowing Xcode to rebuild it.
+test-service-smoke-prebuilt:
+	@test -n "$(E2E_RELEASE_XCTESTRUN_PATH)"
+	@test -f "$(E2E_RELEASE_XCTESTRUN_PATH)"
+	@test -n "$(E2E_RELEASE_RESULT_BUNDLE_PATH)"
+	@rm -rf "$(E2E_RELEASE_RESULT_BUNDLE_PATH)"
+	/usr/bin/xcrun xcodebuild test-without-building \
+		-xctestrun "$(E2E_RELEASE_XCTESTRUN_PATH)" \
+		-destination "platform=macOS,arch=arm64" \
+		-resultBundlePath "$(E2E_RELEASE_RESULT_BUNDLE_PATH)"
+
 test-ui: FANCURVE_TEST_CONTROL_PATH := $(UI_TEST_SESSION_PATH)
 test-ui: generate-config-artifacts generate-project
 	@SWIFT_MK_BIN="$(SWIFT_MK_BIN)" \
@@ -329,6 +391,22 @@ test-control-signing: swift-mk-bin
 		DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" \
 		"$(SWIFT_MK_BIN)" verify-signing artifacts \
 		"$(BUILD_DIR)/Build/Products/Debug/$(TEST_CONTROL_EXECUTABLE_NAME)"
+
+# Runs the Debug UI suite inside a disposable VM. E2E_VM_PROVIDER and
+# E2E_VM_BASE_IMAGE select the backing VM tool; see Docs/e2e-vm-provider-contract.md.
+e2e-debug: test-e2e-harness
+	@DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" \
+		E2E_VM_PROVIDER="$(E2E_VM_PROVIDER)" \
+		E2E_VM_BASE_IMAGE="$(E2E_VM_BASE_IMAGE)" \
+		Scripts/EndToEndVM.swift debug
+
+# Runs the Release service-smoke suite inside a disposable VM with real
+# SMAppService, launchd, and Agent XPC behavior. Fan control stays disabled.
+e2e-release-smoke: test-e2e-harness
+	@DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" \
+		E2E_VM_PROVIDER="$(E2E_VM_PROVIDER)" \
+		E2E_VM_BASE_IMAGE="$(E2E_VM_BASE_IMAGE)" \
+		Scripts/EndToEndVM.swift release-smoke
 
 format: fmt
 

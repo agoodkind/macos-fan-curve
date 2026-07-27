@@ -46,9 +46,17 @@ collect_result_bundle() {
     local result_parent="${result_bundle_path%/*}"
     local -a result_bundles
 
+    mkdir -p "$result_parent"
+    rm -rf -- "$result_bundle_path"
     shopt -s nullglob
     result_bundles=("$logs_directory"/Test-FanCurveUITests-*.xcresult)
     shopt -u nullglob
+    if [[ "${#result_bundles[@]}" -eq 0 ]]; then
+        echo \
+            "test-ui: no fresh FanCurveUITests result bundle exists in $logs_directory" \
+            >&2
+        return 1
+    fi
     if [[ "${#result_bundles[@]}" -ne 1 ]]; then
         echo \
             "test-ui: expected one FanCurveUITests result bundle in $logs_directory, found ${#result_bundles[@]}" \
@@ -56,8 +64,6 @@ collect_result_bundle() {
         return 1
     fi
 
-    mkdir -p "$result_parent"
-    rm -rf -- "$result_bundle_path"
     cp -R "${result_bundles[0]}" "$result_bundle_path"
     echo "test-ui: result_bundle=$result_bundle_path"
 }
@@ -102,6 +108,7 @@ run_ui_tests() {
         DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
         "$SWIFT_MK_BIN" verify-signing artifacts "$UI_TEST_CANONICAL_APP_PATH"
 
+    rm -rf -- "$UI_TEST_RESULT_BUNDLE_PATH"
     rm -rf -- "$UI_TEST_DERIVED_DATA_PATH"
     local test_status=0
     if "$SWIFT_MK_BIN" toolchain test \
@@ -139,5 +146,17 @@ run_ui_tests() {
         return "$test_status"
     fi
 }
+
+if [[ "${1:-}" == "collect-result-bundle" ]]; then
+    if [[ "$#" -ne 3 ]]; then
+        echo \
+            "usage: RunFanCurveUITests.sh collect-result-bundle LOGS_DIRECTORY RESULT_BUNDLE" \
+            >&2
+        exit 1
+    fi
+    validate_output_path "$3"
+    collect_result_bundle "$2" "$3"
+    exit $?
+fi
 
 run_ui_tests

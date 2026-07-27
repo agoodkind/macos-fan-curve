@@ -356,6 +356,9 @@ let project = Project(
       deploymentTargets: macOSDeploymentTarget,
       sourceExclusions: testControlAdapterSourceExclusions
     ),
+    makeFanCurveServiceSmokeTarget(
+      deploymentTargets: macOSDeploymentTarget
+    ),
     .target(
       name: "FanCurveAgentTests",
       destinations: [.mac],
@@ -441,6 +444,7 @@ let project = Project(
       )
     ),
     makeFanCurveUITestScheme(),
+    makeFanCurveServiceSmokeScheme(),
     .scheme(
       name: "FanCurveTestControl",
       shared: true,

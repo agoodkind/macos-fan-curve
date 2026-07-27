@@ -59,6 +59,47 @@ public func makeFanCurveUITestScheme() -> Scheme {
   )
 }
 
+public func makeFanCurveServiceSmokeTarget(
+  deploymentTargets: DeploymentTargets
+) -> Target {
+  .target(
+    name: "FanCurveServiceSmokeTests",
+    destinations: [.mac],
+    product: .uiTests,
+    bundleId: "$(APP_BUNDLE_ID).service-smoke-tests",
+    deploymentTargets: deploymentTargets,
+    infoPlist: .default,
+    sources: [
+      "Tests/FanCurveServiceSmokeTests/**",
+      "Sources/Common/AppAccessibilityIdentifier.swift",
+      .generated("Generated/FanCurve/Config.generated.swift"),
+    ],
+    dependencies: [
+      .external(name: "Nimble")
+    ],
+    settings: .settings(
+      base: [
+        "TEST_HOST": "",
+        "TEST_TARGET_NAME": "",
+      ]
+    )
+  )
+}
+
+public func makeFanCurveServiceSmokeScheme() -> Scheme {
+  .scheme(
+    name: "FanCurveServiceSmokeTests",
+    shared: true,
+    buildAction: .buildAction(targets: [.target("FanCurveServiceSmokeTests")]),
+    testAction: .targets(
+      [.testableTarget(target: "FanCurveServiceSmokeTests")],
+      configuration: "Release",
+      attachDebugger: false,
+      expandVariableFromTarget: .target("FanCurveServiceSmokeTests")
+    )
+  )
+}
+
 public func makeTestControlContractScheme() -> Scheme {
   .scheme(
     name: "TestControlContractTests",
