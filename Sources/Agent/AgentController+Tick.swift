@@ -11,6 +11,12 @@ import Foundation
 
 private let agentControllerTickLog = AppLog.make(category: "AgentControllerTick")
 
+private enum AgentControllerTickConstants {
+  /// Tick duration is logged in milliseconds so a stalled tick is legible
+  /// without reading fractional seconds.
+  static let millisecondsPerSecond: Double = 1_000
+}
+
 extension AgentController {
   func requestTick() {
     Task { [weak self] in
@@ -53,7 +59,9 @@ extension AgentController {
   /// accidental tick clock. This line keeps tick latency measurable now
   /// that those doomed reads are gone.
   func logTickCompleted(start: Date) {
-    let durationMs = Date().timeIntervalSince(start) * 1000
+    let durationMs =
+      Date().timeIntervalSince(start)
+      * AgentControllerTickConstants.millisecondsPerSecond
     agentControllerTickLog.notice(
       "agent.tick.completed durationMs=\(String(format: "%.1f", durationMs), privacy: .public)"
     )

@@ -19,7 +19,10 @@ private struct FakeSMCKeyDiscoverer: SMCKeyDiscovering {
   let keysToReturn: [String]
 
   func enumerateKeys() async -> [String] {
-    keysToReturn
+    // Yield so the fake actually crosses a suspension point, the way the
+    // real XPC-backed discoverer does.
+    await Task.yield()
+    return keysToReturn
   }
 }
 
@@ -37,11 +40,11 @@ final class SensorKeyResolutionTests: XCTestCase {
       discoveredKeys: discoveredKeys
     )
 
-    expect(resolved.usedFallback).to(beFalse())
+    expect(resolved.usedFallback) == false
     expect(resolved.tempKeys).to(contain("TC0P"))
     expect(resolved.tempKeys).notTo(contain("TCAD"))
-    expect(resolved.excludedKeys).to(equal(["TCAD"]))
-    expect(resolved.cpuTempKeys).to(equal(["TC0P", "Tp01"]))
+    expect(resolved.excludedKeys) == ["TCAD"]
+    expect(resolved.cpuTempKeys) == ["TC0P", "Tp01"]
   }
 
   func testResolve_TransportFailureDoesNotPruneAnything() {
@@ -54,10 +57,10 @@ final class SensorKeyResolutionTests: XCTestCase {
       discoveredKeys: []
     )
 
-    expect(resolved.usedFallback).to(beTrue())
-    expect(resolved.fallbackReason).to(equal(.enumerationUnavailable))
-    expect(resolved.tempKeys).to(equal(catalogTempKeys))
-    expect(resolved.cpuTempKeys).to(equal(catalogCPUTempKeys))
+    expect(resolved.usedFallback) == true
+    expect(resolved.fallbackReason) == .enumerationUnavailable
+    expect(resolved.tempKeys) == catalogTempKeys
+    expect(resolved.cpuTempKeys) == catalogCPUTempKeys
     expect(resolved.excludedKeys).to(beEmpty())
   }
 
@@ -73,10 +76,10 @@ final class SensorKeyResolutionTests: XCTestCase {
       discoveredKeys: discoveredKeys
     )
 
-    expect(resolved.usedFallback).to(beTrue())
-    expect(resolved.fallbackReason).to(equal(.noCPUKeySurvived))
-    expect(resolved.tempKeys).to(equal(catalogTempKeys))
-    expect(resolved.cpuTempKeys).to(equal(catalogCPUTempKeys))
+    expect(resolved.usedFallback) == true
+    expect(resolved.fallbackReason) == .noCPUKeySurvived
+    expect(resolved.tempKeys) == catalogTempKeys
+    expect(resolved.cpuTempKeys) == catalogCPUTempKeys
     expect(resolved.cpuTempKeys).notTo(beEmpty())
   }
 
@@ -89,8 +92,8 @@ final class SensorKeyResolutionTests: XCTestCase {
       discoverer: discoverer
     )
 
-    expect(resolved.usedFallback).to(beFalse())
-    expect(resolved.excludedKeys).to(equal(["TCAD"]))
-    expect(resolved.cpuTempKeys).to(equal(["TC0P", "Tp01"]))
+    expect(resolved.usedFallback) == false
+    expect(resolved.excludedKeys) == ["TCAD"]
+    expect(resolved.cpuTempKeys) == ["TC0P", "Tp01"]
   }
 }

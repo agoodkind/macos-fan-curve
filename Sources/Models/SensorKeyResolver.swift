@@ -1,5 +1,5 @@
 //
-//  SensorKeyResolution.swift
+//  SensorKeyResolver.swift
 //  FanCurveAgent
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-07-27.
