@@ -196,6 +196,7 @@ private final class RecordingFanHardware: FanHardware, @unchecked Sendable {
   private let lock = NSLock()
   private let readResult: FanHardwareBatchRead
   private let ownership: [AgentOwnershipEntry]
+  private let discoveredKeys: [String]
   private var readRequests: [ReadRequest] = []
   private var rpmCommands: [RPMCommand] = []
   private var autoCommands: [AutoCommand] = []
@@ -203,14 +204,24 @@ private final class RecordingFanHardware: FanHardware, @unchecked Sendable {
 
   init(
     readResult: FanHardwareBatchRead = FanHardwareBatchRead(fans: [], temps: [:]),
-    ownership: [AgentOwnershipEntry] = []
+    ownership: [AgentOwnershipEntry] = [],
+    discoveredKeys: [String] = []
   ) {
     self.readResult = readResult
     self.ownership = ownership
+    self.discoveredKeys = discoveredKeys
   }
 
   func shutdown() {
     // The test double has no external connection to close.
+  }
+
+  /// Defaults to the empty "could not enumerate" answer, which
+  /// `SensorKeyResolver` treats as ambiguous and never prunes on, so these
+  /// tests keep the controller's full catalog key set.
+  func enumerateKeys() async -> [String] {
+    await Task.yield()
+    return discoveredKeys
   }
 
   func readAndApply(

@@ -95,15 +95,24 @@ final class AgentController: @unchecked Sendable {
   let demandTemperatureFallVelocityCPerSecond: Double = 3.0
   let demandTemperatureAccelerationCPerSecond: Double = 1.6
 
-  let tempKeys: [String] = SensorCatalog.keysForCurrentHardware()
+  /// Catalog guess for this `hw.model`, before runtime resolution against
+  /// the SMC's actual key list. `tempKeys`/`cpuTempKeys` start here and are
+  /// narrowed once by `resolveSensorKeysIfNeeded()` on the first tick.
+  static let catalogTempKeys: [String] = SensorCatalog.keysForCurrentHardware()
     .filter { $0.type == .temperature }
     .map(\.key)
 
-  let cpuTempKeys: Set<String> = Set(
+  static let catalogCPUTempKeys: Set<String> = Set(
     SensorCatalog.keysForCurrentHardware()
       .filter { $0.type == .temperature && $0.group == .cpu }
       .map(\.key)
   )
+
+  var tempKeys: [String] = AgentController.catalogTempKeys
+  var cpuTempKeys: Set<String> = AgentController.catalogCPUTempKeys
+  /// Guards `resolveSensorKeysIfNeeded()` so runtime key resolution against
+  /// the SMC happens exactly once per process, on the first tick.
+  var sensorKeysResolved = false
 
   init(
     fanHardware: any FanHardware = XPCClient(clientName: generatedAgentBundleID),

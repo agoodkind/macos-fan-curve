@@ -15,7 +15,11 @@ struct FanHardwareBatchRead: Sendable {
 
 // MARK: - FanHardware
 
-protocol FanHardware: Sendable {
+/// The agent's single seam onto fan and sensor hardware. Refines
+/// `SMCKeyDiscovering` because enumerating the machine's real SMC key set
+/// is another read over the same privileged-helper channel, so key
+/// discovery stays inside the injected port rather than reaching around it.
+protocol FanHardware: SMCKeyDiscovering {
   func shutdown()
 
   func readAndApply(

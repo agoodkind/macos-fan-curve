@@ -108,6 +108,7 @@ let modelTestSources: SourceFilesList = [
   "Sources/Models/TemperatureUnit.swift",
   "Sources/Models/TemperatureAxisScale.swift",
   "Sources/Models/SensorState.swift",
+  "Sources/Models/SensorKeyResolution.swift",
   "Sources/Models/CurveColumns.swift",
   "Sources/Models/CurveAxisScale.swift",
   "Sources/Models/CurvePoint.swift",

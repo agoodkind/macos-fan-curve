@@ -31,6 +31,10 @@ extension AgentController {
   }
 
   func tick() async {
+    let tickStart = Date()
+    defer { logTickCompleted(start: tickStart) }
+
+    await resolveSensorKeysIfNeeded()
     let telemetry = await readTickTelemetry()
     guard await handleInactiveTickIfNeeded(telemetry) else { return }
     guard let context = makeActiveTickContext(from: telemetry) else { return }
@@ -42,6 +46,16 @@ extension AgentController {
       context: context,
       runtimeState: runtimeState,
       fanActions: fanActions
+    )
+  }
+
+  /// Pruning removes the failed key reads that previously served as an
+  /// accidental tick clock. This line keeps tick latency measurable now
+  /// that those doomed reads are gone.
+  func logTickCompleted(start: Date) {
+    let durationMs = Date().timeIntervalSince(start) * 1000
+    agentControllerTickLog.notice(
+      "agent.tick.completed durationMs=\(String(format: "%.1f", durationMs), privacy: .public)"
     )
   }
 
