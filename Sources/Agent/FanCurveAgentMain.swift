@@ -86,7 +86,17 @@ enum FanCurveAgentMain {
           )
         }
         controller.stop()
-        CFRunLoopStop(CFRunLoopGetMain())
+        // RunLoop.main.run() is Foundation's "permanent loop" convenience: it
+        // re-enters run(mode:before:) itself, so CFRunLoopStop only ends the
+        // current inner iteration and the loop keeps going. The XPC listener
+        // in FanCurveAgentXPCService also runs on its own GCD-backed mach
+        // port independent of the run loop, so the process stays alive and
+        // keeps answering XPC calls even after controller.stop(). Exit the
+        // process directly so a launchd-delivered SIGTERM (as make run's
+        // deploy step sends) actually terminates the agent and lets
+        // launchd's KeepAlive respawn it from the freshly deployed binary.
+        log.notice("agent.exiting signal=\(sig, privacy: .public)")
+        exit(0)
       }
     }
     source.resume()

@@ -15,7 +15,10 @@ func fail(_ message: String) throws -> Never {
     throw Failure(description: message)
 }
 
-func fixture(runCommand: String) -> String {
+func fixture(
+    runCommand: String,
+    terminateAgentLine: String = "\t@Scripts/TerminateAgentInstances.swift \"$(AGENT_LABEL)\""
+) -> String {
     """
     INSTALL_APP_DEST ?= /Applications/Fan Curve.app
 
@@ -23,6 +26,7 @@ func fixture(runCommand: String) -> String {
     \(runCommand)
     \t@rm -rf "$(INSTALL_APP_DEST)"
     \t@cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)"
+    \(terminateAgentLine)
     \t@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
     \t@open "$(INSTALL_APP_DEST)"
 
@@ -294,6 +298,38 @@ do {
         makefile: fixture(
             runCommand: "\t$(MAKE) CONFIGURATION=Debug bu\(lineContinuation)\n\tild"
         )
+    )
+    try requireAcceptance(
+        "agent restart step present",
+        scriptPath: scriptPath,
+        makefile: fixture(runCommand: "\t$(MAKE) CONFIGURATION=Debug build")
+    )
+    try requireRejection(
+        "missing agent restart step",
+        scriptPath: scriptPath,
+        makefile: fixture(
+            runCommand: "\t$(MAKE) CONFIGURATION=Debug build",
+            terminateAgentLine: "\t@true"
+        ),
+        expectedError: gatedBuildError
+    )
+    try requireRejection(
+        "dropped agent restart step",
+        scriptPath: scriptPath,
+        makefile: fixture(
+            runCommand: "\t$(MAKE) CONFIGURATION=Debug build",
+            terminateAgentLine: ""
+        ),
+        expectedError: gatedBuildError
+    )
+    try requireRejection(
+        "manual launchctl kickstart instead of agent restart step",
+        scriptPath: scriptPath,
+        makefile: fixture(
+            runCommand: "\t$(MAKE) CONFIGURATION=Debug build",
+            terminateAgentLine: "\t@launchctl kickstart -k gui/501/$(AGENT_LABEL)"
+        ),
+        expectedError: "make run must not reference 'launchctl'"
     )
     print("AuditMakeRunTests: ok")
 } catch let failure as Failure {

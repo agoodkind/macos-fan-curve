@@ -178,6 +178,7 @@ do {
         ["$(MAKE)", "CONFIGURATION=Debug", "build"],
         ["rm", "-rf", "$(INSTALL_APP_DEST)"],
         ["cp", "-R", "$(APP_DEST)", "$(INSTALL_APP_DEST)"],
+        ["Scripts/TerminateAgentInstances.swift", "$(AGENT_LABEL)"],
         ["Scripts/TerminateAppInstances.swift", "$(APP_BUNDLE_ID)"],
         ["open", "$(INSTALL_APP_DEST)"],
     ]
@@ -189,6 +190,12 @@ do {
 
     guard body.contains(#"cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)""#) else {
         try fail(#"run-audit failed: make run must deploy the build to /Applications with cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)""#)
+    }
+
+    guard body.contains(#"Scripts/TerminateAgentInstances.swift "$(AGENT_LABEL)""#) else {
+        try fail(
+            "run-audit failed: make run must restart the background agent by launchd label so KeepAlive respawns it from the redeployed binary"
+        )
     }
 
     guard body.contains(#"Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)""#) else {
