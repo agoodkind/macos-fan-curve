@@ -19,6 +19,8 @@ private enum SensorKeyResolutionConstants {
   static let diagnosticKeySampleLimit = 40
 }
 
+// MARK: - SMCKeyDiscovering
+
 /// Discovers the SMC keys actually present on this machine. The agent's
 /// `FanHardware` port refines this protocol, so the same injected hardware
 /// seam answers discovery. Declared separately here so resolution stays
@@ -27,6 +29,8 @@ private enum SensorKeyResolutionConstants {
 public protocol SMCKeyDiscovering: Sendable {
   func enumerateKeys() async -> [String]
 }
+
+// MARK: - SensorKeyFallbackReason
 
 /// Why resolution fell back to probing the full catalog instead of the
 /// keys the SMC intersection actually left.
@@ -47,6 +51,8 @@ public enum SensorKeyFallbackReason: Sendable, Equatable, CustomStringConvertibl
     }
   }
 }
+
+// MARK: - ResolvedSensorKeys
 
 /// Effective sensor key set for a single agent process lifetime, resolved
 /// once at startup against the keys the SMC actually reports.
@@ -71,6 +77,8 @@ public struct ResolvedSensorKeys: Sendable, Equatable {
     self.fallbackReason = fallbackReason
   }
 }
+
+// MARK: - SensorKeyResolver
 
 /// Resolves the catalog's guessed key set against what the SMC actually
 /// reports, once per agent process lifetime.

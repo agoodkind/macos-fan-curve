@@ -25,6 +25,8 @@ private enum XPCClientConstants {
   static let maxPlausibleTemperatureC: Float = 150
 }
 
+// MARK: - SMCKeyAbsence
+
 /// A missing SMC key is a definite answer, not a transport failure. The
 /// helper's `smcReadKey` reply carries `SMCError.firmware(.notFound)`'s
 /// description as a plain string across the XPC boundary, wrapped in

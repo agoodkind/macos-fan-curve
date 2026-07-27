@@ -17,6 +17,8 @@ private enum AgentControllerTickConstants {
   static let millisecondsPerSecond: Double = 1_000
 }
 
+// MARK: - AgentController
+
 extension AgentController {
   func requestTick() {
     Task { [weak self] in

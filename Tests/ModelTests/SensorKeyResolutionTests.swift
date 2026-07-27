@@ -26,6 +26,8 @@ private struct FakeSMCKeyDiscoverer: SMCKeyDiscovering {
   }
 }
 
+// MARK: - SensorKeyResolutionTests
+
 final class SensorKeyResolutionTests: XCTestCase {
   private let catalogTempKeys = ["TC0P", "TCAD", "Tp01", "Tg0U"]
   private let catalogCPUTempKeys: Set<String> = ["TC0P", "TCAD", "Tp01"]
