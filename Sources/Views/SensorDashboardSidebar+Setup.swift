@@ -88,7 +88,7 @@ extension SensorDashboardSidebar {
         {
           sensorDashboardSidebarSetupLog.notice("sidebar.helper_setup.tapped")
           beginPendingAction(.helperSetup)
-          installState.registerHelperDaemon(agentClient: runtime)
+          installState.installOrRepairHelper(agentClient: runtime)
         }
       )
     case .agentMissing:
@@ -100,7 +100,18 @@ extension SensorDashboardSidebar {
           installState.registerAgent()
         }
       )
-    case .agentAwaitingApproval, .helperAwaitingApproval:
+    case .agentAwaitingApproval:
+      return (
+        "Open System Settings",
+        {
+          sensorDashboardSidebarSetupLog.notice(
+            "sidebar.login_items_settings.tapped step=\(String(describing: installState.step), privacy: .public)"
+          )
+          beginPendingAction(.openSystemSettings)
+          installState.openAgentLoginItemsSettings()
+        }
+      )
+    case .helperAwaitingApproval:
       return (
         "Open System Settings",
         {
@@ -113,10 +124,11 @@ extension SensorDashboardSidebar {
               try await runtime.openSystemSettings()
             } catch {
               sensorDashboardSidebarSetupLog.notice(
-                "sidebar.login_items_settings.agent_command_failed error=\(error.localizedDescription, privacy: .public) recovery=open-from-app"
+                "sidebar.login_items_settings.agent_command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-agent-command-error"
               )
               await MainActor.run {
-                installState.openLoginItemsSettings()
+                installState.lastError = error.localizedDescription
+                completePendingAction(.openSystemSettings, reason: "command-failed")
               }
             }
           }

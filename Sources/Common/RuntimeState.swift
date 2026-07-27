@@ -39,20 +39,20 @@ enum SetupState: Codable, Sendable, Equatable {
     backgroundAgent: RuntimeServiceRequirement,
     helper: RuntimeServiceRequirement
   ) -> SetupState {
-    switch helper {
-    case .approvalRequired:
-      return .helperApproval(action: .approveHelper)
-    case .required:
-      return .helperRequired(action: .installHelper)
-    case .satisfied:
-      break
-    }
-
     switch backgroundAgent {
     case .approvalRequired:
       return .backgroundAgentApproval(action: .approveBackgroundAgent)
     case .required:
       return .backgroundAgentRequired(action: .enableBackgroundAgent)
+    case .satisfied:
+      break
+    }
+
+    switch helper {
+    case .approvalRequired:
+      return .helperApproval(action: .approveHelper)
+    case .required:
+      return .helperRequired(action: .installHelper)
     case .satisfied:
       return .ready
     }

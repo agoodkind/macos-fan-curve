@@ -138,7 +138,7 @@ struct GeneralSettingsView: View {
     )
     agentClient.start()
     Task {
-      await installState.refreshOnce(agentClient: agentClient)
+      installState.refreshOnce(agentClient: agentClient)
       await ownershipStatus.refreshOnce(agentClient: agentClient)
     }
   }
@@ -342,14 +342,14 @@ extension GeneralSettingsView {
   @ViewBuilder
   private var helperAction: some View {
     let showsHelperRepairAction =
-      installState.helperNeedsRepair
-      || !installState.helperEnabled
-      || !installState.helperReachable
+      agentClient.connectionState == .connected
+      && (installState.helperNeedsRepair
+        || !installState.helperEnabled
+        || !installState.helperReachable)
     if showsHelperRepairAction {
       VStack(alignment: .leading, spacing: GeneralSettingsConstants.helperActionSpacing) {
         Button {
-          generalSettingsLog.info("general_settings.helper.install.tapped")
-          installState.registerHelperDaemon(agentClient: agentClient)
+          performHelperAction()
         } label: {
           HStack(spacing: GeneralSettingsConstants.helperActionButtonHStackSpacing) {
             if installState.isRegisteringHelper {
@@ -422,6 +422,9 @@ extension GeneralSettingsView {
   }
 
   private var helperActionTitle: String {
+    if installState.helperApprovalPending {
+      return "Open System Settings"
+    }
     if installState.isRegisteringHelper {
       return installState.helperNeedsRepair
         ? "Reinstalling System Helper"
@@ -433,6 +436,28 @@ extension GeneralSettingsView {
   private var helperRepairDescription: String {
     "Fan Curve can still reach the System Helper, but this app install needs to "
       + "repair its helper registration."
+  }
+
+  private func performHelperAction() {
+    if installState.helperApprovalPending {
+      generalSettingsLog.info("general_settings.helper.approval.tapped owner=agent-xpc")
+      Task {
+        do {
+          try await agentClient.openSystemSettings()
+        } catch {
+          generalSettingsLog.notice(
+            "general_settings.helper.approval.failed error=\(error.localizedDescription, privacy: .public) recovery=show-agent-command-error"
+          )
+          await MainActor.run {
+            installState.lastError = error.localizedDescription
+          }
+        }
+      }
+      return
+    }
+
+    generalSettingsLog.info("general_settings.helper.install.tapped owner=agent-xpc")
+    installState.installOrRepairHelper(agentClient: agentClient)
   }
 
   private var agentRowState: ServiceRowState {

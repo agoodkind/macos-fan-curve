@@ -27,12 +27,6 @@ enum BuildFingerprint {
         .appendingPathComponent("Contents/MacOS/\(generatedAgentExecutableName)"))
   }
 
-  static var bundledHelperHash: String {
-    shortHash(
-      of: Bundle.main.bundleURL
-        .appendingPathComponent("Contents/MacOS/\(generatedHelperBundleID)"))
-  }
-
   static func shortHash(of url: URL?) -> String {
     guard let url else { return "n/a" }
     let data: Data

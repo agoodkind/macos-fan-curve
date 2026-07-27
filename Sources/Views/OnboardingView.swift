@@ -288,8 +288,16 @@ struct OnboardingView: View {
         content.primaryActionTitle ?? L10n.tr("Enable Background Control"),
         { state.registerAgent() }
       )
-    case .agentAwaitingApproval, .helperAwaitingApproval:
-      return (content.primaryActionTitle ?? L10n.tr("Open System Settings"), { openLoginItems() })
+    case .agentAwaitingApproval:
+      return (
+        content.primaryActionTitle ?? L10n.tr("Open System Settings"),
+        { state.openAgentLoginItemsSettings() }
+      )
+    case .helperAwaitingApproval:
+      return (
+        content.primaryActionTitle ?? L10n.tr("Open System Settings"),
+        { openHelperLoginItems() }
+      )
     case .ready, .checking:
       return nil
     }
@@ -297,19 +305,19 @@ struct OnboardingView: View {
 
   private func registerHelper() {
     onboardingViewLog.notice("onboarding.helper_register.tapped owner=agent-xpc")
-    state.registerHelperDaemon(agentClient: agentClient)
+    state.installOrRepairHelper(agentClient: agentClient)
   }
 
-  private func openLoginItems() {
+  private func openHelperLoginItems() {
     Task {
       do {
         try await agentClient.openSystemSettings()
       } catch {
         onboardingViewLog.notice(
-          "onboarding.login_items_settings.agent_command_failed error=\(error.localizedDescription, privacy: .public) recovery=open-from-app"
+          "onboarding.login_items_settings.agent_command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-agent-command-error"
         )
         await MainActor.run {
-          state.openLoginItemsSettings()
+          state.lastError = error.localizedDescription
         }
       }
     }

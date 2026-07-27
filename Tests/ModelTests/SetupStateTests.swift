@@ -12,12 +12,6 @@ import XCTest
 @testable import FanCurveModels
 
 final class SetupStateTests: XCTestCase {
-  func testEnabledHelperRegistrationReinstallsService() {
-    let plan = HelperServiceRegistration.Plan.resolve(serviceEnabled: true)
-
-    expect(plan) == .unregisterThenRegister
-  }
-
   func testAgentInstalledWithMissingHelperRequiresHelperInstall() {
     let setupState = SetupState.resolve(
       backgroundAgent: .satisfied,
@@ -36,12 +30,12 @@ final class SetupStateTests: XCTestCase {
     expect(setupState) == .backgroundAgentRequired(action: .enableBackgroundAgent)
   }
 
-  func testMissingAgentAndHelperRequiresHelperInstallFirst() {
+  func testMissingAgentAndHelperRequiresBackgroundAgentFirst() {
     let setupState = SetupState.resolve(
       backgroundAgent: .required,
       helper: .required
     )
 
-    expect(setupState) == .helperRequired(action: .installHelper)
+    expect(setupState) == .backgroundAgentRequired(action: .enableBackgroundAgent)
   }
 }

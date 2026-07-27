@@ -8,13 +8,11 @@
 
 import AppLog
 import Foundation
-import ServiceManagement
 
 private let installationStateAgentLifecycleLog = AppLog.make(category: "InstallationState")
 
 struct ServiceRegistrationFingerprints {
   let agent: String
-  let helper: String
 }
 
 struct AgentRefreshContext {
@@ -63,12 +61,11 @@ struct LegacyLaunchAgentPlist: Decodable {
 
 extension InstallationState {
   func autoRegisterAgentIfNeeded(
-    agentStatus: SMAppService.Status,
+    agentStatus: ManagedServiceStatus,
     appBundlePath: String,
     applyInBackground: Bool,
     storedFingerprint: String?
-  ) async -> SMAppService.Status {
-    guard #available(macOS 13.0, *) else { return agentStatus }
+  ) -> ManagedServiceStatus {
     guard agentStatus != .enabled, agentStatus != .requiresApproval else {
       return agentStatus
     }
@@ -90,9 +87,9 @@ extension InstallationState {
     lastAutoRegisterAttemptDate = now
 
     installationStateAgentLifecycleLog.notice(
-      "agent.auto_register.started appPath=\(appBundlePath, privacy: .public) status=\(agentStatus.rawValue, privacy: .public)"
+      "agent.auto_register.started appPath=\(appBundlePath, privacy: .public) status=\(agentStatus.description, privacy: .public)"
     )
-    let result = await Self.registerAgentService()
+    let result = registerAgentService()
     if let errorDescription = result.errorDescription {
       lastError = errorDescription
       installationStateAgentLifecycleLog.error(
@@ -101,23 +98,19 @@ extension InstallationState {
       return agentStatus
     }
 
-    let refreshedStatus = await currentAgentStatus()
+    let refreshedStatus = currentAgentStatus()
     lastAgentServiceRegisterDate = Date()
     installationStateAgentLifecycleLog.notice(
-      "agent.auto_register.done appPath=\(appBundlePath, privacy: .public) status=\(refreshedStatus.rawValue, privacy: .public)"
+      "agent.auto_register.done appPath=\(appBundlePath, privacy: .public) status=\(refreshedStatus.description, privacy: .public)"
     )
     return refreshedStatus
   }
 
-  func currentAgentStatus() async -> SMAppService.Status {
-    guard #available(macOS 13.0, *) else { return .notFound }
-    let rawValue = await Self.currentAgentStatusRawValue()
-    return SMAppService.Status(rawValue: rawValue) ?? .notFound
+  func currentAgentStatus() -> ManagedServiceStatus {
+    backgroundAgentService.status
   }
 
-  func refreshAgentIfNeeded(_ context: AgentRefreshContext) async {
-    guard #available(macOS 13.0, *) else { return }
-
+  func refreshAgentIfNeeded(_ context: AgentRefreshContext) {
     let appBundlePath = Bundle.main.bundleURL.path
     let developerManaged = isDeveloperManagedBuild
     let bundledHash = BuildFingerprint.bundledAgentHash
@@ -145,7 +138,7 @@ extension InstallationState {
       )
     else { return }
 
-    let result = await Self.refreshRegisteredAgent()
+    let result = refreshRegisteredAgent()
     finishAgentRefresh(
       result: result,
       context: context,
@@ -258,19 +251,19 @@ extension InstallationState {
     bundledHash: String
   ) {
     installationStateAgentLifecycleLog.notice(
-      "agent.refresh.needed appPath=\(appBundlePath, privacy: .public) developerManaged=\(developerManaged, privacy: .public) status=\(result.statusBefore, privacy: .public) runningHash=\(context.runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public) snapshotSchema=\(context.snapshotSchemaVersion ?? -1, privacy: .public) expectedSchema=\(AgentSnapshot.currentSchemaVersion, privacy: .public) schemaMismatch=\(context.snapshotSchemaMismatch, privacy: .public)"
+      "agent.refresh.needed appPath=\(appBundlePath, privacy: .public) developerManaged=\(developerManaged, privacy: .public) status=\(result.statusBefore.description, privacy: .public) runningHash=\(context.runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public) snapshotSchema=\(context.snapshotSchemaVersion ?? -1, privacy: .public) expectedSchema=\(AgentSnapshot.currentSchemaVersion, privacy: .public) schemaMismatch=\(context.snapshotSchemaMismatch, privacy: .public)"
     )
 
     if let statusAfterUnregister = result.statusAfterUnregister {
       installationStateAgentLifecycleLog.notice(
-        "agent.refresh.unregister.done status=\(statusAfterUnregister, privacy: .public)"
+        "agent.refresh.unregister.done status=\(statusAfterUnregister.description, privacy: .public)"
       )
     }
 
     if let errorDescription = result.errorDescription {
       lastError = errorDescription
       installationStateAgentLifecycleLog.error(
-        "agent.refresh.failed appPath=\(appBundlePath, privacy: .public) status=\(result.statusBefore, privacy: .public) error=\(errorDescription, privacy: .public) recovery=retry-auto-refresh"
+        "agent.refresh.failed appPath=\(appBundlePath, privacy: .public) status=\(result.statusBefore.description, privacy: .public) error=\(errorDescription, privacy: .public) recovery=retry-auto-refresh"
       )
       return
     }
@@ -280,7 +273,7 @@ extension InstallationState {
       lastAgentServiceRegisterDate = Date()
       clearRefreshAttempt()
       installationStateAgentLifecycleLog.notice(
-        "agent.refresh.done appPath=\(appBundlePath, privacy: .public) bundledHash=\(bundledHash, privacy: .public) registrationMismatch=\(context.registrationMismatch, privacy: .public) status=\(statusAfterRegister, privacy: .public)"
+        "agent.refresh.done appPath=\(appBundlePath, privacy: .public) bundledHash=\(bundledHash, privacy: .public) registrationMismatch=\(context.registrationMismatch, privacy: .public) status=\(statusAfterRegister.description, privacy: .public)"
       )
       context.defaults.set(
         context.expectedFingerprint, forKey: SharedConfigKeys.agentRegistrationFingerprint)
@@ -296,13 +289,6 @@ extension InstallationState {
         generatedAgentDisplayName,
         generatedAgentExecutableName,
         BuildFingerprint.bundledAgentHash,
-      ].joined(separator: "|"),
-      helper: [
-        generatedAppBundleID,
-        generatedAppDisplayName,
-        generatedHelperBundleID,
-        generatedHelperDisplayName,
-        BuildFingerprint.bundledHelperHash,
       ].joined(separator: "|")
     )
   }
