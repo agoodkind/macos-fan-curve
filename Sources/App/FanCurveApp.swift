@@ -89,20 +89,6 @@ struct FanCurveApp: App {
           .disabled(!appUpdater.canCheckForUpdates)
         }
       }
-
-      #if DEBUG
-        CommandMenu("Debug") {
-          Button("Live (No Scenario)") {
-            DevScenarioStore.shared.current = nil
-          }
-          Divider()
-          ForEach(DevScenario.allCases) { scenario in
-            Button(scenario.menuTitle) {
-              DevScenarioStore.shared.current = scenario
-            }
-          }
-        }
-      #endif
     }
 
     Window("About Fan Curve", id: "about") {

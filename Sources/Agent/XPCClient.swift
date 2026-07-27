@@ -58,11 +58,13 @@ enum ConnectionState: Sendable {
   case error(String)
 }
 
+// MARK: - XPCClient
+
 /// Thin wrapper around `SMCFanXPCClient` that preserves the `@Published`
 /// connection state used by the GUI. All XPC reliability (invalidation,
 /// reconnect, `ResumeGuard`) is handled by `SMCFanXPCClient` internally,
 /// and the privileged helper arbitrates priority.
-class XPCClient: ObservableObject, @unchecked Sendable {
+final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
   private let client: SMCFanXPCClient?
   private let initializationError: String?
   private let stateLock = NSLock()
@@ -114,10 +116,6 @@ class XPCClient: ObservableObject, @unchecked Sendable {
     }
   }
 
-  func setFanRPM(_ index: UInt, rpm: Float) async throws {
-    try await self.setFanRPM(index, rpm: rpm, priority: nil)
-  }
-
   func setFanRPM(_ index: UInt, rpm: Float, priority: Int?) async throws {
     do {
       let xpcClient = try requireClient()
@@ -143,10 +141,6 @@ class XPCClient: ObservableObject, @unchecked Sendable {
       )
       throw error
     }
-  }
-
-  func setFanAuto(_ index: UInt) async throws {
-    try await self.setFanAuto(index, priority: nil)
   }
 
   func setFanAuto(_ index: UInt, priority: Int?) async throws {
@@ -213,18 +207,13 @@ class XPCClient: ObservableObject, @unchecked Sendable {
 
   // MARK: - Batched read + apply
 
-  struct BatchReadResult: Sendable {
-    let fans: [FanInfo]
-    let temps: [String: Float]
-  }
-
   func readAndApply(
     fanCount: UInt,
     tempKeys: [String],
     setFans: [(index: UInt, rpm: Float)] = [],
     autoFans: [UInt] = [],
     priority: Int? = nil
-  ) async -> BatchReadResult {
+  ) async -> FanHardwareBatchRead {
     var fans: [FanInfo] = []
     if fanCount > 0 {
       for fanIndex in 0..<fanCount {
@@ -272,7 +261,7 @@ class XPCClient: ObservableObject, @unchecked Sendable {
       }
     }
 
-    return BatchReadResult(fans: fans, temps: temps)
+    return FanHardwareBatchRead(fans: fans, temps: temps)
   }
 
   // MARK: - State transitions

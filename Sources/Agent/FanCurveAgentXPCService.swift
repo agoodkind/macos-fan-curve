@@ -145,7 +145,7 @@ extension FanCurveAgentXPCService: FanCurveAgentXPCProtocol {
     agentXPCLog.debug("agent.xpc.ownership.requested")
     Task {
       do {
-        let rows = try await controller.xpcClient.getOwnership()
+        let rows = try await controller.getOwnership()
         let data = try JSONEncoder().encode(rows)
         agentXPCLog.debug(
           "agent.xpc.ownership.returned count=\(rows.count, privacy: .public)"
@@ -255,7 +255,7 @@ extension FanCurveAgentXPCService {
 
   func handleFanAutoCommand(_ fanIndex: UInt) async -> AgentCommandResponse {
     do {
-      try await controller.xpcClient.setFanAuto(fanIndex)
+      try await controller.setFanAuto(fanIndex)
       controller.requestTick()
       return AgentCommandResponse(accepted: true, message: nil)
     } catch {
@@ -270,7 +270,7 @@ extension FanCurveAgentXPCService {
     _ request: AgentFanRPMRequest
   ) async -> AgentCommandResponse {
     do {
-      try await controller.xpcClient.setFanRPM(request.fanIndex, rpm: request.rpm)
+      try await controller.setFanRPM(request.fanIndex, rpm: request.rpm)
       controller.requestTick()
       return AgentCommandResponse(accepted: true, message: nil)
     } catch {

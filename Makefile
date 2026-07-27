@@ -94,7 +94,7 @@ SWIFT_XCODE_BUILD_SETTINGS := $(XCODE_BUILD_SETTINGS)
 
 include bootstrap.mk
 
-.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates generate-sparkle-appcast sparkle-appcast appcast generate-project generate-config-artifacts open-project test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
+.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates generate-sparkle-appcast sparkle-appcast appcast generate-project generate-config-artifacts open-project test-agent test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
 
 all: app
 
@@ -141,9 +141,7 @@ app: build
 # Build the Debug app, deploy it to /Applications, and launch it.
 # /Applications/Fan Curve.app is the single canonical location the SMAppService daemon
 # and login-item agent register from. Xcode builds to DerivedData and the Play button
-# runs that copy for debugging; the canonical install lives at /Applications. The dev
-# state-simulation menu and the FANCURVE_DEV_SCENARIO flag are compiled only into Debug
-# builds, so this is also the simulated-state path.
+# runs that copy for debugging; the canonical install lives at /Applications.
 run:
 	$(MAKE) CONFIGURATION=Debug build
 	@rm -rf "$(INSTALL_APP_DEST)"
@@ -234,6 +232,16 @@ test-local: generate-config-artifacts generate-project
 		--generator $(FANCURVE_GENERATOR) \
 		--workspace FanCurveApp.xcworkspace \
 		--scheme FanCurve \
+		--configuration Debug \
+		--derived-data-path $(BUILD_DIR) \
+		$(XCODE_BUILD_SETTINGS) \
+		$(SWIFT_MK_XCODEBUILD_ARGS)
+
+test-agent: generate-config-artifacts generate-project
+	"$(SWIFT_MK_BIN)" toolchain test \
+		--generator $(FANCURVE_GENERATOR) \
+		--workspace FanCurveApp.xcworkspace \
+		--scheme FanCurveAgentTests \
 		--configuration Debug \
 		--derived-data-path $(BUILD_DIR) \
 		$(XCODE_BUILD_SETTINGS) \

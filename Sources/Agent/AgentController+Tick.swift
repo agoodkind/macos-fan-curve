@@ -47,7 +47,7 @@ extension AgentController {
 
   func readTickTelemetry() async -> AgentControllerTickTypes.TickTelemetry {
     let active = sharedConfig.loadIsActive()
-    let result = await xpcClient.readAndApply(
+    let result = await fanHardware.readAndApply(
       fanCount: cachedFanCount,
       tempKeys: tempKeys
     )
@@ -86,7 +86,7 @@ extension AgentController {
       resetInactiveControllerState()
       publishSnapshotIfNeeded(inactiveSnapshot(from: telemetry))
       if telemetry.transitioned, !telemetry.result.fans.isEmpty {
-        _ = await xpcClient.readAndApply(
+        _ = await fanHardware.readAndApply(
           fanCount: 0,
           tempKeys: [],
           autoFans: Array(0..<UInt(telemetry.result.fans.count))
@@ -342,7 +342,7 @@ extension AgentController {
   }
 
   func applyFanActions(_ actions: AgentControllerTickTypes.FanActions) async {
-    _ = await xpcClient.readAndApply(
+    _ = await fanHardware.readAndApply(
       fanCount: 0,
       tempKeys: [],
       setFans: actions.setFans,
