@@ -79,8 +79,8 @@ extension AgentController {
       cachedFanCount = UInt(result.fans.count)
     }
 
-    sharedConfig.writeAgentStatus(
-      pid: ProcessInfo.processInfo.processIdentifier, lastTick: Date())
+    // Liveness is reported by `heartbeatScheduler` on its own cadence, not
+    // here, so a stalled read above cannot make a healthy process look dead.
     sharedConfig.writeAgentLastError(nil)
 
     let activityState: ActivityState = active ? .active : .inactive

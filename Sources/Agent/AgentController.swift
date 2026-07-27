@@ -12,29 +12,6 @@ import SMCFanKit
 
 let agentControllerLog = AppLog.make(category: "AgentController")
 
-actor TickCoordinator {
-  private var tickInFlight = false
-  private var tickPending = false
-
-  func requestTick() -> Bool {
-    if tickInFlight {
-      tickPending = true
-      return false
-    }
-    tickInFlight = true
-    return true
-  }
-
-  func finishTick() -> Bool {
-    if tickPending {
-      tickPending = false
-      return true
-    }
-    tickInFlight = false
-    return false
-  }
-}
-
 // MARK: - AgentRuntimeHealthOverride
 
 struct AgentRuntimeHealthOverride: Sendable, Equatable {
@@ -57,6 +34,9 @@ final class AgentController: @unchecked Sendable {
   let loadSampler = CPULoadSampler()
   let eventWriter = EventArtifactWriter()
   let tickCoordinator = TickCoordinator()
+  lazy var heartbeatScheduler = TickHeartbeatScheduler(interval: heartbeatInterval) { [weak self] in
+    self?.publishHeartbeat()
+  }
   var timer: Timer?
   var cachedFanCount: UInt = 2
   var lastActivityState: ActivityState = .unknown
@@ -80,6 +60,10 @@ final class AgentController: @unchecked Sendable {
   let acousticRampGovernor = AcousticRampGovernor()
 
   let pollInterval: TimeInterval = 1.0
+  /// Cadence for `heartbeatScheduler`, independent of `pollInterval`'s tick
+  /// loop. Matches it by default; the two are decoupled on purpose and may
+  /// diverge without affecting each other.
+  let heartbeatInterval: TimeInterval = 1.0
   let fastTemperatureEMAAlpha: Double = 0.16
   let slowTemperatureEMAAlpha: Double = 0.045
   let runtimeBandSize: Double = 0.06
@@ -131,17 +115,38 @@ final class AgentController: @unchecked Sendable {
     ) { [weak self] _ in
       self?.requestTick()
     }
+    heartbeatScheduler.start()
     registerDarwinObserver()
     requestTick()
   }
 
-  func stop() {
+  /// Stops tick scheduling without touching shared status or the XPC
+  /// connection. Called first during shutdown so the 1 Hz tick loop stops
+  /// competing with the reset-to-auto call for the same serialized XPC
+  /// channel (see `AgentShutdownSequencer`).
+  func stopTickTimer() {
     timer?.invalidate()
     timer = nil
+    heartbeatScheduler.stop()
     unregisterDarwinObserver()
+  }
+
+  func stop() {
+    stopTickTimer()
     sharedConfig.clearAgentStatus()
     fanHardware.shutdown()
     agentControllerLog.notice("agent.stopped")
+  }
+
+  /// Publishes liveness on `heartbeatScheduler`'s own cadence. Deliberately
+  /// does not await anything: it must keep advancing even while a tick is
+  /// stalled on a slow XPC round trip, since liveness ("is the process
+  /// alive") and tick freshness ("how old is this data",
+  /// `AgentSnapshot.timestamp`) are different questions that must not share
+  /// one timestamp.
+  func publishHeartbeat() {
+    sharedConfig.writeAgentStatus(
+      pid: ProcessInfo.processInfo.processIdentifier, lastTick: Date())
   }
 
   func resetAllFansToAuto() async {

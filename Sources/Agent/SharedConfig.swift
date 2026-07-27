@@ -100,6 +100,11 @@ struct SharedConfig {
 
   // MARK: - Writes (agent status)
 
+  /// Publishes process liveness: PID, heartbeat timestamp, and build hash.
+  /// Called from `AgentController`'s independent heartbeat cadence, not
+  /// from tick completion, so a stalled tick cannot make a healthy process
+  /// read as dead. `writeAgentSnapshot` separately carries tick data
+  /// freshness via `AgentSnapshot.timestamp`.
   func writeAgentStatus(pid: Int32, lastTick: Date) {
     defaults.set(Int(pid), forKey: SharedConfigKeys.agentPID)
     defaults.set(lastTick.timeIntervalSince1970, forKey: SharedConfigKeys.agentLastTick)

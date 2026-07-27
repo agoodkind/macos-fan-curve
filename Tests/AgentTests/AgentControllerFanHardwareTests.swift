@@ -62,7 +62,7 @@ final class AgentControllerFanHardwareTests: XCTestCase {
     expect(telemetry.result.temps["TC0P"]) == 72
   }
 
-  func testTelemetryReadWritesAgentStatusToInjectedSharedConfig() async throws {
+  func testTelemetryReadClearsLastErrorWithoutPublishingLiveness() async throws {
     let hardware = RecordingFanHardware()
     let controller = try makeController(fanHardware: hardware)
     let defaults = try XCTUnwrap(isolatedDefaults)
@@ -70,11 +70,25 @@ final class AgentControllerFanHardwareTests: XCTestCase {
 
     _ = await controller.readTickTelemetry()
 
+    expect(defaults.string(forKey: SharedConfigKeys.agentLastError)) == nil
+    // Liveness belongs to the heartbeat cadence, so a read that stalls or
+    // returns nothing must not be what refreshes the PID and timestamp.
+    expect(defaults.integer(forKey: SharedConfigKeys.agentPID)) == 0
+    expect(defaults.double(forKey: SharedConfigKeys.agentLastTick)) == 0
+    expect(defaults.string(forKey: SharedConfigKeys.agentExecutableHash)) == nil
+  }
+
+  func testHeartbeatPublishesLivenessToInjectedSharedConfig() throws {
+    let hardware = RecordingFanHardware()
+    let controller = try makeController(fanHardware: hardware)
+    let defaults = try XCTUnwrap(isolatedDefaults)
+
+    controller.publishHeartbeat()
+
     expect(defaults.integer(forKey: SharedConfigKeys.agentPID))
       == Int(ProcessInfo.processInfo.processIdentifier)
     expect(defaults.double(forKey: SharedConfigKeys.agentLastTick)) > 0
     expect(defaults.string(forKey: SharedConfigKeys.agentExecutableHash)) != nil
-    expect(defaults.string(forKey: SharedConfigKeys.agentLastError)) == nil
   }
 
   func testTickCommandsUseInjectedFanHardwareWithExactPriority() async throws {
