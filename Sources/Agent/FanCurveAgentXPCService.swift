@@ -9,13 +9,13 @@ import AppLog
 import Darwin
 import Foundation
 
-private let agentXPCLog = AppLog.make(category: "FanCurveAgentXPC")
+let agentXPCLog = AppLog.make(category: "FanCurveAgentXPC")
 
 // MARK: - FanCurveAgentXPCService
 
 final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
   private let controller: AgentController
-  private let helperService: any HelperServiceManaging
+  let helperService: any HelperServiceManaging
   private let listener: NSXPCListener
   private let faultController: any FanCurveAgentXPCFaultControlling
   private let processTerminator: @Sendable () -> Void
@@ -308,20 +308,6 @@ extension FanCurveAgentXPCService {
       "agent.xpc.command.helper_install.finished status=\(result.statusAfterRegister?.description ?? "unknown", privacy: .public)"
     )
     controller.requestTick()
-    return AgentCommandResponse(accepted: true, message: nil)
-  }
-
-  func openSystemSettingsCommandResponse() async -> AgentCommandResponse {
-    guard #available(macOS 13.0, *) else {
-      return AgentCommandResponse(
-        accepted: false,
-        message: "System Settings action requires macOS 13"
-      )
-    }
-    await MainActor.run {
-      helperService.openSystemSettings()
-    }
-    agentXPCLog.notice("agent.xpc.command.system_settings.opened owner=agent")
     return AgentCommandResponse(accepted: true, message: nil)
   }
 

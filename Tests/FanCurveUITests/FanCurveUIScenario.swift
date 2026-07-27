@@ -15,8 +15,26 @@ enum FanCurveUIScenario {
     _ scenario: (FanCurveUITestDriver) throws -> Void
   ) throws {
     testCase.continueAfterFailure = false
-    let driver = try FanCurveUITestDriver(testCase: testCase)
+    let driver: FanCurveUITestDriver
+    do {
+      driver = try FanCurveUITestDriver(testCase: testCase)
+    } catch {
+      FanCurveUITestDriver.attachInitializationFailureArtifacts(
+        to: testCase,
+        name: testCase.name,
+        error: error
+      )
+      testCase.continueAfterFailure = true
+      throw error
+    }
     defer {
+      do {
+        try driver.runCleanupActions()
+      } catch {
+        fanCurveUITestLog.notice(
+          "ui_test.cleanup.actions_failed error=\(error.localizedDescription, privacy: .public) recovery=continue-termination"
+        )
+      }
       do {
         try driver.terminate()
       } catch {

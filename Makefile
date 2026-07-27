@@ -99,7 +99,7 @@ SWIFT_XCODE_BUILD_SETTINGS := $(XCODE_BUILD_SETTINGS)
 
 include bootstrap.mk
 
-.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates generate-sparkle-appcast sparkle-appcast appcast generate-project generate-config-artifacts open-project test-agent test-control-build test-control-build-local test-control-contract test-control-signing test-local test-ui format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
+.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates generate-sparkle-appcast sparkle-appcast appcast generate-project generate-config-artifacts open-project test-agent test-control-build test-control-build-local test-control-contract test-control-signing test-local test-ui test-ui-build test-ui-build-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
 
 all: app
 
@@ -285,6 +285,21 @@ test-ui: generate-config-artifacts generate-project
 		SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" \
 		SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)" \
 		Scripts/RunFanCurveUITests.sh
+
+test-ui-build:
+	$(MAKE) CONFIGURATION=Debug \
+		SWIFT_BUILD_CMD='$(MAKE) test-ui-build-local' \
+		build
+
+test-ui-build-local: generate-config-artifacts generate-project
+	"$(SWIFT_MK_BIN)" toolchain build \
+		--generator $(FANCURVE_GENERATOR) \
+		--workspace FanCurveApp.xcworkspace \
+		--scheme FanCurveUITests \
+		--configuration Debug \
+		--derived-data-path $(UI_TEST_DERIVED_DATA_PATH) \
+		$(XCODE_BUILD_SETTINGS) \
+		$(SWIFT_MK_XCODEBUILD_ARGS)
 
 test-control-build:
 	$(MAKE) CONFIGURATION=Debug \

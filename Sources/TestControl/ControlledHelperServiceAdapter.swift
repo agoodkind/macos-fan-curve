@@ -53,14 +53,8 @@
       try perform(.unregister)
     }
 
-    func openSystemSettings() {
-      do {
-        try perform(.openSystemSettings)
-      } catch {
-        controlledHelperServiceLog.error(
-          "test_control.service.settings_failed service=helper error=\(error.localizedDescription, privacy: .public) recovery=keep-controlled-state"
-        )
-      }
+    func openSystemSettings() throws {
+      try perform(.openSystemSettings)
     }
 
     private func perform(_ operation: TestServiceOperation) throws {

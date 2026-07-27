@@ -45,6 +45,7 @@ final class FanCurveUITestDriver {
   unowned let testCase: XCTestCase
   var currentState: TestControlState
   var failureSequence = 0
+  private var cleanupActions: [() throws -> Void] = []
 
   init(testCase: XCTestCase) throws {
     self.testCase = testCase
@@ -74,6 +75,30 @@ final class FanCurveUITestDriver {
 
   var revision: UInt64 {
     currentState.revision.value
+  }
+
+  func registerCleanup(_ action: @escaping () throws -> Void) {
+    cleanupActions.append(action)
+  }
+
+  func runCleanupActions() throws {
+    var firstError: Error?
+    for action in cleanupActions.reversed() {
+      do {
+        try action()
+      } catch {
+        fanCurveUITestLog.error(
+          "ui_test.cleanup.action_failed error=\(error.localizedDescription, privacy: .public) recovery=continue-cleanup"
+        )
+        if firstError == nil {
+          firstError = error
+        }
+      }
+    }
+    cleanupActions.removeAll()
+    if let firstError {
+      throw firstError
+    }
   }
 
   func prime(_ fixture: FanCurveUITestState) throws {

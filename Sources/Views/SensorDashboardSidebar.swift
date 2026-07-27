@@ -312,6 +312,7 @@ struct SensorDashboardSidebar: View {
               .tint(Color.accentColor)
               .disabled(boost || pendingAction != nil)
               .help(fanControlToggleHelp)
+              .accessibilityValue(curveModel.isActive ? "1" : "0")
               .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.fanControl)
           }
         }

@@ -15,6 +15,7 @@ enum AppAccessibilityIdentifier {
     static let quitCommand = "app.command.quit"
     static let settingsWindow = "app.settings-window"
     static let aboutWindow = "app.about-window"
+    static let aboutContent = "app.about-content"
   }
 
   enum Setup {

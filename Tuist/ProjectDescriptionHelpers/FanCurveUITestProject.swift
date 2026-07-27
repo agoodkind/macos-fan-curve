@@ -63,9 +63,7 @@ public func makeTestControlContractScheme() -> Scheme {
   .scheme(
     name: "TestControlContractTests",
     shared: true,
-    buildAction: .buildAction(
-      targets: [.target("TestControlContractTests"), .target("FanCurveUITests")]
-    ),
+    buildAction: .buildAction(targets: [.target("TestControlContractTests")]),
     testAction: .targets(
       [.testableTarget(target: "TestControlContractTests")],
       configuration: "Debug"

@@ -10,9 +10,20 @@ import XCTest
 
 @MainActor
 final class FanCurveUIControlTests: XCTestCase {
+  private static let curveControlPointCount = 8
   private static let curveControlPointIndex = 2
   private static let curveControlPointDragOffset = CGVector(dx: 0, dy: -40)
   private static let expectedProbeRPM: Float = 15_000
+
+  private struct DashboardPersistentState {
+    let fanControlEnabled: Bool
+    let boostEnabled: Bool
+    let controlPointFrames: [CGRect]
+  }
+
+  private struct SettingsPersistentState {
+    let applyInBackground: Bool
+  }
 
   func testCurveControlSettingsOwnershipManualFanAndLifecycle() throws {
     try FanCurveUIScenario.run(in: self) { driver in
@@ -27,6 +38,18 @@ final class FanCurveUIControlTests: XCTestCase {
   }
 
   private func verifyCurveAndControls(_ driver: FanCurveUITestDriver) throws {
+    let persistentState = try captureDashboardPersistentState(driver)
+    driver.registerCleanup {
+      try self.restoreDashboardPersistentState(
+        persistentState,
+        driver: driver
+      )
+    }
+    try driver.setBooleanControl(
+      AppAccessibilityIdentifier.Dashboard.fanControl,
+      to: true
+    )
+
     try driver.drag(
       AppAccessibilityIdentifier.Curve.controlPoint(Self.curveControlPointIndex),
       normalizedOffset: Self.curveControlPointDragOffset
@@ -36,17 +59,55 @@ final class FanCurveUIControlTests: XCTestCase {
       payload: .appToAgentCommand(command: .setCurve),
       revision: driver.revision
     )
-    try driver.tap(AppAccessibilityIdentifier.Dashboard.fanControl)
+    try driver.setBooleanControl(
+      AppAccessibilityIdentifier.Dashboard.boost,
+      to: false
+    )
+    try driver.setBooleanControl(
+      AppAccessibilityIdentifier.Dashboard.fanControl,
+      to: false
+    )
     _ = try driver.waitForPayload(
       participant: .app,
       payload: .appToAgentCommand(command: .setFanControlEnabled),
       revision: driver.revision
     )
-    try driver.tap(AppAccessibilityIdentifier.Dashboard.boost)
+    try driver.setBooleanControl(
+      AppAccessibilityIdentifier.Dashboard.fanControl,
+      to: true
+    )
+    try driver.setBooleanControl(
+      AppAccessibilityIdentifier.Dashboard.boost,
+      to: true
+    )
     _ = try driver.waitForPayload(
       participant: .app,
       payload: .appToAgentCommand(command: .setBoostEnabled),
       revision: driver.revision
+    )
+  }
+
+  private func captureDashboardPersistentState(
+    _ driver: FanCurveUITestDriver
+  ) throws -> DashboardPersistentState {
+    let originalFanControl = try driver.booleanControlValue(
+      AppAccessibilityIdentifier.Dashboard.fanControl
+    )
+    let originalControlPointFrames = try driver.controlPointFrames(
+      count: Self.curveControlPointCount
+    )
+    let originalBoost: Bool
+    if originalFanControl {
+      originalBoost = try driver.booleanControlValue(
+        AppAccessibilityIdentifier.Dashboard.boost
+      )
+    } else {
+      originalBoost = false
+    }
+    return DashboardPersistentState(
+      fanControlEnabled: originalFanControl,
+      boostEnabled: originalBoost,
+      controlPointFrames: originalControlPointFrames
     )
   }
 
@@ -59,7 +120,21 @@ final class FanCurveUIControlTests: XCTestCase {
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Application.settingsWindow)
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Settings.root)
     try driver.tap(AppAccessibilityIdentifier.Settings.generalTab)
-    try driver.tap(AppAccessibilityIdentifier.Settings.applyInBackground)
+    let persistentState = SettingsPersistentState(
+      applyInBackground: try driver.booleanControlValue(
+        AppAccessibilityIdentifier.Settings.applyInBackground
+      )
+    )
+    driver.registerCleanup {
+      try self.restoreSettingsPersistentState(
+        persistentState,
+        driver: driver
+      )
+    }
+    try driver.setBooleanControl(
+      AppAccessibilityIdentifier.Settings.applyInBackground,
+      to: !persistentState.applyInBackground
+    )
     _ = try driver.waitForPayload(
       participant: .app,
       payload: .appToAgentCommand(command: .setApplyInBackground),
@@ -127,5 +202,51 @@ final class FanCurveUIControlTests: XCTestCase {
     try driver.launch()
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Application.mainWindow)
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.root)
+  }
+
+  private func restoreDashboardPersistentState(
+    _ state: DashboardPersistentState,
+    driver: FanCurveUITestDriver
+  ) throws {
+    driver.app.activate()
+    driver.closeWindow(named: "About Fan Curve")
+    driver.closeWindow(named: "Settings")
+    _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.root)
+    try driver.setBooleanControl(
+      AppAccessibilityIdentifier.Dashboard.fanControl,
+      to: true
+    )
+    try driver.setBooleanControl(
+      AppAccessibilityIdentifier.Dashboard.boost,
+      to: false
+    )
+    try driver.restoreControlPointFrames(state.controlPointFrames)
+    try driver.setBooleanControl(
+      AppAccessibilityIdentifier.Dashboard.boost,
+      to: state.boostEnabled
+    )
+    try driver.setBooleanControl(
+      AppAccessibilityIdentifier.Dashboard.fanControl,
+      to: state.fanControlEnabled
+    )
+  }
+
+  private func restoreSettingsPersistentState(
+    _ state: SettingsPersistentState,
+    driver: FanCurveUITestDriver
+  ) throws {
+    driver.app.activate()
+    if !driver.element(AppAccessibilityIdentifier.Settings.applyInBackground).exists {
+      try driver.tapApplicationMenuCommand(
+        AppAccessibilityIdentifier.Application.settingsCommand
+      )
+    }
+    _ = try driver.waitForElement(AppAccessibilityIdentifier.Settings.root)
+    try driver.tap(AppAccessibilityIdentifier.Settings.generalTab)
+    try driver.setBooleanControl(
+      AppAccessibilityIdentifier.Settings.applyInBackground,
+      to: state.applyInBackground
+    )
+    driver.closeWindow(named: "Settings")
   }
 }

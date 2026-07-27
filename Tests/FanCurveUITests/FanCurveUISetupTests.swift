@@ -46,7 +46,7 @@ final class FanCurveUISetupTests: XCTestCase {
       ),
       revision: driver.revision
     )
-    _ = try driver.waitForElement(AppAccessibilityIdentifier.Setup.error)
+    try verifyVisibleError(driver, message: "Background registration refused")
   }
 
   private func verifyBackgroundApprovalFailure(
@@ -74,6 +74,7 @@ final class FanCurveUISetupTests: XCTestCase {
       ),
       revision: driver.revision
     )
+    try verifyVisibleError(driver, message: "System Settings unavailable")
   }
 
   private func verifyHelperRegistrationFailure(
@@ -106,7 +107,7 @@ final class FanCurveUISetupTests: XCTestCase {
       ),
       revision: driver.revision
     )
-    _ = try driver.waitForElement(AppAccessibilityIdentifier.Setup.error)
+    try verifyVisibleError(driver, message: "Helper registration refused")
   }
 
   private func verifyHelperApprovalFailure(
@@ -131,6 +132,7 @@ final class FanCurveUISetupTests: XCTestCase {
       payload: .appToAgentCommand(command: .openSystemSettings),
       revision: driver.revision
     )
+    try verifyVisibleError(driver, message: "System Settings unavailable")
     _ = try driver.waitForPayload(
       participant: .agent,
       payload: .serviceMutation(
@@ -167,7 +169,7 @@ final class FanCurveUISetupTests: XCTestCase {
       ),
       revision: driver.revision
     )
-    _ = try driver.waitForElement(AppAccessibilityIdentifier.Setup.error)
+    try verifyVisibleError(driver, message: "Helper repair refused")
   }
 
   private func verifyOriginalStuckStateRepair(
@@ -213,5 +215,15 @@ final class FanCurveUISetupTests: XCTestCase {
     try driver.waitForLabel(AppAccessibilityIdentifier.Setup.title, equals: title)
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Setup.message)
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Setup.action)
+  }
+
+  private func verifyVisibleError(
+    _ driver: FanCurveUITestDriver,
+    message: String
+  ) throws {
+    try driver.waitForLabel(
+      AppAccessibilityIdentifier.Setup.error,
+      equals: message
+    )
   }
 }

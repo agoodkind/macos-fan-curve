@@ -115,6 +115,12 @@
         guard try runtime.consumeFault(state.xpcFault) else {
           return .inactive
         }
+        if state.xpcFault == .interruption {
+          try runtime.record(
+            .processLifecycle(process: .agent, phase: .terminated),
+            state: state
+          )
+        }
         faultObserver(state.xpcFault)
         return effect
       } catch {
@@ -174,10 +180,11 @@
       try refuse(operation: "unregister")
     }
 
-    func openSystemSettings() {
+    func openSystemSettings() throws {
       agentTestControlAdaptersLog.error(
-        "test_control.service.refused service=helper operation=open_system_settings path=\(path, privacy: .public) recovery=skip-operation"
+        "test_control.service.refused service=helper operation=open_system_settings path=\(path, privacy: .public) recovery=return-error"
       )
+      throw TestControlRefusalError(path: path)
     }
 
     private func refuse(operation: String) throws {

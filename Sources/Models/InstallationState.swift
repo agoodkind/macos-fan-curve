@@ -196,7 +196,15 @@ final class InstallationState: ObservableObject {
   }
 
   func openAgentLoginItemsSettings() {
-    backgroundAgentService.openSystemSettings()
+    lastError = nil
+    do {
+      try backgroundAgentService.openSystemSettings()
+    } catch {
+      lastError = error.localizedDescription
+      log.error(
+        "agent.settings.open_failed error=\(error.localizedDescription, privacy: .public) recovery=show-login-item-error"
+      )
+    }
   }
 
   /// Unregister the agent. Stops it and removes its entry from Login Items.

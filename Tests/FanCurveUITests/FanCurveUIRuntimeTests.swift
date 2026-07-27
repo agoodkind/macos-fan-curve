@@ -28,19 +28,10 @@ final class FanCurveUIRuntimeTests: XCTestCase {
       )
       try recover(driver)
 
-      _ = try driver.apply(
-        .make(
-          hardwareOperation: .fail(
-            code: "smc-unavailable",
-            message: "SMC unavailable"
-          )
-        )
-      )
-      _ = try driver.waitForElement(AppAccessibilityIdentifier.Setup.root)
-      try driver.waitForLabel(
-        AppAccessibilityIdentifier.Setup.title,
-        equals: "Install the System Helper"
-      )
+      try verifyHelperUnreachable(driver)
+      try recover(driver)
+
+      try verifyHardwareOperationFailure(driver)
       try recover(driver)
 
       _ = try driver.apply(.make(telemetryStale: true))
@@ -64,6 +55,34 @@ final class FanCurveUIRuntimeTests: XCTestCase {
   private func recover(_ driver: FanCurveUITestDriver) throws {
     _ = try driver.apply(.make())
     try verifyHealthyTelemetry(driver)
+  }
+
+  private func verifyHelperUnreachable(_ driver: FanCurveUITestDriver) throws {
+    _ = try driver.apply(.make(helperReachable: false))
+    _ = try driver.waitForElement(AppAccessibilityIdentifier.Setup.root)
+    try driver.waitForLabel(
+      AppAccessibilityIdentifier.Setup.title,
+      equals: "Install the System Helper"
+    )
+  }
+
+  private func verifyHardwareOperationFailure(
+    _ driver: FanCurveUITestDriver
+  ) throws {
+    _ = try driver.apply(
+      .make(
+        helperReachable: true,
+        hardwareOperation: .fail(
+          code: "smc-unavailable",
+          message: "SMC unavailable"
+        )
+      )
+    )
+    _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.degraded)
+    try driver.waitForLabel(
+      AppAccessibilityIdentifier.Dashboard.status,
+      equals: "Telemetry Unavailable"
+    )
   }
 
   private func verifyHealthyTelemetry(_ driver: FanCurveUITestDriver) throws {

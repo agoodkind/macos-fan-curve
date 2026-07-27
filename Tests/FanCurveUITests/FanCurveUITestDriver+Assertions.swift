@@ -63,6 +63,72 @@ extension FanCurveUITestDriver {
     candidate.tap()
   }
 
+  func booleanControlValue(
+    _ identifier: String,
+    timeout: TimeInterval = FanCurveUITestDriver.conditionTimeout
+  ) throws -> Bool {
+    let candidate = try waitForElement(identifier, timeout: timeout)
+    guard let value = candidate.value as? String else {
+      throw FanCurveUITestDriverError.invalidEnvironment(
+        "\(identifier) did not expose an XCUI boolean value"
+      )
+    }
+    if value == "1" {
+      return true
+    }
+    if value == "0" {
+      return false
+    }
+    throw FanCurveUITestDriverError.invalidEnvironment(
+      "\(identifier) exposed unexpected XCUI boolean value \(value)"
+    )
+  }
+
+  func setBooleanControl(
+    _ identifier: String,
+    to expectedValue: Bool,
+    timeout: TimeInterval = FanCurveUITestDriver.conditionTimeout
+  ) throws {
+    guard try booleanControlValue(identifier, timeout: timeout) != expectedValue else {
+      return
+    }
+    try tap(identifier, timeout: timeout)
+    let candidate = try waitForElement(identifier, timeout: timeout)
+    let expectedXCUIValue = expectedValue ? "1" : "0"
+    try waitForPredicate(
+      NSPredicate(format: "value == %@", expectedXCUIValue),
+      object: candidate,
+      description: "\(identifier) value to become \(expectedXCUIValue)",
+      timeout: timeout
+    )
+  }
+
+  func controlPointFrames(count: Int) throws -> [CGRect] {
+    var frames: [CGRect] = []
+    for index in 0..<count {
+      let controlPoint = try waitForElement(
+        AppAccessibilityIdentifier.Curve.controlPoint(index)
+      )
+      frames.append(controlPoint.frame)
+    }
+    return frames
+  }
+
+  func restoreControlPointFrames(_ originalFrames: [CGRect]) throws {
+    for (index, originalFrame) in originalFrames.enumerated() {
+      let identifier = AppAccessibilityIdentifier.Curve.controlPoint(index)
+      let currentFrame = try waitForElement(identifier).frame
+      let offset = CGVector(
+        dx: originalFrame.midX - currentFrame.midX,
+        dy: originalFrame.midY - currentFrame.midY
+      )
+      guard abs(offset.dx) >= 1 || abs(offset.dy) >= 1 else {
+        continue
+      }
+      try drag(identifier, normalizedOffset: offset)
+    }
+  }
+
   func tapApplicationMenuCommand(_ identifier: String) throws {
     let appMenu = app.menuBars.menuBarItems["Fan Curve"]
     guard appMenu.waitForExistence(timeout: Self.conditionTimeout) else {
@@ -70,6 +136,17 @@ extension FanCurveUITestDriver {
     }
     appMenu.click()
     try tap(identifier)
+  }
+
+  func closeWindow(named title: String) {
+    let window = app.windows[title]
+    guard window.exists else {
+      return
+    }
+    let closeButton = window.buttons["Close"]
+    if closeButton.exists, closeButton.isHittable {
+      closeButton.click()
+    }
   }
 
   func drag(
@@ -131,6 +208,37 @@ extension FanCurveUITestDriver {
       )
     }
     return matchedEvent
+  }
+
+  func waitForPayloadCount(
+    participant: TestControlParticipant,
+    payload: TestControlEventPayload,
+    revision: UInt64,
+    count expectedCount: Int,
+    timeout: TimeInterval = FanCurveUITestDriver.conditionTimeout
+  ) throws {
+    var observationError: Error?
+    let predicate = NSPredicate { [store] _, _ in
+      do {
+        let count = try store.loadEvents(for: participant).filter { event in
+          event.revision.value >= revision && event.payload == payload
+        }.count
+        return count >= expectedCount
+      } catch {
+        observationError = error
+        return false
+      }
+    }
+    let expectation = XCTNSPredicateExpectation(predicate: predicate, object: nil)
+    let result = XCTWaiter.wait(for: [expectation], timeout: timeout)
+    if let observationError {
+      throw observationError
+    }
+    guard result == .completed else {
+      throw FanCurveUITestDriverError.conditionTimedOut(
+        "\(participant.rawValue) evidence \(payload) count \(expectedCount)"
+      )
+    }
   }
 
   func injectOutOfOrderRevision() throws {

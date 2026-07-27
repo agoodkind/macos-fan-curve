@@ -255,10 +255,13 @@
   }
 
   enum TestXPCStateEvent: String, Codable, Equatable, Sendable {
+    case commandRejected = "command_rejected"
+    case commandReplyMalformed = "command_reply_malformed"
     case connected
     case connecting
     case connectionAttemptGated = "connection_attempt_gated"
     case disconnected
+    case initialStateRejected = "initial_state_rejected"
     case reconnectScheduled = "reconnect_scheduled"
     case runtimeEventAccepted = "runtime_event_accepted"
     case runtimeEventRejected = "runtime_event_rejected"

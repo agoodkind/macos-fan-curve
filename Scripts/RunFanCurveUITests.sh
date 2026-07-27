@@ -94,6 +94,10 @@ run_ui_tests() {
         return 1
     fi
 
+    Scripts/ValidateFanCurveUITestAgentSession.swift \
+        "$UI_TEST_CANONICAL_APP_PATH" \
+        "$UI_TEST_SESSION_PATH"
+
     CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
         DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
         "$SWIFT_MK_BIN" verify-signing artifacts "$UI_TEST_CANONICAL_APP_PATH"

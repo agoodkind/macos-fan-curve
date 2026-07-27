@@ -208,6 +208,7 @@ extension FanCurveAgentClient {
     do {
       state = try JSONDecoder().decode(RuntimeState.self, from: stateData)
     } catch {
+      control.recordEvent(.initialStateRejected)
       fanCurveAgentClientLog.error(
         "agent_client.current_state.decode_failed error=\(error.localizedDescription, privacy: .public) recovery=propagate"
       )
@@ -218,15 +219,25 @@ extension FanCurveAgentClient {
 
   func send(_ command: AgentCommand) async throws {
     control.recordCommand(command)
-    let commandData = try commandTransport.encode(command)
-    let responseData = try await performRequest(
-      .command(commandData, name: command.logName)
-    )
-    guard let responseData else {
-      throw FanCurveAgentClientError.invalidReply
+    do {
+      let commandData = try commandTransport.encode(command)
+      let responseData = try await performRequest(
+        .command(commandData, name: command.logName)
+      )
+      guard let responseData else {
+        throw FanCurveAgentClientError.invalidReply
+      }
+      let response = try commandTransport.decode(responseData)
+      try commandTransport.accept(response, for: command)
+    } catch let error as DecodingError {
+      control.recordEvent(.commandReplyMalformed)
+      throw error
+    } catch let error as FanCurveAgentClientError {
+      if case .commandRejected = error {
+        control.recordEvent(.commandRejected)
+      }
+      throw error
     }
-    let response = try commandTransport.decode(responseData)
-    try commandTransport.accept(response, for: command)
   }
 
   func performRequest(_ request: AgentXPCRequest) async throws -> Data? {

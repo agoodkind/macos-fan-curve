@@ -85,6 +85,7 @@ struct ContentView: View {
     )
     .background(Color(nsColor: .windowBackgroundColor))
     .accessibilityIdentifier(AppAccessibilityIdentifier.Application.mainWindow)
+    .accessibilityValue(String(ProcessInfo.processInfo.processIdentifier))
     .overlay(alignment: .topTrailing) {
       #if DEBUG
         if FrameProfiler.isEnabledByLaunchConfiguration {

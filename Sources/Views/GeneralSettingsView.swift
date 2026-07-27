@@ -78,6 +78,7 @@ struct GeneralSettingsView: View {
 
       Section {
         Toggle("Apply curve in background", isOn: applyInBackgroundBinding)
+          .accessibilityValue(applyInBackground ? "1" : "0")
           .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.applyInBackground)
       } header: {
         Text("Background Control")
