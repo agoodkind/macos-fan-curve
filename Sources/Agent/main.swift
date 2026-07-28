@@ -71,8 +71,27 @@ AppLog.bootstrap(subsystem: "io.goodkind.fan")
 log.notice(
   "agent.starting pid=\(ProcessInfo.processInfo.processIdentifier, privacy: .public)")
 
-let controller = AgentController()
-let appXPCService = FanCurveAgentXPCService(controller: controller)
+#if DEBUG
+  // Debug builds resolve the agent's composition root through the test control
+  // adapters, which fall back to the production XPC client unless an explicit
+  // controlled session is active. Release builds have no such seam.
+  let runtimeMode = TestControlProcessRuntimes.agent
+  let fanHardware = AgentTestControlAdapters.fanHardware(mode: runtimeMode) {
+    XPCClient(clientName: generatedAgentBundleID)
+  }
+  let helperService = AgentTestControlAdapters.helperService(mode: runtimeMode) {
+    HelperServiceManagementAdapter()
+  }
+  let controller = AgentController(fanHardware: fanHardware)
+  let appXPCService = FanCurveAgentXPCService(
+    controller: controller,
+    helperService: helperService,
+    faultController: TestControlAgentXPCFaultController(mode: runtimeMode)
+  )
+#else
+  let controller = AgentController()
+  let appXPCService = FanCurveAgentXPCService(controller: controller)
+#endif
 
 installSignalHandler(SIGTERM, controller: controller)
 installSignalHandler(SIGINT, controller: controller)
