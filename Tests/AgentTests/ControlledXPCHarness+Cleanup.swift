@@ -40,14 +40,36 @@ extension ControlledXPCHarness {
         "\(directory.lastPathComponent)-disposing-\(UUID().uuidString)",
         isDirectory: true
       )
+    controlledXPCCleanupLog.debug(
+      "test_control.xpc.cleanup.started path=\(directory.path, privacy: .public)"
+    )
     do {
       try FileManager.default.moveItem(at: directory, to: disposalDirectory)
-      try FileManager.default.removeItem(at: disposalDirectory)
     } catch {
       controlledXPCCleanupLog.error(
-        "test_control.xpc.cleanup_failed path=\(directory.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=report-test-failure"
+        "test_control.xpc.cleanup.rename_failed path=\(directory.path, privacy: .public) disposalPath=\(disposalDirectory.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=report-test-failure"
       )
-      XCTFail("Controlled XPC cleanup failed: \(error.localizedDescription)")
+      XCTFail("Controlled XPC cleanup failed to rename: \(error.localizedDescription)")
+      return
     }
+    controlledXPCCleanupLog.debug(
+      "test_control.xpc.cleanup.renamed disposalPath=\(disposalDirectory.path, privacy: .public)"
+    )
+    do {
+      try FileManager.default.removeItem(at: disposalDirectory)
+    } catch {
+      // The rename succeeded, so the session directory is already unreachable
+      // by its original path and no writer can resurrect it. What is left is an
+      // orphaned disposal directory in the temporary directory, which the name
+      // identifies.
+      controlledXPCCleanupLog.error(
+        "test_control.xpc.cleanup.remove_failed disposalPath=\(disposalDirectory.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=report-test-failure"
+      )
+      XCTFail("Controlled XPC cleanup failed to remove: \(error.localizedDescription)")
+      return
+    }
+    controlledXPCCleanupLog.debug(
+      "test_control.xpc.cleanup.completed path=\(directory.path, privacy: .public)"
+    )
   }
 }
