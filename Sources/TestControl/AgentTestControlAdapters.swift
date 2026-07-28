@@ -221,6 +221,16 @@
       return FanHardwareBatchRead(fans: [], temps: [:])
     }
 
+    /// Returns no keys, which callers read as "could not enumerate" rather
+    /// than "this machine has no keys", so a refused session never prunes the
+    /// sensor catalog.
+    func enumerateKeys() -> [String] {
+      agentTestControlAdaptersLog.error(
+        "test_control.hardware.refused operation=enumerate_keys path=\(path, privacy: .public) recovery=return-empty-keys"
+      )
+      return []
+    }
+
     func getOwnership() throws -> [AgentOwnershipEntry] {
       try refuse(operation: "ownership")
     }
