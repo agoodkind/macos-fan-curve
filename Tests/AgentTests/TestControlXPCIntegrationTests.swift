@@ -11,10 +11,6 @@ import Foundation
 import Nimble
 import XCTest
 
-private let controlledXPCIntegrationTestLog = AppLog.make(
-  category: "ControlledXPCIntegrationTests"
-)
-
 enum ControlledXPCTestValues {
   static let connectionTimeoutSeconds = 2
   static let pollingIntervalMilliseconds = 10
@@ -393,18 +389,7 @@ extension ControlledXPCHarness {
       runtime.stopMonitoring()
     }
     defaults.removePersistentDomain(forName: defaultsSuiteName)
-    do {
-      try store.withExclusiveLocks(
-        fileNames: TestControlFile.evidenceLocksInOrder[...]
-      ) {
-        try FileManager.default.removeItem(at: store.directory)
-      }
-    } catch {
-      controlledXPCIntegrationTestLog.error(
-        "test_control.xpc.cleanup_failed path=\(store.directory.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=report-test-failure"
-      )
-      XCTFail("Controlled XPC cleanup failed: \(error.localizedDescription)")
-    }
+    removeSessionDirectory()
     withExtendedLifetime((appMode, agentMode, service)) {
       _ = service
     }
