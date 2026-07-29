@@ -145,37 +145,31 @@
 - Run focused failing tests before implementation, then run `make test`.
 - Commit the completed slice.
 
-### Task 6: Add the local Tart runner, Release smoke, and Make targets
+### Task 6: Write the manual validation guide
+
+**Status: complete.** The guide lives at `Docs/validating-on-a-mac.md`.
 
 **Files:**
-- Create: `Scripts/TartE2E.swift`
-- Modify: `Makefile`
-- Modify: `Project.swift` for Release smoke tests
-- Add Release smoke tests under `Tests/FanCurveServiceSmokeTests/`
+- Create: `Docs/validating-on-a-mac.md`
 
-The earlier plan also called for `Scripts/tart-e2e-guest.sh`. That existed to run Make
-targets inside the guest. With the host building and the guest only running an installed
-app, the guest side is a few individual commands the runner sends over `ssh`, so there is
-no script to own.
+This task shipped as a document, not as code. The earlier plan called for
+`Scripts/TartE2E.swift`, `Scripts/tart-e2e-guest.sh`, `make tart-e2e-debug`, and
+`make tart-e2e-release-smoke`. A virtual-machine orchestration layer only covers the one
+environment it automates, and the thing worth validating is whether a person can install a
+build on their own Mac and watch it work. The guide covers any Mac and names a virtual
+machine as one way to get a clean one.
 
 **Requirements:**
-- Add `make tart-e2e-debug` and `make tart-e2e-release-smoke`.
-- Build the signed app on the host. The guest must never compile the product: entitlements are authorized per machine, the guest is not a registered device, and a guest build cannot carry a usable signature.
-- Clone the provisioned base virtual machine to a validated unique name. The base is named by `TART_E2E_BASE_VM`, defaulting to the current provisioned base rather than the retired `fan-curve-e2e-20260725`.
-- Set `TART_HOME` explicitly. The base images live on external storage, and the default `~/.tart` does not see them.
-- Run headlessly with only the artifact directory mounted read-write. Do not mount the source.
-- Transfer the built app with `ditto -c -k --keepParent`, `scp` to the guest IP, then `ditto -x -k` in the guest. Do not use the shared folder for the bundle: large reads fail with `fcopyfile failed: Input/output error`. Do not use `rsync`: a signed bundle arrives ad-hoc.
-- Verify the transfer with `shasum -a 256` on both sides and `codesign -v --verbose=2` after extraction. Fail the run on a mismatch rather than testing an unsigned or truncated bundle.
-- Ensure the guest has `amfi_get_out_of_my_way=1` in `nvram boot-args` and has rebooted, or a signed binary is killed with `OS_REASON_CODESIGNING`. Disabled SIP alone does not satisfy this.
-- Install to `/Applications/Fan Curve.app` in the guest, the single canonical runtime path.
-- Wait for IP, SSH, the guest agent, and a logged-in desktop.
-- Trap INT and TERM, track child processes, stop safely, and exit 130 after interruption.
-- Delete only the validated disposable clone unless `TART_KEEP_VM=1`.
-- Preserve `.xcresult`, screenshots, unified logs, signing evidence, launchd state, Service Management state, and test-control evidence under `build/tart-e2e/<run-id>/`.
-- Keep fan control disabled during Release smoke and assert no SMC writes.
-- Use real `SMAppService`, launchd, Agent XPC, helper repair, reconnect, and relaunch in Release smoke.
-- Run `make tart-e2e-debug` and `make tart-e2e-release-smoke`.
-- Commit the completed slice.
+- Tell the reader how to build signed on the machine that holds the signing identity, and how to verify the signature before trusting the build.
+- Install to `/Applications/Fan Curve.app`, the single canonical runtime path.
+- Walk the setup flow through its approval prompts, with a `launchctl print` check after each service registers.
+- Verify fan control against `powermetrics` rather than the app's own reading.
+- Cover the recovery paths: agent death, helper death, sleep and wake, and relaunch.
+- Give the reader the unified-log predicate and the Background Task Management check for diagnosing a failure.
+- Explain how to get a clean machine, since setup happens once per machine.
+- State that a signed Developer ID build runs in a stock guest with code signing enforced, and that disabling System Integrity Protection or setting `amfi_get_out_of_my_way=1` defeats the check the guide exists to exercise.
+- Record the transfer method that preserves a signature: `ditto -c -k --keepParent`, `scp`, `ditto -x -k`, with `shasum -a 256` on both sides. A plain `cp` from a shared volume can truncate a large bundle, and `rsync` strips the signature.
+- Record that driving the interface in a guest needs `DevToolsSecurity -enable` and membership in the `_developer` group.
 
 ### Task 7: Rebase, verify, review, and submit the stack
 
