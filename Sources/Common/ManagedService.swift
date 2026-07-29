@@ -103,7 +103,7 @@ protocol BackgroundAgentServiceManaging {
 
   func register() throws
   func unregister() throws
-  func openSystemSettings()
+  func openSystemSettings() throws
 }
 
 // MARK: - HelperServiceManaging
@@ -113,5 +113,5 @@ protocol HelperServiceManaging {
 
   func register() throws
   func unregister() throws
-  func openSystemSettings()
+  func openSystemSettings() throws
 }

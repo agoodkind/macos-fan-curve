@@ -112,6 +112,31 @@
   struct TestRuntimeFlags: Codable, Equatable, Sendable {
     let helperReachable: Bool
     let telemetryStale: Bool
+    let ownershipPreempted: Bool
+
+    init(
+      helperReachable: Bool,
+      telemetryStale: Bool,
+      ownershipPreempted: Bool = false
+    ) {
+      self.helperReachable = helperReachable
+      self.telemetryStale = telemetryStale
+      self.ownershipPreempted = ownershipPreempted
+    }
+
+    init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      helperReachable = try container.decode(Bool.self, forKey: .helperReachable)
+      telemetryStale = try container.decode(Bool.self, forKey: .telemetryStale)
+      ownershipPreempted =
+        try container.decodeIfPresent(Bool.self, forKey: .ownershipPreempted) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+      case helperReachable
+      case telemetryStale
+      case ownershipPreempted
+    }
   }
 
   struct TestHardwareState: Codable, Equatable, Sendable {
@@ -230,10 +255,13 @@
   }
 
   enum TestXPCStateEvent: String, Codable, Equatable, Sendable {
+    case commandRejected = "command_rejected"
+    case commandReplyMalformed = "command_reply_malformed"
     case connected
     case connecting
     case connectionAttemptGated = "connection_attempt_gated"
     case disconnected
+    case initialStateRejected = "initial_state_rejected"
     case reconnectScheduled = "reconnect_scheduled"
     case runtimeEventAccepted = "runtime_event_accepted"
     case runtimeEventRejected = "runtime_event_rejected"

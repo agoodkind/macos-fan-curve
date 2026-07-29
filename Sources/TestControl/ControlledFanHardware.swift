@@ -39,6 +39,12 @@
           )
           return FanHardwareBatchRead(fans: [], temps: [:])
         }
+        guard state.hardware.runtimeFlags.helperReachable else {
+          controlledHardwareLog.notice(
+            "test_control.hardware.batch_unreachable revision=\(state.revision.value, privacy: .public) recovery=return-empty-batch"
+          )
+          return FanHardwareBatchRead(fans: [], temps: [:])
+        }
         for fan in setFans {
           try runtime.record(
             .fanWrite(

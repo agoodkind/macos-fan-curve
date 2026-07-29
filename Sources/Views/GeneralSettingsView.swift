@@ -11,7 +11,7 @@ import SwiftUI
 
 let generalSettingsLog = AppLog.make(category: "GeneralSettings")
 
-private enum GeneralSettingsConstants {
+enum GeneralSettingsConstants {
   // Layout: accessory widths
   static let activeControllersSummaryAccessoryWidth: CGFloat = 144
   static let controllerRowMinimumLabelWidth: CGFloat = 72
@@ -78,6 +78,8 @@ struct GeneralSettingsView: View {
 
       Section {
         Toggle("Apply curve in background", isOn: applyInBackgroundBinding)
+          .accessibilityValue(applyInBackground ? "1" : "0")
+          .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.applyInBackground)
       } header: {
         Text("Background Control")
       } footer: {
@@ -108,6 +110,7 @@ struct GeneralSettingsView: View {
         } content: {
           activeControllersContent
         }
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.ownershipDisclosure)
       } header: {
         Text("Privileged Helper")
       } footer: {
@@ -208,6 +211,7 @@ struct GeneralSettingsView: View {
           .font(.caption)
           .foregroundStyle(.secondary)
           .lineLimit(1)
+          .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.ownershipStatus)
       }
     }
   }
@@ -247,34 +251,6 @@ struct GeneralSettingsView: View {
     activeControllersReachable ? "No fan controllers are active." : "Waiting for helper."
   }
 
-  @ViewBuilder
-  func activeControllerRow(_ row: AgentOwnershipEntry) -> some View {
-    SettingsAccessoryRow(
-      minimumLabelWidth: GeneralSettingsConstants.controllerRowMinimumLabelWidth,
-      accessoryWidth: GeneralSettingsConstants.controllerRowAccessoryWidth
-    ) {
-      Text("Fan \(row.fanIndex)")
-        .font(.caption)
-        .foregroundStyle(.primary)
-    } accessory: {
-      VStack(
-        alignment: .trailing, spacing: GeneralSettingsConstants.controllerRowVStackSpacing
-      ) {
-        Text(controllerDisplayName(row.clientName))
-          .font(.caption)
-          .foregroundStyle(.primary)
-          .lineLimit(1)
-          .truncationMode(.middle)
-          .help(row.clientName)
-        Text("priority \(row.priority), \(formatAge(row.ageSeconds))")
-          .font(.caption2.monospacedDigit())
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-      }
-    }
-    .padding(.vertical, GeneralSettingsConstants.controllerRowVerticalPadding)
-  }
-
   var activeControllersFooterText: String {
     "Shows which app or service is currently controlling each fan. "
       + "If another controller has higher priority, Fan Curve may wait before applying changes."
@@ -283,21 +259,6 @@ struct GeneralSettingsView: View {
 }
 
 extension GeneralSettingsView {
-  private func controllerDisplayName(_ clientName: String) -> String {
-    if clientName == generatedAgentBundleID {
-      return generatedAgentDisplayName
-    }
-
-    return clientName
-  }
-
-  private func formatAge(_ seconds: TimeInterval) -> String {
-    if seconds < GeneralSettingsConstants.ageJustNowThresholdSeconds { return "just now" }
-    if seconds < GeneralSettingsConstants.secondsPerMinute { return "\(Int(seconds))s ago" }
-    let minutes = Int(seconds / GeneralSettingsConstants.secondsPerMinute)
-    return "\(minutes)m ago"
-  }
-
   private func statusRow(
     title: String,
     subtitle: String,
@@ -327,6 +288,7 @@ extension GeneralSettingsView {
       Text(status)
         .font(.caption)
         .foregroundStyle(.secondary)
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.helperStatus)
     }
   }
 
@@ -337,6 +299,7 @@ extension GeneralSettingsView {
       status: helperStatusText,
       state: helperRowState
     )
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.helperRow)
   }
 
   @ViewBuilder
@@ -362,6 +325,7 @@ extension GeneralSettingsView {
         }
         .disabled(installState.isRegisteringHelper)
         .controlSize(.small)
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.helperAction)
 
         if installState.helperNeedsRepair {
           SettingsDescription(
@@ -402,8 +366,10 @@ extension GeneralSettingsView {
         Text(agentStatusText)
           .font(.caption)
           .foregroundStyle(.secondary)
+          .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.backgroundAgentStatus)
       }
     }
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.backgroundAgentRow)
   }
 
   private var helperRowState: ServiceRowState {
@@ -471,6 +437,7 @@ extension GeneralSettingsView {
     if installState.agentEnabled, !installState.agentLive {
       Button("Restart") { restartAgent() }
         .controlSize(.small)
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.backgroundAgentAction)
     } else if !installState.agentEnabled {
       Button {
         generalSettingsLog.info("general_settings.agent.install.tapped")
@@ -491,6 +458,7 @@ extension GeneralSettingsView {
       }
       .disabled(installState.isRegisteringAgent)
       .controlSize(.small)
+      .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.backgroundAgentAction)
     }
   }
 

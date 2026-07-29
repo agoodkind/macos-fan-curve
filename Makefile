@@ -13,6 +13,10 @@ SWIFTLINT_ANALYZE_LOG = $(ANALYZE_BUILD_DIR)/swiftlint-xcodebuild.log
 APP_NAME = FanCurve
 AGENT_EXECUTABLE_NAME = FanCurveAgent
 TEST_CONTROL_EXECUTABLE_NAME = FanCurveTestControl
+UI_TEST_SESSION_PATH ?=
+UI_TEST_RESULT_BUNDLE_PATH ?=
+UI_TEST_DERIVED_DATA_PATH = $(CURDIR)/$(BUILD_DIR)/UITests
+UI_TEST_CANONICAL_APP_PATH = /Applications/Fan Curve.app
 APP_DISPLAY_NAME = Fan Curve
 APP_BUNDLE_NAME = $(APP_DISPLAY_NAME)
 AGENT_DISPLAY_NAME = Fan Curve Background Control
@@ -95,7 +99,7 @@ SWIFT_XCODE_BUILD_SETTINGS := $(XCODE_BUILD_SETTINGS)
 
 include bootstrap.mk
 
-.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates generate-sparkle-appcast sparkle-appcast appcast generate-project generate-config-artifacts open-project test-agent test-control-build test-control-build-local test-control-contract test-control-signing test-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
+.PHONY: all install-dependencies install-analysis-tools app app-local run project-build install-app dmg release-assets prepare-sparkle-updates generate-sparkle-appcast sparkle-appcast appcast generate-project generate-config-artifacts open-project test-agent test-control-build test-control-build-local test-control-contract test-control-signing test-local test-ui test-ui-build test-ui-build-local format format-check swiftlint-lint xcode-analyze swiftlint-analyze periphery-scan launch-agent-audit run-audit settings-layout-audit verify quality icons
 
 all: app
 
@@ -255,6 +259,45 @@ test-control-contract: generate-config-artifacts generate-project
 		--scheme TestControlContractTests \
 		--configuration Debug \
 		--derived-data-path $(BUILD_DIR) \
+		$(XCODE_BUILD_SETTINGS) \
+		$(SWIFT_MK_XCODEBUILD_ARGS)
+
+test-ui: FANCURVE_TEST_CONTROL_PATH := $(UI_TEST_SESSION_PATH)
+test-ui: generate-config-artifacts generate-project
+	@SWIFT_MK_BIN="$(SWIFT_MK_BIN)" \
+		FANCURVE_GENERATOR="$(FANCURVE_GENERATOR)" \
+		UI_TEST_WORKSPACE="$(CURDIR)/FanCurveApp.xcworkspace" \
+		UI_TEST_DERIVED_DATA_PATH="$(UI_TEST_DERIVED_DATA_PATH)" \
+		UI_TEST_SESSION_PATH="$(UI_TEST_SESSION_PATH)" \
+		UI_TEST_RESULT_BUNDLE_PATH="$(UI_TEST_RESULT_BUNDLE_PATH)" \
+		UI_TEST_CANONICAL_APP_PATH="$(UI_TEST_CANONICAL_APP_PATH)" \
+		CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" \
+		DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" \
+		BUNDLE_ID_PREFIX="$(BUNDLE_ID_PREFIX)" \
+		HELPER_BUNDLE_ID="$(HELPER_BUNDLE_ID)" \
+		APP_BUNDLE_ID="$(APP_BUNDLE_ID)" \
+		AGENT_BUNDLE_ID="$(AGENT_BUNDLE_ID)" \
+		SHARED_SUITE_ID="$(SHARED_SUITE_ID)" \
+		HELPER_DISPLAY_NAME="$(HELPER_DISPLAY_NAME)" \
+		APP_DISPLAY_NAME="$(APP_DISPLAY_NAME)" \
+		AGENT_DISPLAY_NAME="$(AGENT_DISPLAY_NAME)" \
+		AGENT_EXECUTABLE_NAME="$(AGENT_EXECUTABLE_NAME)" \
+		SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" \
+		SPARKLE_PUBLIC_ED_KEY="$(SPARKLE_PUBLIC_ED_KEY)" \
+		Scripts/RunFanCurveUITests.sh
+
+test-ui-build:
+	$(MAKE) CONFIGURATION=Debug \
+		SWIFT_BUILD_CMD='$(MAKE) test-ui-build-local' \
+		build
+
+test-ui-build-local: generate-config-artifacts generate-project
+	"$(SWIFT_MK_BIN)" toolchain build \
+		--generator $(FANCURVE_GENERATOR) \
+		--workspace FanCurveApp.xcworkspace \
+		--scheme FanCurveUITests \
+		--configuration Debug \
+		--derived-data-path $(UI_TEST_DERIVED_DATA_PATH) \
 		$(XCODE_BUILD_SETTINGS) \
 		$(SWIFT_MK_XCODEBUILD_ARGS)
 

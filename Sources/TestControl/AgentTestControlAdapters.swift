@@ -14,6 +14,11 @@
     category: "AgentTestControlAdapters"
   )
 
+  private enum AgentTestControlAdapterConstants {
+    static let staleOffsetSeconds: TimeInterval =
+      FanCurveAgentClientConstants.snapshotFreshnessWindow + 1
+  }
+
   enum AgentTestControlAdapters {
     static func helperService(
       mode: TestControlRuntimeMode,
@@ -40,6 +45,40 @@
         return ControlledFanHardware(runtime: runtime)
       case .refused(let path):
         return RefusedFanHardware(path: path)
+      }
+    }
+
+    static func runtimeHealthOverrideProvider(
+      mode: TestControlRuntimeMode
+    ) -> (@Sendable (Date?) -> AgentRuntimeHealthOverride?)? {
+      guard case .controlled(let runtime) = mode else {
+        return nil
+      }
+      return { snapshotTimestamp in
+        do {
+          let state = try runtime.refresh()
+          let flags = state.hardware.runtimeFlags
+          let now: Date
+          if flags.telemetryStale, let snapshotTimestamp {
+            now = snapshotTimestamp.addingTimeInterval(
+              AgentTestControlAdapterConstants.staleOffsetSeconds
+            )
+          } else {
+            now = Date()
+          }
+          agentTestControlAdaptersLog.debug(
+            "test_control.runtime_health.resolved stale=\(flags.telemetryStale, privacy: .public) preempted=\(flags.ownershipPreempted, privacy: .public) revision=\(state.revision.value, privacy: .public)"
+          )
+          return AgentRuntimeHealthOverride(
+            now: now,
+            ownershipPreempted: flags.ownershipPreempted
+          )
+        } catch {
+          agentTestControlAdaptersLog.error(
+            "test_control.runtime_health.failed error=\(error.localizedDescription, privacy: .public) recovery=use-production-health"
+          )
+          return nil
+        }
       }
     }
   }
@@ -75,6 +114,12 @@
         }
         guard try runtime.consumeFault(state.xpcFault) else {
           return .inactive
+        }
+        if state.xpcFault == .interruption {
+          try runtime.record(
+            .processLifecycle(process: .agent, phase: .terminated),
+            state: state
+          )
         }
         faultObserver(state.xpcFault)
         return effect
@@ -135,10 +180,11 @@
       try refuse(operation: "unregister")
     }
 
-    func openSystemSettings() {
+    func openSystemSettings() throws {
       agentTestControlAdaptersLog.error(
-        "test_control.service.refused service=helper operation=open_system_settings path=\(path, privacy: .public) recovery=skip-operation"
+        "test_control.service.refused service=helper operation=open_system_settings path=\(path, privacy: .public) recovery=return-error"
       )
+      throw TestControlRefusalError(path: path)
     }
 
     private func refuse(operation: String) throws {

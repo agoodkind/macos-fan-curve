@@ -72,6 +72,9 @@ extension SensorDashboardSidebar {
       // telemetry is flowing. Only an unreachable helper is a true red failure.
       return helperReachable ? .orange : .red
     }
+    if runtime.runtimeState.health == .ownershipPreempted {
+      return .orange
+    }
     if presentation.chartState == .degraded {
       return .red
     }
@@ -104,6 +107,12 @@ extension SensorDashboardSidebar {
       || presentation.installationStep == .helperAwaitingApproval
     if approvalPending {
       return "Approval Required"
+    }
+    if runtime.runtimeState.health == .ownershipPreempted {
+      return "Fan Control Preempted"
+    }
+    if runtime.runtimeState.health == .stale {
+      return "Telemetry Stale"
     }
     if presentation.chartState == .degraded {
       return presentation.telemetryFresh ? "Telemetry Unavailable" : "Agent Not Responding"
@@ -164,6 +173,7 @@ extension SensorDashboardSidebar {
           .help("Fan Curve needs attention. Open settings or try setup again.")
       }
     }
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.status)
     .onAppear {
       sensorDashboardSidebarStatusLog.debug(
         "sidebar.status.appeared label=\(statusLabel, privacy: .public)"

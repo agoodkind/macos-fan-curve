@@ -45,6 +45,7 @@ struct SettingsView: View {
     )
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(WindowRenderActivityAttachment(activity: renderActivity))
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.root)
     .onAppear {
       renderActivity.start()
     }
@@ -69,7 +70,23 @@ struct SettingsView: View {
   ) -> some View {
     SettingsTabHost(tab: tab, selectedTab: selectedTab, content: content)
       .tag(tab)
-      .tabItem { Label(title, systemImage: systemImage) }
+      .tabItem {
+        Label(title, systemImage: systemImage)
+          .accessibilityIdentifier(accessibilityIdentifier(for: tab))
+      }
+  }
+
+  private func accessibilityIdentifier(for tab: SettingsTab) -> String {
+    switch tab {
+    case .about:
+      return AppAccessibilityIdentifier.Settings.aboutTab
+    case .advanced:
+      return AppAccessibilityIdentifier.Settings.advancedTab
+    case .general:
+      return AppAccessibilityIdentifier.Settings.generalTab
+    case .profiles:
+      return AppAccessibilityIdentifier.Settings.profilesTab
+    }
   }
 }
 

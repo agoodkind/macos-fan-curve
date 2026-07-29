@@ -1,4 +1,5 @@
 import ProjectDescription
+import ProjectDescriptionHelpers
 
 let appName = "FanCurve"
 let appDisplayName = "Fan Curve"
@@ -95,6 +96,7 @@ let modelTestSources: SourceFilesList = [
   ),
   "Sources/App/L10n.swift",
   "Sources/Common/SharedConfigKeys.swift",
+  "Sources/Common/AppAccessibilityIdentifier.swift",
   "Sources/Common/AgentFanSnapshot.swift",
   "Sources/Common/AgentControllerMode.swift",
   "Sources/Common/AgentSnapshot.swift",
@@ -350,6 +352,10 @@ let project = Project(
         .external(name: "Nimble"),
       ]
     ),
+    makeFanCurveUITestTarget(
+      deploymentTargets: macOSDeploymentTarget,
+      sourceExclusions: testControlAdapterSourceExclusions
+    ),
     .target(
       name: "FanCurveAgentTests",
       destinations: [.mac],
@@ -387,6 +393,7 @@ let project = Project(
         targets: [
           .target(appName),
           .target("FanCurveTestControl"),
+          .target("FanCurveUITests"),
         ]
       ),
       testAction: .targets(
@@ -433,6 +440,7 @@ let project = Project(
         configuration: "Debug"
       )
     ),
+    makeFanCurveUITestScheme(),
     .scheme(
       name: "FanCurveTestControl",
       shared: true,
@@ -440,15 +448,7 @@ let project = Project(
       runAction: .runAction(configuration: "Debug"),
       analyzeAction: .analyzeAction(configuration: "Debug")
     ),
-    .scheme(
-      name: "TestControlContractTests",
-      shared: true,
-      buildAction: .buildAction(targets: [.target("TestControlContractTests")]),
-      testAction: .targets(
-        [.testableTarget(target: "TestControlContractTests")],
-        configuration: "Debug"
-      )
-    ),
+    makeTestControlContractScheme(),
     .scheme(
       name: "SMCFanHelper",
       shared: true,

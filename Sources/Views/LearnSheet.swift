@@ -41,6 +41,8 @@ private enum LearnSheetConstants {
 
   // Thresholds
   static let warmTemperatureThreshold: Double = 50
+  static let controlledDurationSeconds = 3
+  static let productionDurationSeconds = 180
 }
 
 struct LearnSheet: View {
@@ -58,7 +60,14 @@ struct LearnSheet: View {
   @State private var confirmProbe = false
   @State private var publishError: String?
 
-  private let durationSeconds = 180
+  private var durationSeconds: Int {
+    #if DEBUG
+      if case .controlled = TestControlProcessRuntimes.app {
+        return LearnSheetConstants.controlledDurationSeconds
+      }
+    #endif
+    return LearnSheetConstants.productionDurationSeconds
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: LearnSheetConstants.outerVStackSpacing) {
@@ -71,6 +80,7 @@ struct LearnSheet: View {
     .padding(LearnSheetConstants.sheetPadding)
     .frame(width: LearnSheetConstants.sheetWidth)
     .fancurveGlassCard(cornerRadius: LearnSheetConstants.sheetCornerRadius)
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Learn.root)
     .onDisappear {
       workload.stop()
       learner.cancel()
@@ -89,6 +99,7 @@ struct LearnSheet: View {
     }
     .alert("Probe maximum fan RPM?", isPresented: $confirmProbe) {
       Button("Start Probe", role: .destructive) { startProbe() }
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Learn.confirmProbe)
       Button("Cancel", role: .cancel) {
         confirmProbe = false
       }
@@ -226,6 +237,7 @@ struct LearnSheet: View {
           .fixedSize(horizontal: false, vertical: true)
           Button("Start Probe") { confirmProbe = true }
             .controlSize(.small)
+            .accessibilityIdentifier(AppAccessibilityIdentifier.Learn.startProbe)
         }
       }
       .padding(LearnSheetConstants.cardPadding)
@@ -242,6 +254,7 @@ struct LearnSheet: View {
         dismiss()
       }
       .keyboardShortcut(.cancelAction)
+      .accessibilityIdentifier(AppAccessibilityIdentifier.Learn.cancel)
 
       Spacer()
 
@@ -261,6 +274,7 @@ struct LearnSheet: View {
         }
         .buttonStyle(.borderedProminent)
         .keyboardShortcut(.defaultAction)
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Learn.startSampling)
       } else if learner.isSampling {
         Button("Stop and Use Partial Data") {
           workload.stop()
@@ -272,9 +286,13 @@ struct LearnSheet: View {
           curveModel.isActive = false
           workload.start(cpu: runCPU, gpu: runGPU)
           learner.start(sensorState: sensorState, totalSeconds: durationSeconds)
+          learnSheetLog.notice(
+            "learn.sampling.started duration=\(durationSeconds, privacy: .public)s"
+          )
         }
         .buttonStyle(.borderedProminent)
         .keyboardShortcut(.defaultAction)
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Learn.startSampling)
       }
     }
   }

@@ -170,6 +170,7 @@ struct OnboardingView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color(nsColor: .windowBackgroundColor))
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Setup.root)
   }
 
   private var content: SetupStepContent {
@@ -195,6 +196,7 @@ struct OnboardingView: View {
     Text(content.title)
       .font(.system(.title, design: .rounded, weight: .semibold))
       .multilineTextAlignment(.center)
+      .accessibilityIdentifier(AppAccessibilityIdentifier.Setup.title)
   }
 
   @ViewBuilder
@@ -205,6 +207,7 @@ struct OnboardingView: View {
       .multilineTextAlignment(.center)
       .fixedSize(horizontal: false, vertical: true)
       .frame(maxWidth: OnboardingConstants.secondaryTextMaxWidth)
+      .accessibilityIdentifier(AppAccessibilityIdentifier.Setup.message)
   }
 
   @ViewBuilder
@@ -241,6 +244,7 @@ struct OnboardingView: View {
       .frame(maxWidth: OnboardingConstants.secondaryTextMaxWidth, alignment: .leading)
       .padding(.top, OnboardingConstants.approvalGuideTopPadding)
       .accessibilityElement(children: .combine)
+      .accessibilityIdentifier(AppAccessibilityIdentifier.Setup.approvalGuide)
     }
   }
 
@@ -262,6 +266,7 @@ struct OnboardingView: View {
       .buttonStyle(.borderedProminent)
       .keyboardShortcut(.defaultAction)
       .disabled(isRegistering)
+      .accessibilityIdentifier(AppAccessibilityIdentifier.Setup.action)
     } else if state.step == .checking {
       ProgressView()
         .controlSize(.small)
@@ -276,6 +281,7 @@ struct OnboardingView: View {
         .foregroundColor(.secondary)
         .multilineTextAlignment(.center)
         .padding(.top, OnboardingConstants.errorTopPadding)
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Setup.error)
     }
   }
 

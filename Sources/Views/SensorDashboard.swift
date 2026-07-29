@@ -65,6 +65,7 @@ struct SensorDashboard: View {
       in: RoundedRectangle(cornerRadius: 0),
       fallbackFill: Color(nsColor: .windowBackgroundColor)
     )
+    .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.sidebar)
     .onAppear {
       LoadAssistStore.migrateLegacyIfNeeded(defaults: Self.suite)
       sensorDashboardLog.info(

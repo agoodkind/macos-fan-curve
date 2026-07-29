@@ -89,6 +89,11 @@ struct CurveGraphControlPointsOverlay: View {
         .contentShape(Circle())
         .position(graph.point(x: point.temperature, y: point.fanPercent))
         .gesture(makeGesture(index, size))
+        .accessibilityIdentifier(
+          rendersVisiblePoints
+            ? ""
+            : AppAccessibilityIdentifier.Curve.controlPoint(index)
+        )
     }
   }
 }

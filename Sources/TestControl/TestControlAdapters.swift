@@ -211,6 +211,10 @@
       _ event: FanCurveAgentClientControlEvent
     ) -> TestXPCStateEvent {
       switch event {
+      case .commandRejected:
+        return .commandRejected
+      case .commandReplyMalformed:
+        return .commandReplyMalformed
       case .connected:
         return .connected
       case .connecting:
@@ -219,6 +223,8 @@
         return .connectionAttemptGated
       case .disconnected:
         return .disconnected
+      case .initialStateRejected:
+        return .initialStateRejected
       case .reconnectScheduled:
         return .reconnectScheduled
       case .runtimeEventAccepted:
@@ -270,14 +276,8 @@
       try perform(.unregister)
     }
 
-    func openSystemSettings() {
-      do {
-        try perform(.openSystemSettings)
-      } catch {
-        testControlAdaptersLog.error(
-          "test_control.service.settings_failed service=background_agent error=\(error.localizedDescription, privacy: .public) recovery=keep-controlled-state"
-        )
-      }
+    func openSystemSettings() throws {
+      try perform(.openSystemSettings)
     }
 
     private func perform(_ operation: TestServiceOperation) throws {
@@ -327,10 +327,11 @@
       try refuse(operation: "unregister")
     }
 
-    func openSystemSettings() {
+    func openSystemSettings() throws {
       testControlAdaptersLog.error(
-        "test_control.service.refused service=background_agent operation=open_system_settings path=\(path, privacy: .public) recovery=skip-operation"
+        "test_control.service.refused service=background_agent operation=open_system_settings path=\(path, privacy: .public) recovery=return-error"
       )
+      throw TestControlRefusalError(path: path)
     }
 
     private func refuse(operation: String) throws {

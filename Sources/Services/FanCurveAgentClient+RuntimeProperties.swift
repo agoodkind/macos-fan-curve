@@ -12,6 +12,7 @@ import Foundation
 
 extension FanCurveAgentClient {
   var isFresh: Bool {
+    guard runtimeState.health.permitsFreshTelemetry else { return false }
     guard let snapshot else { return false }
     return Date().timeIntervalSince(snapshot.timestamp)
       < FanCurveAgentClientConstants.snapshotFreshnessWindow

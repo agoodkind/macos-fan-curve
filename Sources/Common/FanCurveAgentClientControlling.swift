@@ -18,10 +18,13 @@ enum FanCurveAgentClientGate: Sendable, Equatable {
 // MARK: - FanCurveAgentClientControlEvent
 
 enum FanCurveAgentClientControlEvent: Sendable {
+  case commandRejected
+  case commandReplyMalformed
   case connected
   case connecting
   case connectionAttemptGated
   case disconnected
+  case initialStateRejected
   case reconnectScheduled
   case runtimeEventAccepted
   case runtimeEventRejected

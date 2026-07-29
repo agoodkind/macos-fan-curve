@@ -122,6 +122,7 @@ struct ProfilesSettingsView: View {
       } label: {
         Label("Learn from Current System", systemImage: "brain.head.profile")
       }
+      .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.learnAction)
     } header: {
       Text("Learn")
     } footer: {

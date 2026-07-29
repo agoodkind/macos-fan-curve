@@ -99,6 +99,13 @@ enum RuntimeHealth: Codable, Sendable, Equatable {
   case healthy
   case ownershipPreempted
   case stale
+
+  var permitsFreshTelemetry: Bool {
+    if case .stale = self {
+      return false
+    }
+    return true
+  }
 }
 
 enum RuntimeHealthIssue: Codable, Sendable, Equatable {
