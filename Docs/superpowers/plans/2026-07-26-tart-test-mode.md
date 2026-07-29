@@ -156,9 +156,14 @@
 
 **Requirements:**
 - Add `make tart-e2e-debug` and `make tart-e2e-release-smoke`.
-- Clone `fan-curve-e2e-20260725` to a validated unique name.
-- Run headlessly with source mounted read-only and artifacts mounted read-write.
-- Copy source to guest-local storage before building.
+- Build the signed app on the host. The guest must never compile the product: entitlements are authorized per machine, the guest is not a registered device, and a guest build cannot carry a usable signature.
+- Clone the provisioned base virtual machine to a validated unique name. The base is named by `TART_E2E_BASE_VM`, defaulting to the current provisioned base rather than the retired `fan-curve-e2e-20260725`.
+- Set `TART_HOME` explicitly. The base images live on external storage, and the default `~/.tart` does not see them.
+- Run headlessly with only the artifact directory mounted read-write. Do not mount the source.
+- Transfer the built app with `ditto -c -k --keepParent`, `scp` to the guest IP, then `ditto -x -k` in the guest. Do not use the shared folder for the bundle: large reads fail with `fcopyfile failed: Input/output error`. Do not use `rsync`: a signed bundle arrives ad-hoc.
+- Verify the transfer with `shasum -a 256` on both sides and `codesign -v --verbose=2` after extraction. Fail the run on a mismatch rather than testing an unsigned or truncated bundle.
+- Ensure the guest has `amfi_get_out_of_my_way=1` in `nvram boot-args` and has rebooted, or a signed binary is killed with `OS_REASON_CODESIGNING`. Disabled SIP alone does not satisfy this.
+- Install to `/Applications/Fan Curve.app` in the guest, the single canonical runtime path.
 - Wait for IP, SSH, the guest agent, and a logged-in desktop.
 - Trap INT and TERM, track child processes, stop safely, and exit 130 after interruption.
 - Delete only the validated disposable clone unless `TART_KEEP_VM=1`.

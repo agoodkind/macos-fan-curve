@@ -69,15 +69,36 @@ observable UI state instead of fixed delays.
 ## Tart harness
 
 Fan Curve will own a thin Swift Tart runner and guest script exposed through Make targets.
+
+The host builds; the guest only runs. The guest never compiles the product. Signing is
+what makes this mandatory rather than a preference: entitlements are authorized per
+machine, the guest is not a registered device, and a build produced there cannot carry a
+usable Developer ID signature. Building on the host also keeps the artifact under test
+byte-identical to what a user installs.
+
 The host runner will:
 
-1. Clone `fan-curve-e2e-20260725` to a uniquely named disposable virtual machine.
-2. Start the clone headlessly with the repository and artifact directory shared.
+1. Clone a provisioned base virtual machine to a uniquely named disposable clone.
+2. Start the clone headlessly with only the artifact directory shared.
 3. Wait for the guest agent, IP address, SSH, and logged-in desktop session.
-4. Copy the source to the guest's local disk and run the canonical Make targets there.
-5. Collect `.xcresult` bundles, screenshots, unified logs, launchd state, registration
+4. Build the signed app on the host, then transfer it to the guest and install it at the
+   canonical path.
+5. Run the test targets in the guest against that installed app.
+6. Collect `.xcresult` bundles, screenshots, unified logs, launchd state, registration
    state, and test-control evidence.
-6. Stop and delete only the validated disposable clone.
+7. Stop and delete only the validated disposable clone.
+
+Transfer uses an archive over the network, not the shared folder. A `cp` from a Tart
+shared folder fails on large reads with `fcopyfile failed: Input/output error` and the
+guest checksum then differs from the host. `rsync` of a signed bundle arrives ad-hoc and
+loses its signature. `ditto -c -k --keepParent` to a zip, `scp` to the guest IP, and
+`ditto -x -k` on the far side preserves the signature, verified with `shasum -a 256` on
+both sides and `codesign -v --verbose=2` after extraction.
+
+The guest needs `amfi_get_out_of_my_way=1` in `nvram boot-args` and a reboot before a
+signed binary will launch. Without it the process is killed with
+`OS_REASON_CODESIGNING`, because entitlements are authorized per machine and the guest is
+not registered. Disabled SIP alone does not satisfy this check.
 
 The runner will trap interruption, terminate child processes, and clean temporary files.
 It will keep the clone only when an explicit diagnostic option requests that behavior.
