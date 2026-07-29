@@ -1,12 +1,12 @@
-# Tart Test Mode Design
+# Test control mode design
 
 ## Summary
 
-Fan Curve will add an opt-in Debug test mode that runs the production app, background
-agent, Agent XPC transport, controller, persistence, and SwiftUI code inside a Tart
-virtual machine. Test mode will replace only macOS Service Management results and SMC
-hardware access. A separate Release smoke suite will use real `SMAppService`
-registration in a disposable Tart clone.
+Fan Curve adds an opt-in Debug test mode that runs the production app, background agent,
+Agent XPC transport, controller, persistence, and SwiftUI code. Test mode replaces only
+macOS Service Management results and SMC hardware access. A person validates real
+`SMAppService` registration by hand, following the
+[manual validation guide](../../validating-on-a-mac.md).
 
 The existing Debug scenario path replaces `FanCurveAgentClient` and bypasses Agent XPC.
 This work will retire that path so normal Debug builds use production behavior unless an
@@ -135,4 +135,5 @@ repository.
 - Run `make test`, `make build`, `make log-audit`, `make launch-agent-audit`,
   `make run-audit`, and `make verify`.
 - Run `make run` and confirm the normal Debug app uses production adapters.
-- Walk `Docs/validating-on-a-mac.md` on a Mac with fans before shipping a release.
+- Follow the [manual validation guide](../../validating-on-a-mac.md) on a Mac with fans
+  before shipping a release.
