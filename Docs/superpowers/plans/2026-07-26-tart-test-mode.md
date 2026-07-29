@@ -149,10 +149,14 @@
 
 **Files:**
 - Create: `Scripts/TartE2E.swift`
-- Create: `Scripts/tart-e2e-guest.sh`
 - Modify: `Makefile`
 - Modify: `Project.swift` for Release smoke tests
 - Add Release smoke tests under `Tests/FanCurveServiceSmokeTests/`
+
+The earlier plan also called for `Scripts/tart-e2e-guest.sh`. That existed to run Make
+targets inside the guest. With the host building and the guest only running an installed
+app, the guest side is a few individual commands the runner sends over `ssh`, so there is
+no script to own.
 
 **Requirements:**
 - Add `make tart-e2e-debug` and `make tart-e2e-release-smoke`.

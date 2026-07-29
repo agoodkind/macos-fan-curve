@@ -68,7 +68,9 @@ observable UI state instead of fixed delays.
 
 ## Tart harness
 
-Fan Curve will own a thin Swift Tart runner and guest script exposed through Make targets.
+Fan Curve will own a thin Swift Tart runner exposed through Make targets. The runner
+drives the guest over `ssh`; there is no guest-side script, because the guest no longer
+builds anything.
 
 The host builds; the guest only runs. The guest never compiles the product. Signing is
 what makes this mandatory rather than a preference: entitlements are authorized per
