@@ -128,8 +128,16 @@ owner.
 ### Reconnect policy
 
 Stays in the client. The session is a lifetime and ownership unit and does not
-know the app wants to reconnect. The client observes its current session ending
-and decides.
+know the app wants to reconnect.
+
+The session takes a completion closure at construction, which it calls once from
+`end`, after draining, with the reason. The client supplies that closure. On
+being called it clears its session reference, publishes the new connection state,
+and schedules a reconnect unless the reason is `clientStopped`.
+
+The closure fires exactly once per session, because `end` is idempotent. That
+replaces today's arrangement, where three handlers each decide independently
+whether to schedule a reconnect and each can suppress itself.
 
 ### Late replies
 
