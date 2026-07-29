@@ -1,12 +1,12 @@
-# Test control mode design
+# Tart Test Mode Design
 
 ## Summary
 
-Fan Curve adds an opt-in Debug test mode that runs the production app, background agent,
-Agent XPC transport, controller, persistence, and SwiftUI code. Test mode replaces only
-macOS Service Management results and SMC hardware access. A person validates real
-`SMAppService` registration by hand, following the
-[manual validation guide](../../validating-on-a-mac.md).
+Fan Curve will add an opt-in Debug test mode that runs the production app, background
+agent, Agent XPC transport, controller, persistence, and SwiftUI code inside a Tart
+virtual machine. Test mode will replace only macOS Service Management results and SMC
+hardware access. A separate Release smoke suite will use real `SMAppService`
+registration in a disposable Tart clone.
 
 The existing Debug scenario path replaces `FanCurveAgentClient` and bypasses Agent XPC.
 This work will retire that path so normal Debug builds use production behavior unless an
@@ -66,35 +66,31 @@ will include service mutations, app-to-agent commands, hardware reads, fan write
 auto resets, XPC faults, and process lifecycle events. Tests will wait for revisions and
 observable UI state instead of fixed delays.
 
-## Manual validation
+## Tart harness
 
-Fan Curve ships a written validation guide at `Docs/validating-on-a-mac.md` instead of a
-virtual-machine orchestration layer. A runner covers only the environment it automates,
-while the question worth answering is whether a person can install a build on a Mac and
-watch it work. The guide covers any Mac and names a virtual machine as one way to get a
-clean one.
+Fan Curve will own a thin Swift Tart runner and guest script exposed through Make targets.
+The host runner will:
 
-The person builds signed on the machine holding the signing identity, verifies the
-signature, installs to `/Applications/Fan Curve.app`, walks the setup flow through its
-approval prompts, verifies fan control against `powermetrics`, and exercises the recovery
-paths. Automated tests cannot reach any of that: approval prompts need a person, and a
-virtual machine has no fans.
+1. Clone `fan-curve-e2e-20260725` to a uniquely named disposable virtual machine.
+2. Start the clone headlessly with the repository and artifact directory shared.
+3. Wait for the guest agent, IP address, SSH, and logged-in desktop session.
+4. Copy the source to the guest's local disk and run the canonical Make targets there.
+5. Collect `.xcresult` bundles, screenshots, unified logs, launchd state, registration
+   state, and test-control evidence.
+6. Stop and delete only the validated disposable clone.
 
-The guest never compiles the product. Entitlements are authorized per machine, the guest
-is not a registered device, and a build produced there cannot carry a usable Developer ID
-signature. Building on the host also keeps the artifact under test byte-identical to what
-a user installs.
+The runner will trap interruption, terminate child processes, and clean temporary files.
+It will keep the clone only when an explicit diagnostic option requests that behavior.
 
-A signed Developer ID build runs in a stock guest with code signing fully enforced.
-Disabling System Integrity Protection or setting `amfi_get_out_of_my_way=1` turns off the
-signature and entitlement checking that this validation exists to exercise. Verified
-2026-07-29 on a `macos-tahoe-base` guest running macOS 26.5 with `boot-args` empty.
+The deterministic suite will install the canonical Debug app at
+`/Applications/Fan Curve.app`. A prepared agent registration in the disposable guest will
+keep the real Mach service available; controlled agent states will gate whether the app
+connects to it.
 
-A bundle moves as an archive over the network, not through a shared folder. A `cp` from a
-Tart shared folder fails on large reads with `fcopyfile failed: Input/output error`, and
-`rsync` of a signed bundle strips its signature. `ditto -c -k --keepParent` to a zip,
-`scp`, and `ditto -x -k` on the far side preserve it, verified with `shasum -a 256` on
-both sides and `codesign -v --verbose=2` after extraction.
+The Release smoke suite will start from a clean disposable clone, install the Release app
+at the same canonical path, and exercise real agent and helper `SMAppService`
+registration, approval, repair, launch, reconnect, and relaunch behavior. It will never
+enable fan control or request an SMC write.
 
 ## End-to-end coverage
 
@@ -113,20 +109,26 @@ The Debug suite will cover:
   helper service already enabled, and clicking `Install System Helper` performs repair
   and advances the UI.
 
-Stable accessibility identifiers anchor every user action and assertion. Unit and
-integration tests cover state resolution, adapter contracts, control-file validation,
-revision acknowledgment, recorded commands, and fault injection.
+Stable accessibility identifiers will anchor every user action and assertion. Unit and
+integration tests will cover state resolution, adapter contracts, control-file
+validation, revision acknowledgment, recorded commands, and fault injection before the
+Tart tests exercise the full process graph.
 
 ## Shared tooling boundary
 
-ICT, Stickies, and `swift-makefile` have no common virtual-machine lifecycle contract.
+ICT, Stickies, and `swift-makefile` currently have no common Tart lifecycle contract.
 ICT owns product-specific simulator and Catalyst UI-test commands, while Stickies has no
 UI-test target or runtime service.
 
-Fan Curve does not add one. Nothing here orchestrates a virtual machine, so there is no
-lifecycle behavior to promote into `SwiftMkCore` and no second consumer to design for.
-Product fixtures, accessibility identifiers, service states, and XPC faults stay in this
-repository.
+Tart lifecycle, guest preparation, artifact transfer, and evidence collection will
+remain local to Fan Curve for this implementation. The local runner will keep product
+configuration separate from lifecycle operations so a later change can move proven
+common behavior into `SwiftMkCore`.
+
+Promotion to `swift-makefile` requires a second consumer to use the same clone, guest,
+transfer, test, evidence, and cleanup contract. Product fixtures, accessibility
+identifiers, service states, XPC faults, and assertions will always remain in their
+consumer repositories.
 
 ## Verification
 
@@ -135,5 +137,7 @@ repository.
 - Run `make test`, `make build`, `make log-audit`, `make launch-agent-audit`,
   `make run-audit`, and `make verify`.
 - Run `make run` and confirm the normal Debug app uses production adapters.
-- Follow the [manual validation guide](../../validating-on-a-mac.md) on a Mac with fans
-  before shipping a release.
+- Run the deterministic Tart target and preserve its `.xcresult`, screenshots, logs,
+  and command evidence.
+- Run the Release Tart smoke target and preserve real `SMAppService`, launchd, signing,
+  and reconnect evidence.

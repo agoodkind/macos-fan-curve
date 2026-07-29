@@ -1,12 +1,12 @@
-# Fan Curve Production Service Boundary and Test Control Mode Implementation Plan
+# Fan Curve Production Service Boundary and Tart Test Mode Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Every behavior change follows test-driven development.
 
-**Goal:** Correct production service ownership and add a thin, production-close Debug test mode without changing ICT, Stickies, or swift-makefile.
+**Goal:** Correct production service ownership and add a thin, production-close Tart test mode without changing ICT, Stickies, or swift-makefile.
 
 **Architecture:** The app directly manages only the Background Agent. The agent manages the privileged helper and hardware, and the app reaches both through real Agent XPC. Debug test mode replaces only typed Service Management and fan-hardware adapters when an explicit valid control session is active.
 
-**Tech Stack:** Swift 6, SwiftUI, NSXPCConnection, ServiceManagement, XCTest, Tuist, Make.
+**Tech Stack:** Swift 6, SwiftUI, NSXPCConnection, ServiceManagement, XCTest, Tuist, Make, Tart.
 
 ## Global Constraints
 
@@ -17,7 +17,7 @@
 - The app may call `SMAppService` only for Background Agent lifecycle setup.
 - The agent owns all helper status, registration, repair, approval, and hardware operations.
 - `/Applications/Fan Curve.app` remains the single canonical runtime path.
-- Do not change ICT, Stickies, or swift-makefile.
+- Keep Tart lifecycle local to Fan Curve. Do not change ICT, Stickies, or swift-makefile.
 - Use structured project logging at every new boundary and run `make log-audit`.
 - Use signed commits with `Co-authored-by: Codex <noreply@openai.com>`.
 
@@ -145,32 +145,28 @@
 - Run focused failing tests before implementation, then run `make test`.
 - Commit the completed slice.
 
-### Task 6: Write the manual validation guide
-
-**Status: complete.** The result is the [manual validation guide](../../validating-on-a-mac.md).
+### Task 6: Add the local Tart runner, Release smoke, and Make targets
 
 **Files:**
-- Create: `Docs/validating-on-a-mac.md`
-
-This task shipped as a document, not as code. The earlier plan called for
-`Scripts/TartE2E.swift`, `Scripts/tart-e2e-guest.sh`, `make tart-e2e-debug`, and
-`make tart-e2e-release-smoke`. A virtual-machine runner covers only the environment it
-automates. The question worth answering is whether a person can install a build on a Mac
-and watch it work. The guide covers any Mac and names a virtual machine as one way to get
-a clean one.
+- Create: `Scripts/TartE2E.swift`
+- Create: `Scripts/tart-e2e-guest.sh`
+- Modify: `Makefile`
+- Modify: `Project.swift` for Release smoke tests
+- Add Release smoke tests under `Tests/FanCurveServiceSmokeTests/`
 
 **Requirements:**
-- Build signed on the machine that holds the signing identity.
-- Verify the signature before trusting the build.
-- Install to `/Applications/Fan Curve.app`, the single canonical runtime path.
-- Complete the setup flow and its approval prompts. Check each service with `launchctl print` after it registers.
-- Verify fan control against `powermetrics` rather than the app's own reading.
-- Cover the recovery paths: agent death, helper death, sleep and wake, and relaunch.
-- Give the unified-log predicate and the Background Task Management check for diagnosing a failure.
-- Explain how to get a clean machine, since setup happens once per machine.
-- State that a signed Developer ID build runs in a stock guest with code signing enforced. Disabling System Integrity Protection or setting `amfi_get_out_of_my_way=1` defeats the check the guide exercises.
-- Record the transfer method that preserves a signature: `ditto -c -k --keepParent`, `scp`, then `ditto -x -k`, with `shasum -a 256` on both sides. A plain `cp` from a shared volume can truncate a large bundle, and `rsync` strips the signature.
-- Record that driving the interface in a guest needs `DevToolsSecurity -enable` and membership in the `_developer` group.
+- Add `make tart-e2e-debug` and `make tart-e2e-release-smoke`.
+- Clone `fan-curve-e2e-20260725` to a validated unique name.
+- Run headlessly with source mounted read-only and artifacts mounted read-write.
+- Copy source to guest-local storage before building.
+- Wait for IP, SSH, the guest agent, and a logged-in desktop.
+- Trap INT and TERM, track child processes, stop safely, and exit 130 after interruption.
+- Delete only the validated disposable clone unless `TART_KEEP_VM=1`.
+- Preserve `.xcresult`, screenshots, unified logs, signing evidence, launchd state, Service Management state, and test-control evidence under `build/tart-e2e/<run-id>/`.
+- Keep fan control disabled during Release smoke and assert no SMC writes.
+- Use real `SMAppService`, launchd, Agent XPC, helper repair, reconnect, and relaunch in Release smoke.
+- Run `make tart-e2e-debug` and `make tart-e2e-release-smoke`.
+- Commit the completed slice.
 
 ### Task 7: Rebase, verify, review, and submit the stack
 
