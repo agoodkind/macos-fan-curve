@@ -46,6 +46,57 @@ final class AgentXPCSessionTests: XCTestCase {
     }
   }
 
+  func testEndBeforeContinuationInstallResumesWithConnectionUnavailable()
+    async throws
+  {
+    let session = AgentXPCSession(connection: makeConnection()) { _ in
+      // This test only asserts request drainage.
+    }
+    let resumer = AgentXPCReplyResumer(operation: "current-state")
+    _ = try XCTUnwrap(session.register(resumer))
+
+    session.end(.invalidated)
+
+    let error = await operationErrorWithinTimeout {
+      _ = try await withCheckedThrowingContinuation { continuation in
+        resumer.install(continuation)
+      }
+    }
+
+    guard let error else {
+      fail("Expected connectionUnavailable")
+      return
+    }
+    if case FanCurveAgentClientError.connectionUnavailable = error {
+      return
+    }
+    throw error
+  }
+
+  func testClientStoppedResumesRegisteredRequestWithCancellationError()
+    async throws
+  {
+    let session = AgentXPCSession(connection: makeConnection()) { _ in
+      // This test only asserts request drainage.
+    }
+    let resumer = AgentXPCReplyResumer(operation: "current-state")
+    let requestID = try XCTUnwrap(session.register(resumer))
+
+    let error = await operationErrorWithinTimeout {
+      _ = try await withCheckedThrowingContinuation { continuation in
+        resumer.install(continuation)
+        session.end(.clientStopped)
+        session.release(requestID)
+      }
+    }
+
+    guard let error else {
+      fail("Expected CancellationError")
+      return
+    }
+    expect(error is CancellationError) == true
+  }
+
   func testEndIsIdempotentAndNotifiesItsOwnerOnce() {
     var endCount = 0
     let session = AgentXPCSession(connection: makeConnection()) { _ in
@@ -69,5 +120,32 @@ final class AgentXPCSessionTests: XCTestCase {
 
     expect(session.register(resumer)) == nil
     expect(session.pendingRequestCount) == 0
+  }
+
+  private func operationErrorWithinTimeout(
+    operation: @escaping @MainActor () async throws -> Void
+  ) async -> Error? {
+    let completed = expectation(description: "XPC request completed")
+    let operationTask = Task { @MainActor in
+      try await operation()
+    }
+    var operationResult: Result<Void, Error>?
+    let observationTask = Task { @MainActor in
+      operationResult = await operationTask.result
+      completed.fulfill()
+    }
+
+    await fulfillment(of: [completed], timeout: 1)
+    operationTask.cancel()
+    observationTask.cancel()
+    guard let operationResult else {
+      return nil
+    }
+    switch operationResult {
+    case .success:
+      return nil
+    case .failure(let error):
+      return error
+    }
   }
 }
