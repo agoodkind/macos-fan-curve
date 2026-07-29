@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MAXIMUM_VERSIONS=""
+MAXIMUM_DELTAS=""
+DOWNLOAD_URL_PREFIX=""
+UPDATES_DIRECTORY=""
+
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --ed-key-file)
+            shift
+            [[ "$#" -gt 0 ]] || exit 2
+            shift
+            ;;
+        --download-url-prefix)
+            shift
+            [[ "$#" -gt 0 ]] || exit 2
+            DOWNLOAD_URL_PREFIX=$1
+            shift
+            ;;
+        --maximum-versions)
+            shift
+            [[ "$#" -gt 0 ]] || exit 2
+            MAXIMUM_VERSIONS=$1
+            shift
+            ;;
+        --maximum-deltas)
+            shift
+            [[ "$#" -gt 0 ]] || exit 2
+            MAXIMUM_DELTAS=$1
+            shift
+            ;;
+        -*)
+            printf 'fake generate_appcast: unsupported option %s\n' "$1" >&2
+            exit 2
+            ;;
+        *)
+            UPDATES_DIRECTORY=$1
+            shift
+            ;;
+    esac
+done
+
+[[ -n "${DOWNLOAD_URL_PREFIX}" ]] || exit 2
+[[ -n "${UPDATES_DIRECTORY}" ]] || exit 2
+
+DMG_PATHS=()
+while IFS= read -r DMG_PATH; do
+    DMG_PATHS+=("${DMG_PATH}")
+done < <(find "${UPDATES_DIRECTORY}" -maxdepth 1 -name '*.dmg' -print | sort)
+
+VERSION_LIMIT=3
+if [[ "${MAXIMUM_VERSIONS}" == "0" ]]; then
+    VERSION_LIMIT=${#DMG_PATHS[@]}
+fi
+
+APPCAST_PATH="${UPDATES_DIRECTORY}/appcast.xml"
+{
+    printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>'
+    printf '%s\n' '<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel>'
+    for ((i = 0; i < VERSION_LIMIT && i < ${#DMG_PATHS[@]}; i++)); do
+        ASSET_NAME=${DMG_PATHS[$i]##*/}
+        printf '<item><enclosure url="%s%s" sparkle:edSignature="fixture-signature" /></item>\n' \
+            "${DOWNLOAD_URL_PREFIX}" "${ASSET_NAME}"
+    done
+    if [[ "${MAXIMUM_DELTAS}" != "0" && "${#DMG_PATHS[@]}" -gt 1 ]]; then
+        printf '<item><enclosure url="%sfixture.delta" sparkle:edSignature="fixture-signature" /></item>\n' \
+            "${DOWNLOAD_URL_PREFIX}"
+    fi
+    printf '%s\n' '</channel></rss>'
+} > "${APPCAST_PATH}"
