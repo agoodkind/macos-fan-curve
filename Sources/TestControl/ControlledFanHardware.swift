@@ -93,6 +93,17 @@
           )
           return []
         }
+        // Mirrors the batch read's guard. An unreachable helper cannot have
+        // answered, so returning the configured names would let the resolver
+        // prune the catalog from a failure. That pruning is permanent for the
+        // process, because `sensorKeysResolved` stops it retrying once the
+        // helper comes back.
+        guard state.hardware.runtimeFlags.helperReachable else {
+          controlledHardwareLog.notice(
+            "test_control.hardware.enumerate_unreachable revision=\(state.revision.value, privacy: .public) recovery=return-empty-keys"
+          )
+          return []
+        }
         let keys = state.hardware.sensorTemperatures.map(\.name)
         controlledHardwareLog.debug(
           "test_control.hardware.enumerate_returned count=\(keys.count, privacy: .public) revision=\(state.revision.value, privacy: .public)"

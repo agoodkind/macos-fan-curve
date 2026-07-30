@@ -129,11 +129,14 @@ public enum SensorKeyResolver {
       )
     }
 
+    // Both lists are bounded by the catalog rather than by the SMC's full key
+    // set, but the same cap the fallback path uses keeps either line
+    // scannable if a future catalog grows. The count stays exact.
     log.notice(
-      "agent.sensors.resolved count=\(survivingTempKeys.count, privacy: .public) keys=\(survivingTempKeys.joined(separator: ","), privacy: .public)"
+      "agent.sensors.resolved count=\(survivingTempKeys.count, privacy: .public) keys=\(Self.keySample(survivingTempKeys), privacy: .public)"
     )
     log.notice(
-      "agent.sensors.excluded count=\(excludedKeys.count, privacy: .public) keys=\(excludedKeys.joined(separator: ","), privacy: .public)"
+      "agent.sensors.excluded count=\(excludedKeys.count, privacy: .public) keys=\(Self.keySample(excludedKeys), privacy: .public)"
     )
 
     return ResolvedSensorKeys(
@@ -143,6 +146,15 @@ public enum SensorKeyResolver {
       usedFallback: false,
       fallbackReason: nil
     )
+  }
+
+  /// Renders at most `diagnosticKeySampleLimit` keys for a log line, so one
+  /// line stays scannable however large the list grows. Callers log the exact
+  /// count alongside it.
+  private static func keySample(_ keys: [String]) -> String {
+    keys
+      .prefix(SensorKeyResolutionConstants.diagnosticKeySampleLimit)
+      .joined(separator: ",")
   }
 
   /// Discovers the machine's real key set through `discoverer` and resolves

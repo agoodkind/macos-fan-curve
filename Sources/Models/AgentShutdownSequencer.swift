@@ -26,6 +26,22 @@ enum AgentShutdownSequencer {
     agentShutdownSequencerLog.notice(
       "agent.shutdown.reset.starting deadlineSeconds=\(deadline, privacy: .public)")
     stopTicking()
-    return await DeadlineBoundedOperation.run(deadline: deadline, operation: resetFans)
+    agentShutdownSequencerLog.notice("agent.shutdown.tick_stopped")
+
+    let outcome = await DeadlineBoundedOperation.run(
+      deadline: deadline,
+      operation: resetFans
+    )
+    switch outcome {
+    case .completed:
+      agentShutdownSequencerLog.notice(
+        "agent.shutdown.reset.finished outcome=completed"
+      )
+    case .deadlineExceeded:
+      agentShutdownSequencerLog.notice(
+        "agent.shutdown.reset.finished outcome=deadline_exceeded deadlineSeconds=\(deadline, privacy: .public) recovery=exit-anyway"
+      )
+    }
+    return outcome
   }
 }

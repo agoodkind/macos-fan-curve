@@ -6,7 +6,10 @@
 //  Copyright © 2026, all rights reserved.
 //
 
+import AppLog
 import Foundation
+
+let deadlineBoundedOperationLog = AppLog.make(category: "DeadlineBoundedOperation")
 
 // MARK: - DeadlineOutcome
 
@@ -48,22 +51,36 @@ private final class SingleResumeGuard: @unchecked Sendable {
 /// SIGTERM-to-SIGKILL grace period) and returning late is worse than the
 /// operation finishing incomplete.
 enum DeadlineBoundedOperation {
+  /// Names the continuation type so the closure's parameter fits on the same
+  /// line as its opening brace, which the formatter and the lint rule
+  /// disagree about when the full generic type is written inline.
+  private typealias OutcomeContinuation = CheckedContinuation<DeadlineOutcome, Never>
+
   static func run(
     deadline: TimeInterval,
     operation: @escaping @Sendable () async -> Void
   ) async -> DeadlineOutcome {
-    await withCheckedContinuation { (continuation: CheckedContinuation<DeadlineOutcome, Never>) in
+    deadlineBoundedOperationLog.notice(
+      "deadline_operation.started deadlineSeconds=\(deadline, privacy: .public)"
+    )
+    return await withCheckedContinuation { (continuation: OutcomeContinuation) in
       let resumeGuard = SingleResumeGuard()
 
       Task {
         await operation()
         if resumeGuard.claim() {
+          deadlineBoundedOperationLog.notice(
+            "deadline_operation.finished outcome=completed"
+          )
           continuation.resume(returning: .completed)
         }
       }
 
       DispatchQueue.global().asyncAfter(deadline: .now() + deadline) {
         if resumeGuard.claim() {
+          deadlineBoundedOperationLog.notice(
+            "deadline_operation.finished outcome=deadline_exceeded deadlineSeconds=\(deadline, privacy: .public) recovery=return-without-operation"
+          )
           continuation.resume(returning: .deadlineExceeded)
         }
       }
