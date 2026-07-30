@@ -88,53 +88,9 @@ let testControlAdapterSourceExclusions: [Path] = [
   "Sources/TestControl/*Adapters.swift",
 ]
 
-let modelTestSources: SourceFilesList = [
-  .generated("Generated/FanCurve/Config.generated.swift"),
-  .glob(
-    "Sources/TestControl/**",
-    excluding: testControlAdapterSourceExclusions
-  ),
-  "Sources/App/L10n.swift",
-  "Sources/Common/SharedConfigKeys.swift",
-  "Sources/Common/AppAccessibilityIdentifier.swift",
-  "Sources/Common/AgentFanSnapshot.swift",
-  "Sources/Common/AgentControllerMode.swift",
-  "Sources/Common/AgentSnapshot.swift",
-  "Sources/Common/AppVisibilityState.swift",
-  "Sources/Common/FanCurveAgentXPCProtocol.swift",
-  "Sources/Common/ManagedService.swift",
-  "Sources/Common/RuntimeState.swift",
-  "Sources/Common/SetupActionAffordance+Codable.swift",
-  "Sources/Models/TemperatureUnit.swift",
-  "Sources/Models/TemperatureAxisScale.swift",
-  "Sources/Models/SensorState.swift",
-  "Sources/Models/CurveColumns.swift",
-  "Sources/Models/CurveAxisScale.swift",
-  "Sources/Models/CurvePoint.swift",
-  "Sources/Models/AgentServiceMutationResult.swift",
-  "Sources/Models/FixedColumnCurve.swift",
-  "Sources/Models/FanCommand.swift",
-  "Sources/Models/FanCommandMapping.swift",
-  "Sources/Models/InterpolationMode.swift",
-  "Sources/Models/HelperServiceRegistration.swift",
-  "Sources/Models/LoadAssistKind.swift",
-  "Sources/Models/LoadAssistCurveColumns.swift",
-  "Sources/Models/ThermalDemandSource.swift",
-  "Sources/Models/LoadAssistStore.swift",
-  "Sources/Models/WorkloadGenerator.swift",
-  "Sources/Models/CPULoadSampler.swift",
-  "Sources/Models/IOAcceleratorPerformanceStatistics.swift",
-  "Sources/Models/AcousticRampGovernor.swift",
-  "Sources/Models/FanResponse.swift",
-  "Sources/Models/CurvePresets.swift",
-  "Sources/Models/EventArtifactWriter.swift",
-  "Sources/Models/CurveInterpolation.swift",
-  "Sources/Models/LiveMarkerPresentation.swift",
-  "Sources/Services/AppRenderActivity.swift",
-  "Sources/Common/DevOverrides.swift",
-  "Sources/Views/SettingsTab.swift",
-  "Sources/Views/SettingsMonitoringGate.swift",
-]
+let modelTestSources: SourceFilesList = makeModelTestSources(
+  testControlAdapterSourceExclusions: testControlAdapterSourceExclusions
+)
 
 let strictConcurrencySettings: SettingsDictionary = [
   "OTHER_SWIFT_FLAGS": "$(inherited) -enable-upcoming-feature StrictConcurrency"

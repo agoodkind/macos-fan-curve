@@ -62,7 +62,7 @@ final class AgentControllerFanHardwareTests: XCTestCase {
     expect(telemetry.result.temps["TC0P"]) == 72
   }
 
-  func testTelemetryReadWritesAgentStatusToInjectedSharedConfig() async throws {
+  func testTelemetryReadClearsLastErrorWithoutPublishingLiveness() async throws {
     let hardware = RecordingFanHardware()
     let controller = try makeController(fanHardware: hardware)
     let defaults = try XCTUnwrap(isolatedDefaults)
@@ -70,11 +70,25 @@ final class AgentControllerFanHardwareTests: XCTestCase {
 
     _ = await controller.readTickTelemetry()
 
+    expect(defaults.string(forKey: SharedConfigKeys.agentLastError)) == nil
+    // Liveness belongs to the heartbeat cadence, so a read that stalls or
+    // returns nothing must not be what refreshes the PID and timestamp.
+    expect(defaults.integer(forKey: SharedConfigKeys.agentPID)) == 0
+    expect(defaults.double(forKey: SharedConfigKeys.agentLastTick)) == 0
+    expect(defaults.string(forKey: SharedConfigKeys.agentExecutableHash)) == nil
+  }
+
+  func testHeartbeatPublishesLivenessToInjectedSharedConfig() throws {
+    let hardware = RecordingFanHardware()
+    let controller = try makeController(fanHardware: hardware)
+    let defaults = try XCTUnwrap(isolatedDefaults)
+
+    controller.publishHeartbeat()
+
     expect(defaults.integer(forKey: SharedConfigKeys.agentPID))
       == Int(ProcessInfo.processInfo.processIdentifier)
     expect(defaults.double(forKey: SharedConfigKeys.agentLastTick)) > 0
     expect(defaults.string(forKey: SharedConfigKeys.agentExecutableHash)) != nil
-    expect(defaults.string(forKey: SharedConfigKeys.agentLastError)) == nil
   }
 
   func testTickCommandsUseInjectedFanHardwareWithExactPriority() async throws {
@@ -196,6 +210,7 @@ private final class RecordingFanHardware: FanHardware, @unchecked Sendable {
   private let lock = NSLock()
   private let readResult: FanHardwareBatchRead
   private let ownership: [AgentOwnershipEntry]
+  private let discoveredKeys: [String]
   private var readRequests: [ReadRequest] = []
   private var rpmCommands: [RPMCommand] = []
   private var autoCommands: [AutoCommand] = []
@@ -203,14 +218,24 @@ private final class RecordingFanHardware: FanHardware, @unchecked Sendable {
 
   init(
     readResult: FanHardwareBatchRead = FanHardwareBatchRead(fans: [], temps: [:]),
-    ownership: [AgentOwnershipEntry] = []
+    ownership: [AgentOwnershipEntry] = [],
+    discoveredKeys: [String] = []
   ) {
     self.readResult = readResult
     self.ownership = ownership
+    self.discoveredKeys = discoveredKeys
   }
 
   func shutdown() {
     // The test double has no external connection to close.
+  }
+
+  /// Defaults to the empty "could not enumerate" answer, which
+  /// `SensorKeyResolver` treats as ambiguous and never prunes on, so these
+  /// tests keep the controller's full catalog key set.
+  func enumerateKeys() async -> [String] {
+    await Task.yield()
+    return discoveredKeys
   }
 
   func readAndApply(

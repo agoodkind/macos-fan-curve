@@ -51,6 +51,10 @@ final class RecordingControlledFallbackHardware:
     FanHardwareBatchRead(fans: [], temps: [:])
   }
 
+  func enumerateKeys() -> [String] {
+    []
+  }
+
   func getOwnership() -> [AgentOwnershipEntry] {
     []
   }

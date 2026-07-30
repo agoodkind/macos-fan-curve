@@ -77,6 +77,46 @@
       }
     }
 
+    /// Reports the sensor names the controlled session defines, so key
+    /// discovery is drivable from a test session the same way readings are.
+    ///
+    /// Returns an empty array on any failure. Callers read that as "could not
+    /// enumerate" rather than "this machine has no keys", so a controlled
+    /// failure never prunes the sensor catalog.
+    func enumerateKeys() -> [String] {
+      do {
+        let state = try runtime.refresh()
+        try runtime.record(.hardwareRead(operation: .fanBatch), state: state)
+        guard case .succeed = state.hardware.nextOperation else {
+          controlledHardwareLog.error(
+            "test_control.hardware.enumerate_failed revision=\(state.revision.value, privacy: .public) recovery=return-empty-keys"
+          )
+          return []
+        }
+        // Mirrors the batch read's guard. An unreachable helper cannot have
+        // answered, so returning the configured names would let the resolver
+        // prune the catalog from a failure. That pruning is permanent for the
+        // process, because `sensorKeysResolved` stops it retrying once the
+        // helper comes back.
+        guard state.hardware.runtimeFlags.helperReachable else {
+          controlledHardwareLog.notice(
+            "test_control.hardware.enumerate_unreachable revision=\(state.revision.value, privacy: .public) recovery=return-empty-keys"
+          )
+          return []
+        }
+        let keys = state.hardware.sensorTemperatures.map(\.name)
+        controlledHardwareLog.debug(
+          "test_control.hardware.enumerate_returned count=\(keys.count, privacy: .public) revision=\(state.revision.value, privacy: .public)"
+        )
+        return keys
+      } catch {
+        controlledHardwareLog.error(
+          "test_control.hardware.enumerate_refused error=\(error.localizedDescription, privacy: .public) recovery=return-empty-keys"
+        )
+        return []
+      }
+    }
+
     func getOwnership() throws -> [AgentOwnershipEntry] {
       let state = try runtime.refresh()
       try runtime.record(.hardwareRead(operation: .ownership), state: state)

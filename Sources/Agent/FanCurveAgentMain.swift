@@ -12,6 +12,15 @@ import Foundation
 
 private let log = AppLog.make(category: "AgentMain")
 
+private enum FanCurveAgentMainConstants {
+  /// Comfortably inside launchd's 5 second SIGTERM-to-SIGKILL grace period,
+  /// leaving margin for `AgentController.stop()` and process exit after the
+  /// reset-to-auto race resolves either way.
+  static let shutdownResetDeadlineSeconds: TimeInterval = 3.0
+}
+
+// MARK: - FanCurveAgentMain
+
 /// LaunchAgent entry point. Runs the curve application loop in the background.
 /// Resets all fans to auto on SIGTERM/SIGINT/crash.
 @main
@@ -63,7 +72,19 @@ enum FanCurveAgentMain {
     source.setEventHandler {
       log.notice("agent.signal received=\(sig, privacy: .public) action=reset-and-exit")
       Task {
-        await controller.resetAllFansToAuto()
+        let outcome = await AgentShutdownSequencer.resetWithinDeadline(
+          deadline: FanCurveAgentMainConstants.shutdownResetDeadlineSeconds,
+          stopTicking: { controller.stopTickTimer() },
+          resetFans: { await controller.resetAllFansToAuto() }
+        )
+        switch outcome {
+        case .completed:
+          log.notice("agent.signal.reset.completed")
+        case .deadlineExceeded:
+          log.notice(
+            "agent.signal.reset.deadline_exceeded deadlineSeconds=\(FanCurveAgentMainConstants.shutdownResetDeadlineSeconds, privacy: .public) action=exit-anyway"
+          )
+        }
         controller.stop()
         CFRunLoopStop(CFRunLoopGetMain())
       }

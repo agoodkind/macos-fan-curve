@@ -11,6 +11,14 @@ import Foundation
 
 private let agentControllerTickLog = AppLog.make(category: "AgentControllerTick")
 
+private enum AgentControllerTickConstants {
+  /// Tick duration is logged in milliseconds so a stalled tick is legible
+  /// without reading fractional seconds.
+  static let millisecondsPerSecond: Double = 1_000
+}
+
+// MARK: - AgentController
+
 extension AgentController {
   func requestTick() {
     Task { [weak self] in
@@ -31,6 +39,10 @@ extension AgentController {
   }
 
   func tick() async {
+    let tickStart = Date()
+    defer { logTickCompleted(start: tickStart) }
+
+    await resolveSensorKeysIfNeeded()
     let telemetry = await readTickTelemetry()
     guard await handleInactiveTickIfNeeded(telemetry) else { return }
     guard let context = makeActiveTickContext(from: telemetry) else { return }
@@ -45,6 +57,18 @@ extension AgentController {
     )
   }
 
+  /// Pruning removes the failed key reads that previously served as an
+  /// accidental tick clock. This line keeps tick latency measurable now
+  /// that those doomed reads are gone.
+  func logTickCompleted(start: Date) {
+    let durationMs =
+      Date().timeIntervalSince(start)
+      * AgentControllerTickConstants.millisecondsPerSecond
+    agentControllerTickLog.notice(
+      "agent.tick.completed durationMs=\(String(format: "%.1f", durationMs), privacy: .public)"
+    )
+  }
+
   func readTickTelemetry() async -> AgentControllerTickTypes.TickTelemetry {
     let active = sharedConfig.loadIsActive()
     let result = await fanHardware.readAndApply(
@@ -55,8 +79,8 @@ extension AgentController {
       cachedFanCount = UInt(result.fans.count)
     }
 
-    sharedConfig.writeAgentStatus(
-      pid: ProcessInfo.processInfo.processIdentifier, lastTick: Date())
+    // Liveness is reported by `heartbeatScheduler` on its own cadence, not
+    // here, so a stalled read above cannot make a healthy process look dead.
     sharedConfig.writeAgentLastError(nil)
 
     let activityState: ActivityState = active ? .active : .inactive

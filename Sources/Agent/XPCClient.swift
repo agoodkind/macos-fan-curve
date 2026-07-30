@@ -25,6 +25,22 @@ private enum XPCClientConstants {
   static let maxPlausibleTemperatureC: Float = 150
 }
 
+// MARK: - SMCKeyAbsence
+
+/// A missing SMC key is a definite answer, not a transport failure. The
+/// helper's `smcReadKey` reply carries `SMCError.firmware(.notFound)`'s
+/// description as a plain string across the XPC boundary, wrapped in
+/// `SMCXPCError`; this substring match is the only signal available here
+/// for "the SMC firmware says this key does not exist."
+private enum SMCKeyAbsence {
+  static let notFoundMarker = "notFound (0x84)"
+
+  static func isDefiniteKeyAbsence(_ error: Error) -> Bool {
+    guard let xpcError = error as? SMCXPCError else { return false }
+    return xpcError.message.contains(notFoundMarker)
+  }
+}
+
 enum XPCClientError: LocalizedError {
   case unavailable(String)
 
@@ -174,11 +190,42 @@ final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
       self.markConnected()
       return value
     } catch {
+      // A definite "no such key" answer is not a transport failure: do not
+      // flip ConnectionState to .error for it. Real transport failures
+      // (helper down, restarting, unreachable) still mark the connection.
+      if SMCKeyAbsence.isDefiniteKeyAbsence(error) {
+        log.notice(
+          "xpc.read_key.failed key=\(key, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=propagate-key-absent"
+        )
+      } else {
+        self.markError(error)
+        log.notice(
+          "xpc.read_key.failed key=\(key, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+        )
+      }
+      throw error
+    }
+  }
+
+  /// Asks the SMC what keys it actually has. Returns an empty array on any
+  /// failure, matching upstream `SMCFanXPCClient.enumerateKeys()`'s
+  /// contract: an empty result means "could not enumerate," not "this
+  /// machine has no keys." Callers must not treat it as a pruning signal.
+  func enumerateKeys() async -> [String] {
+    do {
+      let xpcClient = try requireClient()
+      let keys = await xpcClient.enumerateKeys()
+      if !keys.isEmpty {
+        self.markConnected()
+      }
+      log.debug("xpc.enumerate_keys.completed count=\(keys.count, privacy: .public)")
+      return keys
+    } catch {
       self.markError(error)
       log.notice(
-        "xpc.read_key.failed key=\(key, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+        "xpc.enumerate_keys.failed error=\(error.localizedDescription, privacy: .public) recovery=empty-result"
       )
-      throw error
+      return []
     }
   }
 
