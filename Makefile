@@ -151,6 +151,7 @@ run:
 	$(MAKE) CONFIGURATION=Debug build
 	@rm -rf "$(INSTALL_APP_DEST)"
 	@cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)"
+	@Scripts/TerminateAgentInstances.swift "$(AGENT_LABEL)"
 	@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
 	@open "$(INSTALL_APP_DEST)"
 
