@@ -391,13 +391,21 @@ extension FanCurveAgentClient {
   }
 
   private func handleDisconnect(_ disconnectedGeneration: UInt64, reason: String) {
-    guard connectionGeneration == disconnectedGeneration, connection != nil else {
+    guard connectionGeneration == disconnectedGeneration else {
       return
     }
+
+    // Drain before the dedup guard. A sibling path may already have cleared
+    // `connection`, and an unresumed continuation holds a task allocation that
+    // aborts the allocator when its task unwinds.
     cancelPendingRequests(
       reason: reason,
       error: FanCurveAgentClientError.connectionUnavailable
     )
+
+    guard connection != nil else {
+      return
+    }
     connection = nil
     connectionState = .disconnected
     control.recordEvent(.disconnected)
