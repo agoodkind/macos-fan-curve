@@ -174,20 +174,9 @@ do {
         try fail("run-audit failed: make run must not compile through app-local directly")
     }
 
-    let requiredRecipeTokenLists = [
-        ["$(MAKE)", "CONFIGURATION=Debug", "build"],
-        ["rm", "-rf", "$(INSTALL_APP_DEST)"],
-        ["cp", "-R", "$(APP_DEST)", "$(INSTALL_APP_DEST)"],
-        ["Scripts/TerminateAgentInstances.swift", "$(AGENT_LABEL)"],
-        ["Scripts/TerminateAppInstances.swift", "$(APP_BUNDLE_ID)"],
-        ["open", "$(INSTALL_APP_DEST)"],
-    ]
-    guard recipeTokenLists == requiredRecipeTokenLists else {
-        try fail(
-            "run-audit failed: make run must preserve the canonical gated build and deployment recipe"
-        )
-    }
-
+    // Each step gets its own check first, so a missing one reports what that
+    // step is for. The recipe comparison below then catches what a per-step
+    // check cannot: wrong order, or an extra step nobody asked for.
     guard body.contains(#"cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)""#) else {
         try fail(#"run-audit failed: make run must deploy the build to /Applications with cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)""#)
     }
@@ -204,6 +193,20 @@ do {
 
     guard body.contains(#"open "$(INSTALL_APP_DEST)""#) else {
         try fail(#"run-audit failed: make run must launch the canonical app with open "$(INSTALL_APP_DEST)""#)
+    }
+
+    let requiredRecipeTokenLists = [
+        ["$(MAKE)", "CONFIGURATION=Debug", "build"],
+        ["rm", "-rf", "$(INSTALL_APP_DEST)"],
+        ["cp", "-R", "$(APP_DEST)", "$(INSTALL_APP_DEST)"],
+        ["Scripts/TerminateAgentInstances.swift", "$(AGENT_LABEL)"],
+        ["Scripts/TerminateAppInstances.swift", "$(APP_BUNDLE_ID)"],
+        ["open", "$(INSTALL_APP_DEST)"],
+    ]
+    guard recipeTokenLists == requiredRecipeTokenLists else {
+        try fail(
+            "run-audit failed: make run must preserve the canonical gated build and deployment recipe"
+        )
     }
 
     let installDestDefinition = lines.first {

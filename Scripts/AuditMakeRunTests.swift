@@ -95,6 +95,11 @@ do {
     let scriptPath = URL(fileURLWithPath: arguments[arguments.startIndex]).standardizedFileURL.path
     let gatedBuildError =
         "make run must preserve the canonical gated build and deployment recipe"
+    /// A recipe missing the agent restart reports this rather than the generic
+    /// recipe error, because the per-step checks run before the recipe
+    /// comparison so the message names what the missing step is for.
+    let agentRestartError =
+        "make run must restart the background agent by launchd label"
     let lineContinuation = "\\"
 
     try requireRejection(
@@ -311,7 +316,7 @@ do {
             runCommand: "\t$(MAKE) CONFIGURATION=Debug build",
             terminateAgentLine: "\t@true"
         ),
-        expectedError: gatedBuildError
+        expectedError: agentRestartError
     )
     try requireRejection(
         "dropped agent restart step",
@@ -320,7 +325,7 @@ do {
             runCommand: "\t$(MAKE) CONFIGURATION=Debug build",
             terminateAgentLine: ""
         ),
-        expectedError: gatedBuildError
+        expectedError: agentRestartError
     )
     try requireRejection(
         "manual launchctl kickstart instead of agent restart step",
