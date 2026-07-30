@@ -82,7 +82,7 @@ SWIFT_ANALYZE_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 xcode-analyze swiftlint-analy
 SWIFT_FORMAT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTLINT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTCHECK_EXTRA_TARGETS := $(SWIFT_FORMAT_FILES)
-SWIFT_AUDIT_EXTRA_CMD := Scripts/Tests/release-track-contract.sh && Scripts/Tests/select-appcast-releases.sh && Scripts/Tests/prepare-appcast-history.sh && Scripts/Tests/rewrite-appcast-urls.sh
+SWIFT_AUDIT_EXTRA_CMD := Scripts/Tests/release-track-contract.sh && Scripts/Tests/select-appcast-releases.sh && Scripts/Tests/prepare-appcast-history.sh && Scripts/Tests/rewrite-appcast-urls.sh && Scripts/Tests/generate-sparkle-appcast.sh
 
 # Generator names are data, bound to variables so no recipe line names a build
 # tool directly; every build/test/analyze routes through the swift-mk toolchain.
@@ -204,6 +204,8 @@ generate-sparkle-appcast:
 	"$${SPARKLE_APPCAST_TOOL}" \
 		--ed-key-file "$${SPARKLE_PRIVATE_KEY_FILE}" \
 		--download-url-prefix "https://github.com/$(GH_REPOSITORY)/releases/download/__RELEASE_TAG__/" \
+		--maximum-versions 0 \
+		--maximum-deltas 0 \
 		"$(SPARKLE_UPDATES_DIR)"
 	@Scripts/RewriteAppcastURLs.swift \
 		--appcast "$(SPARKLE_GENERATED_APPCAST)" \
