@@ -19,8 +19,21 @@
 	<array>
 		<string>@@APP_BUNDLE_ID@@</string>
 	</array>
+	<!-- Not Background. launchd derives the job's default quality of service
+	     from this key and Swift concurrency inherits it, so a Background job
+	     ran the tick on com.apple.root.background-qos.cooperative, the class
+	     macOS starves first under CPU contention. That is exactly when the
+	     curve has to run. Measured on Mac17,7 at load average 101: the tick
+	     took 148 seconds with the fans unchanged throughout, against 1.4
+	     seconds at load 161 once the job was no longer Background.
+
+	     Standard costs nothing at rest. It does not grant extra CPU, only a
+	     schedulable priority, and the tick's work is unchanged: 6 ms of CPU
+	     per second and one wakeup per second, against WindowServer's 285 ms
+	     and 545 wakeups. Standard resolves to the utility QoS tier, not an
+	     interactive one. -->
 	<key>ProcessType</key>
-	<string>Background</string>
+	<string>Standard</string>
 @@TEST_CONTROL_ENVIRONMENT@@
 	<key>StandardOutPath</key>
 	<string>/dev/null</string>
