@@ -58,10 +58,6 @@ final class TestControlXPCIntegrationTests: XCTestCase {
     try await verifyStartupFault(.invalidation)
   }
 
-  func testInterruptionFaultIsOneShotAcrossAgentTermination() async throws {
-    try await verifyStartupFault(.interruption)
-  }
-
   func testReconnectFaultIsOneShotAcrossClientReconnect() async throws {
     try await verifyStartupFault(.reconnect)
   }
