@@ -24,8 +24,8 @@
       "kind": "remoteSourceControl",
       "location": "https://github.com/agoodkind/macos-smc-fan.git",
       "state": {
-        "revision": "d0e16a26ca09952dbc63d8d93781108da64a7300",
-        "version": "0.2.0"
+        "revision": "5b829a4e1d5c4e4439a782cf048d2083567915fe",
+        "version": "0.3.0"
       }
     },
     {

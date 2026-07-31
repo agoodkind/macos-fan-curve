@@ -207,6 +207,43 @@ final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
     }
   }
 
+  /// Reads every key in one round trip instead of one per key. A tick's
+  /// temperature read is the bulk of its cost, and each round trip stretches
+  /// from milliseconds to seconds when the machine is loaded, so reading N
+  /// keys serially is what let a tick run for half a minute.
+  ///
+  /// Returns the keys that answered with a usable value. A key the hardware
+  /// does not have is a per-key answer, not a transport failure, so it is
+  /// dropped without marking the connection errored. A throw means the round
+  /// trip itself failed, and the caller falls back to per-key reads.
+  func readKeys(_ keys: [String]) async throws -> [String: Float] {
+    let xpcClient = try requireClient()
+    do {
+      let results = try await xpcClient.readKeys(keys)
+      self.markConnected()
+
+      var values: [String: Float] = [:]
+      var absentCount = 0
+      for result in results {
+        guard result.success else {
+          absentCount += 1
+          continue
+        }
+        values[result.key] = result.value
+      }
+      log.debug(
+        "xpc.read_keys.completed requested=\(keys.count, privacy: .public) returned=\(values.count, privacy: .public) absent=\(absentCount, privacy: .public)"
+      )
+      return values
+    } catch {
+      self.markError(error)
+      log.notice(
+        "xpc.read_keys.failed count=\(keys.count, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+      )
+      throw error
+    }
+  }
+
   /// Asks the SMC what keys it actually has. Returns an empty array on any
   /// failure, matching upstream `SMCFanXPCClient.enumerateKeys()`'s
   /// contract: an empty result means "could not enumerate," not "this
@@ -254,6 +291,52 @@ final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
 
   // MARK: - Batched read + apply
 
+  /// Reads every temperature key in one round trip, keeping only plausible
+  /// readings. A key the hardware lacks, or one reporting an implausible
+  /// value, is simply absent from the result.
+  ///
+  /// Falls back to per-key reads when the round trip itself fails, rather
+  /// than returning nothing and letting the tick drive the curve from a zero
+  /// temperature.
+  private func readTemperatures(_ tempKeys: [String]) async -> [String: Float] {
+    guard !tempKeys.isEmpty else { return [:] }
+
+    do {
+      let values = try await self.readKeys(tempKeys)
+      return values.filter { Self.isPlausibleTemperature($0.value) }
+    } catch {
+      log.notice(
+        "xpc.batch.temp_batch_failed count=\(tempKeys.count, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=per-key-reads"
+      )
+      return await readTemperaturesPerKey(tempKeys)
+    }
+  }
+
+  /// One round trip per key. Only reached when the batched read failed
+  /// outright, so the cost is acceptable against reading no temperature.
+  private func readTemperaturesPerKey(_ tempKeys: [String]) async -> [String: Float] {
+    var temps: [String: Float] = [:]
+    for key in tempKeys {
+      do {
+        let value = try await self.readKey(key)
+        if Self.isPlausibleTemperature(value) {
+          temps[key] = value
+        }
+      } catch {
+        log.notice(
+          "xpc.batch.temp_read_failed key=\(key, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=skip-temperature"
+        )
+      }
+    }
+    return temps
+  }
+
+  /// A reading outside this range is a sensor the machine answered for but
+  /// cannot be a real temperature, so it must not reach the curve.
+  private static func isPlausibleTemperature(_ value: Float) -> Bool {
+    value > 0 && value < XPCClientConstants.maxPlausibleTemperatureC
+  }
+
   func readAndApply(
     fanCount: UInt,
     tempKeys: [String],
@@ -275,19 +358,7 @@ final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
       }
     }
 
-    var temps: [String: Float] = [:]
-    for key in tempKeys {
-      do {
-        let value = try await self.readKey(key)
-        if value > 0, value < XPCClientConstants.maxPlausibleTemperatureC {
-          temps[key] = value
-        }
-      } catch {
-        log.notice(
-          "xpc.batch.temp_read_failed key=\(key, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=skip-temperature"
-        )
-      }
-    }
+    let temps = await readTemperatures(tempKeys)
 
     for fanTarget in setFans {
       do {
