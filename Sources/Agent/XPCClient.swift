@@ -218,6 +218,7 @@ final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
   /// trip itself failed, and the caller falls back to per-key reads.
   func readKeys(_ keys: [String]) async throws -> [String: Float] {
     let xpcClient = try requireClient()
+    log.debug("xpc.read_keys.started requested=\(keys.count, privacy: .public)")
     do {
       let results = try await xpcClient.readKeys(keys)
       self.markConnected()
@@ -303,7 +304,14 @@ final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
 
     do {
       let values = try await self.readKeys(tempKeys)
-      return values.filter { Self.isPlausibleTemperature($0.value) }
+      let accepted = values.filter { Self.isPlausibleTemperature($0.value) }
+      // Counts only. The key names are already logged once at startup by
+      // sensor resolution, and repeating them every tick is what produced
+      // tens of thousands of log lines an hour before.
+      log.debug(
+        "xpc.batch.temps_read requested=\(tempKeys.count, privacy: .public) accepted=\(accepted.count, privacy: .public) rejected=\(tempKeys.count - accepted.count, privacy: .public) source=batch"
+      )
+      return accepted
     } catch {
       log.notice(
         "xpc.batch.temp_batch_failed count=\(tempKeys.count, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=per-key-reads"
@@ -328,6 +336,12 @@ final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
         )
       }
     }
+    // Notice rather than debug: reaching this path at all means the batched
+    // read failed, so how much the fallback salvaged is worth having without
+    // turning debug logging on.
+    log.notice(
+      "xpc.batch.temps_read requested=\(tempKeys.count, privacy: .public) accepted=\(temps.count, privacy: .public) rejected=\(tempKeys.count - temps.count, privacy: .public) source=per-key-fallback"
+    )
     return temps
   }
 
