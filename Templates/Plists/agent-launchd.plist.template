@@ -19,13 +19,19 @@
 	<array>
 		<string>@@APP_BUNDLE_ID@@</string>
 	</array>
-	<!-- Not Background. launchd.plist(5) defines a Background job as work
-	     "not directly requested by the user" and applies resource limits
-	     meant to keep such work from disrupting the user experience. That
-	     throttles the agent exactly when the machine is loaded and hot,
-	     which is when the curve has to run. Measured on Mac17,7: the agent
-	     ran at priority 4 against the helper's 20, and under load its 1 Hz
-	     tick stretched to 51 seconds with the fans unchanged throughout. -->
+	<!-- Not Background. launchd derives the job's default quality of service
+	     from this key and Swift concurrency inherits it, so a Background job
+	     ran the tick on com.apple.root.background-qos.cooperative, the class
+	     macOS starves first under CPU contention. That is exactly when the
+	     curve has to run. Measured on Mac17,7 at load average 101: the tick
+	     took 148 seconds with the fans unchanged throughout, against 1.4
+	     seconds at load 161 once the job was no longer Background.
+
+	     Standard costs nothing at rest. It does not grant extra CPU, only a
+	     schedulable priority, and the tick's work is unchanged: 6 ms of CPU
+	     per second and one wakeup per second, against WindowServer's 285 ms
+	     and 545 wakeups. Standard resolves to the utility QoS tier, not an
+	     interactive one. -->
 	<key>ProcessType</key>
 	<string>Standard</string>
 @@TEST_CONTROL_ENVIRONMENT@@
