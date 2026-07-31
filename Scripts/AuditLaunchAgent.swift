@@ -61,6 +61,25 @@ do {
         try fail("launch-agent-audit failed: BundleProgram must preserve exact executable casing")
     }
 
+    // launchd derives the agent's default quality of service from ProcessType,
+    // and Swift concurrency inherits it, so a Background job runs its tick work
+    // on the throttled background pool. Measured on Mac17,7 at load average
+    // 161: the tick ran for 148 seconds with the fans unchanged throughout,
+    // against 1.4 seconds once the job was no longer Background. Fan control
+    // has to run when the machine is busy, which is when Background loses the
+    // CPU, so the classification is required and cannot be Background.
+    let forbiddenProcessTypes: Set<String> = ["Background"]
+    guard let actualProcessType = plist["ProcessType"] as? String else {
+        try fail(
+            "launch-agent-audit failed: ProcessType missing from \(plistPath); set it explicitly so the agent cannot inherit a throttled class"
+        )
+    }
+    guard !forbiddenProcessTypes.contains(actualProcessType) else {
+        try fail(
+            "launch-agent-audit failed: ProcessType is '\(actualProcessType)', which launchd throttles under CPU contention and which stalled the tick loop for minutes"
+        )
+    }
+
     print("launch-agent-audit: ok")
 } catch let failure as Failure {
     FileHandle.standardError.write(Data((failure.description + "\n").utf8))

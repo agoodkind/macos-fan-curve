@@ -19,8 +19,15 @@
 	<array>
 		<string>@@APP_BUNDLE_ID@@</string>
 	</array>
+	<!-- Not Background. launchd.plist(5) defines a Background job as work
+	     "not directly requested by the user" and applies resource limits
+	     meant to keep such work from disrupting the user experience. That
+	     throttles the agent exactly when the machine is loaded and hot,
+	     which is when the curve has to run. Measured on Mac17,7: the agent
+	     ran at priority 4 against the helper's 20, and under load its 1 Hz
+	     tick stretched to 51 seconds with the fans unchanged throughout. -->
 	<key>ProcessType</key>
-	<string>Background</string>
+	<string>Standard</string>
 @@TEST_CONTROL_ENVIRONMENT@@
 	<key>StandardOutPath</key>
 	<string>/dev/null</string>
