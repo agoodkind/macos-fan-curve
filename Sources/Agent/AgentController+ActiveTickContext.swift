@@ -17,6 +17,29 @@ private struct ActiveTickTemperatureState {
   let pressureTemperature: Double
 }
 
+// MARK: - CurveShape
+
+/// The shape of the line the user sees: the control points and how they are
+/// joined. Two ticks that produce the same shape describe the same curve,
+/// whatever identifiers the stored points carry.
+struct CurveShape: Equatable {
+  private let temperatures: [Double]
+  private let fanPercents: [Double]
+  private let interpolationMode: InterpolationMode
+
+  init(points: [CurvePoint], interpolationMode: InterpolationMode) {
+    self.temperatures = points.map(\.temperature)
+    self.fanPercents = points.map(\.fanPercent)
+    self.interpolationMode = interpolationMode
+  }
+
+  static func == (lhs: CurveShape, rhs: CurveShape) -> Bool {
+    lhs.temperatures == rhs.temperatures
+      && lhs.fanPercents == rhs.fanPercents
+      && lhs.interpolationMode == rhs.interpolationMode
+  }
+}
+
 private struct ActiveTickCurveState {
   let boost: Bool
   let baseCurvePercent: Double
@@ -100,10 +123,23 @@ extension AgentController {
     )
   }
 
-  private func activeTickCurveState(at pressureTemperature: Double) -> ActiveTickCurveState {
+  /// Snaps onto the line when the user edits the curve. The first observed
+  /// shape only records a starting point: activation has already snapped by
+  /// the time this runs, so treating it as an edit would snap twice.
+  private func snapIfCurveChanged(to shape: CurveShape) {
+    defer { lastCurveShape = shape }
+    guard let lastCurveShape, lastCurveShape != shape else { return }
+    beginRampSnap(resettingDemand: true)
+    agentControllerLog.notice("agent.curve.edited fans=snap-to-curve")
+  }
+
+  private func activeTickCurveState(at pressureTemperature: Double)
+    -> ActiveTickCurveState
+  {
     let boost = sharedConfig.loadBoostEnabled()
     let points = sharedConfig.loadCurve()
     let mode = sharedConfig.loadInterpolationMode()
+    snapIfCurveChanged(to: CurveShape(points: points, interpolationMode: mode))
     let baseCurvePercent = CurveInterpolation.evaluate(
       at: pressureTemperature,
       points: points,

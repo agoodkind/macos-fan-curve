@@ -119,6 +119,11 @@ extension AgentController {
       }
       return false
     }
+    if telemetry.transitioned {
+      // Leaving the inactive state already cleared the demand conditioner.
+      beginRampSnap(resettingDemand: false)
+      agentControllerTickLog.notice("agent.curve.activated fans=snap-to-curve")
+    }
     if telemetry.result.fans.isEmpty {
       agentControllerTickLog.debug(
         "agent.tick.fan_telemetry_unavailable recovery=publish-monitor-snapshot"
@@ -141,6 +146,8 @@ extension AgentController {
     previousFastTemperature = nil
     previousSlowTemperature = nil
     rampStateByFan.removeAll()
+    rampSnapRequested = false
+    lastCurveShape = nil
     lastCommandLogPercentByFan.removeAll()
     conditionedDemandPercent = nil
     conditionedDemandPercentVelocity = 0
@@ -351,6 +358,8 @@ extension AgentController {
         autoFans.append(UInt(fanIndex))
       }
     }
+    // Every fan has now had its chance to snap, so the request is spent.
+    rampSnapRequested = false
 
     let tickPriority =
       context.boost
