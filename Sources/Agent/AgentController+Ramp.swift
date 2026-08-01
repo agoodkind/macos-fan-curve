@@ -29,12 +29,49 @@ struct RampCommandInput {
 }
 
 extension AgentController {
+  /// Puts the fans on the curve in one command, then hands motion straight
+  /// back to acoustic damping.
+  ///
+  /// The user turning fan control on, or editing the curve, is a direct
+  /// request for a specific fan speed. Damping that request the way an ambient
+  /// temperature change is damped makes the app look unresponsive: reaching
+  /// the line took minutes. Spreading the move across several commands instead
+  /// only fights the fan's own spin-up, which already softens the arrival, and
+  /// sounds worse than the single command it was meant to replace.
+  ///
+  /// `resettingDemand` also clears the demand conditioner, which limits how
+  /// fast the target percent itself may move. Turning fan control on already
+  /// clears it as part of leaving the inactive state, but a curve edit while
+  /// running does not, and the conditioner would otherwise crawl to the new
+  /// percent long after the fans could have arrived.
+  func beginRampSnap(resettingDemand: Bool) {
+    rampSnapRequested = true
+    guard resettingDemand else { return }
+    conditionedDemandPercent = nil
+    conditionedDemandPercentVelocity = 0
+    conditionedDemandTemperatureC = nil
+    conditionedDemandTemperatureVelocityC = 0
+    lastDemandConditioningTime = nil
+  }
+
   func rampGovernedCommand(input: RampCommandInput) -> FanCommand {
     switch input.command {
     case .auto:
       rampStateByFan.removeValue(forKey: input.index)
       return .auto
     case .setRPM(let requestedRPM):
+      if rampSnapRequested {
+        rampStateByFan[input.index] = RampCommandState(
+          rpm: requestedRPM, timestamp: input.now)
+        logCommandChangeIfNeeded(
+          fanIndex: input.index,
+          requestedRPM: requestedRPM,
+          commandedRPM: requestedRPM,
+          currentFan: input.currentFan,
+          currentTemperatureC: input.currentTemperatureC
+        )
+        return .setRPM(requestedRPM)
+      }
       let baseline = commandBaselineRPM(
         fanIndex: input.index,
         requestedRPM: requestedRPM,
