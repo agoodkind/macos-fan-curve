@@ -9,7 +9,6 @@
 import SwiftUI
 
 private enum SidebarProminentButtonConstants {
-  static let labelHStackSpacing: CGFloat = 8
   static let horizontalPadding: CGFloat = 14
   static let verticalPadding: CGFloat = 7
 
