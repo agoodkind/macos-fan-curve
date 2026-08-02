@@ -28,13 +28,8 @@ private enum SidebarSupportConstants {
   static let rampingMinimumToleranceRPM: Float = 250
   static let rampingToleranceFactor: Float = 0.05
 
-  // Prominent action button appearance
-  static let inactiveTintOpacity: Double = 0.12
-  static let inactiveBorderOpacity: Double = 0.45
-  static let borderLineWidth: CGFloat = 0.8
+  // Prominent action button label
   static let buttonLabelHStackSpacing: CGFloat = 8
-  static let buttonHorizontalPadding: CGFloat = 14
-  static let buttonVerticalPadding: CGFloat = 7
 
   // Usage block layout (connected teal assist element)
   static let assistReadyTealOpacity: Double = 0.5
@@ -299,59 +294,25 @@ extension SensorDashboardSidebar {
     _ configuration: SidebarProminentActionConfiguration,
     action: @escaping () -> Void
   ) -> some View {
-    Group {
-      styledSidebarProminentActionButton(
-        configuration,
-        action: action
-      )
-    }
-    .frame(maxWidth: .infinity)
-    .allowsHitTesting(!configuration.isBusy)
-  }
-
-  @ViewBuilder
-  private func styledSidebarProminentActionButton(
-    _ configuration: SidebarProminentActionConfiguration,
-    action: @escaping () -> Void
-  ) -> some View {
-    sidebarProminentActionButtonBody(
-      configuration,
-      action: action
-    )
-    .buttonStyle(.plain)
-    .background {
-      Capsule()
-        .fill(
-          configuration.active
-            ? configuration.tint
-            : configuration.tint.opacity(SidebarSupportConstants.inactiveTintOpacity)
-        )
-    }
-    .overlay(
-      Capsule()
-        .stroke(
-          configuration.tint.opacity(
-            configuration.active ? 0 : SidebarSupportConstants.inactiveBorderOpacity),
-          lineWidth: SidebarSupportConstants.borderLineWidth
-        )
-    )
-  }
-
-  private func sidebarProminentActionButtonBody(
-    _ configuration: SidebarProminentActionConfiguration,
-    action: @escaping () -> Void
-  ) -> some View {
     Button {
       guard !configuration.isBusy else { return }
       action()
     } label: {
-      sidebarProminentActionButtonLabel(
-        configuration
-      )
-      .frame(maxWidth: .infinity)
+      sidebarProminentActionButtonLabel(configuration)
     }
+    .buttonStyle(
+      SidebarProminentButtonStyle(
+        tint: configuration.tint,
+        isActive: configuration.active,
+        isBusy: configuration.isBusy
+      )
+    )
+    .frame(maxWidth: .infinity)
+    .allowsHitTesting(!configuration.isBusy)
   }
 
+  /// Only the label's own content. Padding, font, color, and the glass
+  /// background belong to `SidebarProminentButtonStyle`.
   @ViewBuilder
   private func sidebarProminentActionButtonLabel(
     _ configuration: SidebarProminentActionConfiguration
@@ -371,15 +332,10 @@ extension SensorDashboardSidebar {
       }
 
       Text(configuration.title)
-        .foregroundStyle(configuration.active ? Color.white : Color.primary)
         .lineLimit(1)
 
       Spacer(minLength: 0)
     }
-    .font(.callout.weight(.medium))
-    .frame(maxWidth: .infinity)
-    .padding(.horizontal, SidebarSupportConstants.buttonHorizontalPadding)
-    .padding(.vertical, SidebarSupportConstants.buttonVerticalPadding)
   }
 
   var boostHelp: String {
