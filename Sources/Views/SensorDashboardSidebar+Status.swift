@@ -162,13 +162,6 @@ extension SensorDashboardSidebar {
           .foregroundColor(.secondary)
           .lineLimit(1)
         Spacer()
-        if showsControllerStateLabel {
-          Text(controllerStateLabel)
-            .font(.caption)
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
-            .monospacedDigit()
-        }
       }
       if !installState.agentLastError.isEmpty {
         Text("Fan Curve needs attention. Open settings or try setup again.")

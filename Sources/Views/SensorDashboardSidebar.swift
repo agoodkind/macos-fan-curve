@@ -67,8 +67,6 @@ struct SensorDashboardSidebar: View {
   @Binding var boost: Bool
   let cpuLoadAssistEnabled: Bool
   let gpuLoadAssistEnabled: Bool
-  let overdriveEnabled: Bool
-  let underdriveEnabled: Bool
   let presentation: DashboardPresentationState
 
   private static let assistSuite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
@@ -269,13 +267,6 @@ struct SensorDashboardSidebar: View {
   private var showsFanControlStateSubtitle: Bool {
     presentation.controlState != .setup
       && presentation.chartState != .degraded
-  }
-
-  var showsControllerStateLabel: Bool {
-    presentation.chartState == .active
-      && fanControlReady
-      && curveModel.isActive
-      && !boost
   }
 
   private var controlsSection: some View {

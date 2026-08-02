@@ -20,9 +20,6 @@ private enum SidebarSupportConstants {
   // Minimum visible duration for setup spinner
   static let helperSetupMinimumVisibleDuration: TimeInterval = 0.75
 
-  // Fan state delta thresholds for controller state label
-  static let rampingDeltaThreshold: Double = 0.02
-
   // RPM ramping detection tolerances
   static let rampingNearMaxRPMOffset: Float = 50
   static let rampingMinimumToleranceRPM: Float = 250
@@ -196,44 +193,6 @@ extension SensorDashboardSidebar {
     if !fanControlReady { return .secondary }
     if boost { return Color(nsColor: .systemOrange) }
     return curveModel.isActive ? Color.accentColor : .secondary
-  }
-
-  var controllerStateLabel: String {
-    let targetPercent = clampedPercent(runtime.commandedTargetPercent)
-    let target = Int((targetPercent * 100).rounded())
-
-    guard let observedPercent else {
-      return "Targeting \(target)%"
-    }
-
-    let delta = targetPercent - observedPercent
-    if delta > SidebarSupportConstants.rampingDeltaThreshold {
-      return "Stepping up toward \(target)%"
-    }
-    if delta < -SidebarSupportConstants.rampingDeltaThreshold {
-      return "Cooling down toward \(target)%"
-    }
-    return "Targeting \(target)%"
-  }
-
-  var observedPercent: Double? {
-    let percents = runtime.fans.compactMap { fan -> Double? in
-      guard let range = effectiveRPMRange(for: fan), fan.actualRPM > 0 else { return nil }
-      return clampedPercent(Double((fan.actualRPM - range.min) / (range.max - range.min)))
-    }
-    guard !percents.isEmpty else { return nil }
-    return percents.reduce(0, +) / Double(percents.count)
-  }
-
-  func effectiveRPMRange(for fan: AgentFanSnapshot) -> (min: Float, max: Float)? {
-    let minRPM: Float = underdriveEnabled ? 0 : fan.minRPM
-    let maxRPM: Float = overdriveEnabled ? max(fan.maxRPM, overdriveTargetRPM) : fan.maxRPM
-    guard maxRPM > minRPM else { return nil }
-    return (minRPM, maxRPM)
-  }
-
-  func clampedPercent(_ percent: Double) -> Double {
-    max(0, min(1, percent))
   }
 
   func isRamping(_ fan: AgentFanSnapshot) -> Bool {
