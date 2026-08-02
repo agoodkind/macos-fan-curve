@@ -248,46 +248,62 @@ extension SensorDashboardSidebar {
     return abs(fan.actualRPM - target) > tolerance
   }
 
+  /// Boost as a standard switch row under the Fan Control toggle. The switch
+  /// is orange while Boost is on and the system's normal gray while off.
   var boostButton: some View {
-    let targetAction: SidebarPendingAction = boost ? .disableBoost : .enableBoost
-    let configuration = SidebarProminentActionConfiguration(
-      title: boostButtonLabel,
-      systemImage: "bolt.fill",
-      tint: Color(nsColor: .systemOrange),
-      active: boost,
-      isBusy: isPendingAction(targetAction)
-    )
-    return sidebarProminentActionButton(configuration) {
-      sensorDashboardSidebarLog.notice(
-        "sidebar.boost.toggled next_enabled=\((!boost), privacy: .public)"
-      )
-      beginPendingAction(targetAction)
-      let enabled = !boost
-      Task {
-        do {
-          try await runtime.setBoostEnabled(enabled)
-          await MainActor.run {
-            boost = enabled
-          }
-        } catch {
-          sensorDashboardSidebarLog.notice(
-            "sidebar.boost.command_failed enabled=\(enabled, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=keep-current-state"
-          )
-          await MainActor.run {
-            completePendingAction(targetAction, reason: "command-failed")
+    HStack {
+      Text("Boost")
+        .font(.body)
+      Spacer()
+      HStack(spacing: SidebarSupportConstants.buttonLabelHStackSpacing) {
+        if boostToggleBusy {
+          ProgressView()
+            .controlSize(.mini)
+        }
+        Toggle("", isOn: boostBinding)
+          .labelsHidden()
+          .toggleStyle(.switch)
+          .controlSize(.regular)
+          .tint(Color(nsColor: .systemOrange))
+          .disabled(hasPendingAction() && !boostToggleBusy)
+          .help(boostHelp)
+          .accessibilityValue(boost ? "1" : "0")
+          .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.boost)
+      }
+    }
+  }
+
+  var boostToggleBusy: Bool {
+    isPendingAction(.enableBoost) || isPendingAction(.disableBoost)
+  }
+
+  private var boostBinding: Binding<Bool> {
+    Binding(
+      get: { boost },
+      set: { enabled in
+        guard !hasPendingAction() else { return }
+        sensorDashboardSidebarLog.notice(
+          "sidebar.boost.toggled next_enabled=\(enabled, privacy: .public)"
+        )
+        beginPendingAction(enabled ? .enableBoost : .disableBoost)
+        Task {
+          do {
+            try await runtime.setBoostEnabled(enabled)
+            await MainActor.run {
+              boost = enabled
+            }
+          } catch {
+            sensorDashboardSidebarLog.notice(
+              "sidebar.boost.command_failed enabled=\(enabled, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=keep-current-state"
+            )
+            await MainActor.run {
+              completePendingAction(
+                enabled ? .enableBoost : .disableBoost, reason: "command-failed")
+            }
           }
         }
       }
-    }
-    .help(boostHelp)
-    .accessibilityValue(boost ? "1" : "0")
-    .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.boost)
-  }
-
-  private var boostButtonLabel: String {
-    if isPendingAction(.enableBoost) { return "Boosting Fans" }
-    if isPendingAction(.disableBoost) { return "Stopping Boost" }
-    return boost ? "Stop Boost" : "Boost Fans"
+    )
   }
 
   func sidebarProminentActionButton(
@@ -300,19 +316,15 @@ extension SensorDashboardSidebar {
     } label: {
       sidebarProminentActionButtonLabel(configuration)
     }
-    .buttonStyle(
-      SidebarProminentButtonStyle(
-        tint: configuration.tint,
-        isActive: configuration.active,
-        isBusy: configuration.isBusy
-      )
+    .sidebarProminentButtonStyle(
+      tint: configuration.tint,
+      isActive: configuration.active,
+      isBusy: configuration.isBusy
     )
     .frame(maxWidth: .infinity)
     .allowsHitTesting(!configuration.isBusy)
   }
 
-  /// Only the label's own content. Padding, font, color, and the glass
-  /// background belong to `SidebarProminentButtonStyle`.
   @ViewBuilder
   private func sidebarProminentActionButtonLabel(
     _ configuration: SidebarProminentActionConfiguration
@@ -336,6 +348,8 @@ extension SensorDashboardSidebar {
 
       Spacer(minLength: 0)
     }
+    .font(.callout.weight(.medium))
+    .frame(maxWidth: .infinity)
   }
 
   var boostHelp: String {
