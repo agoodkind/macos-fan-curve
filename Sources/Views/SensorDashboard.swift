@@ -31,12 +31,6 @@ struct SensorDashboard: View {
   @AppStorage(SharedConfigKeys.gpuLoadAssistEnabled, store: suite)
   private var gpuLoadAssistEnabled: Bool = false
 
-  @AppStorage(SharedConfigKeys.overdriveEnabled, store: suite)
-  private var overdriveEnabled: Bool = false
-
-  @AppStorage(SharedConfigKeys.underdriveEnabled, store: suite)
-  private var underdriveEnabled: Bool = false
-
   private var unit: TemperatureUnit {
     TemperatureUnit(rawValue: unitRaw) ?? .celsius
   }
@@ -53,8 +47,6 @@ struct SensorDashboard: View {
           boost: $boost,
           cpuLoadAssistEnabled: cpuLoadAssistEnabled,
           gpuLoadAssistEnabled: gpuLoadAssistEnabled,
-          overdriveEnabled: overdriveEnabled,
-          underdriveEnabled: underdriveEnabled,
           presentation: presentation
         )
         .frame(minHeight: geometry.size.height)
