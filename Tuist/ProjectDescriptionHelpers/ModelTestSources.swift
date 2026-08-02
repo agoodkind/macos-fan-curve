@@ -55,6 +55,7 @@ public func makeModelTestSources(
     "Sources/Models/CPULoadSampler.swift",
     "Sources/Models/IOAcceleratorPerformanceStatistics.swift",
     "Sources/Models/AcousticRampGovernor.swift",
+    "Sources/Models/AgentPresence.swift",
     "Sources/Models/TickCoordinator.swift",
     "Sources/Models/TickHeartbeatScheduler.swift",
     "Sources/Models/DeadlineBoundedOperation.swift",

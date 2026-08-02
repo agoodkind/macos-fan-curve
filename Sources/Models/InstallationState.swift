@@ -13,7 +13,6 @@ import Foundation
 private let log = AppLog.make(category: "InstallationState")
 
 private enum InstallationStateConstants {
-  static let agentLiveFreshnessWindow: TimeInterval = 10
   static let monitoringPollInterval: TimeInterval = 2.0
 }
 
@@ -38,6 +37,13 @@ final class InstallationState: ObservableObject {
   /// Timestamp of the Agent's last successful tick, read from the shared
   /// UserDefaults suite on each refresh. 0 when unset.
   @Published var agentLastTickEpoch: Double = 0
+  /// True while the app holds an open XPC connection to the Agent. Direct
+  /// proof the Agent is answering, so it outranks the polled heartbeat.
+  @Published var agentConnected: Bool = false
+  /// When `refresh()` last read `agentLastTickEpoch`. The heartbeat's age is
+  /// measured against this rather than against the current time, so a late
+  /// refresh cannot age a healthy Agent into looking dead.
+  @Published var lastTickObservedAt: Date?
   /// Last error string reported by the Agent, empty when the last tick
   /// succeeded or the Agent has never written one.
   @Published var agentLastError: String = ""
@@ -80,15 +86,38 @@ final class InstallationState: ObservableObject {
     step == .helperAwaitingApproval
   }
 
-  /// True when the Agent is registered AND has written a tick within the
-  /// freshness window. "Registered but silent" means the process died or
-  /// is hung, which is what the user sees as "fan control stopped".
+  /// One reading of every signal that speaks to the Agent answering.
+  var agentPresenceReading: AgentPresenceResolver.Reading {
+    AgentPresenceResolver.Reading(
+      registered: agentEnabled,
+      connected: agentConnected,
+      heartbeatAge: heartbeatAgeAtObservation
+    )
+  }
+
+  /// Age of the heartbeat measured at the moment it was read, never at render
+  /// time. A render-time measurement grows while the app is not polling, which
+  /// aged a healthy Agent into looking dead.
+  private var heartbeatAgeAtObservation: TimeInterval? {
+    guard agentLastTickEpoch > 0, let lastTickObservedAt else { return nil }
+    return lastTickObservedAt.timeIntervalSince(
+      Date(timeIntervalSince1970: agentLastTickEpoch)
+    )
+  }
+
+  var agentLivenessEvidence: AgentLivenessEvidence {
+    AgentPresenceResolver.evidence(for: agentPresenceReading)
+  }
+
+  var agentPresence: AgentPresence {
+    AgentPresenceResolver.presence(for: agentPresenceReading)
+  }
+
+  /// True when the Agent is registered and something proves it is answering.
+  /// "Registered but silent" means the process died or is hung, which is what
+  /// the user sees as "fan control stopped".
   var agentLive: Bool {
-    guard agentEnabled else { return false }
-    let lastTick = Date(timeIntervalSince1970: agentLastTickEpoch)
-    return agentLastTickEpoch > 0
-      && Date().timeIntervalSince(lastTick)
-        < InstallationStateConstants.agentLiveFreshnessWindow
+    agentLivenessEvidence != .unproven
   }
 
   var agentSnapshotCompatible: Bool {
@@ -99,8 +128,8 @@ final class InstallationState: ObservableObject {
   func startMonitoring(agentClient: FanCurveAgentClient) {
     Task { refresh(agentClient: agentClient) }
     timer?.invalidate()
-    timer = Timer.scheduledTimer(
-      withTimeInterval: InstallationStateConstants.monitoringPollInterval,
+    let scheduled = Timer(
+      timeInterval: InstallationStateConstants.monitoringPollInterval,
       repeats: true
     ) { [weak self] _ in
       Task { @MainActor in
@@ -109,6 +138,11 @@ final class InstallationState: ObservableObject {
         }
       }
     }
+    // `.common`, not the default mode. A default-mode timer stops firing
+    // while the run loop is tracking, which includes scrolling this list and
+    // dragging the window, and the refresh must keep running through that.
+    RunLoop.main.add(scheduled, forMode: .common)
+    timer = scheduled
   }
 
   func stopMonitoring() {
@@ -231,13 +265,27 @@ final class InstallationState: ObservableObject {
     }
   }
 
+  /// Takes one reading of everything the Agent reports about itself.
+  ///
+  /// `lastTickObservedAt` is stamped here, in the same breath as the heartbeat
+  /// it describes, so the pair always agree. Reading the heartbeat now and
+  /// dating it later is what let a late refresh look like a dead Agent.
+  private func adoptAgentSignals(connected: Bool, from suite: UserDefaults) {
+    agentConnected = connected
+    agentLastTickEpoch = suite.double(forKey: SharedConfigKeys.agentLastTick)
+    lastTickObservedAt = Date()
+    agentExecutableHash = suite.string(forKey: SharedConfigKeys.agentExecutableHash) ?? ""
+    agentLastError = suite.string(forKey: SharedConfigKeys.agentLastError) ?? ""
+    agentSnapshotSchemaVersion = AgentSnapshotStore.storedSchemaVersion(defaults: suite)
+  }
+
   /// Probes current installation status.
   private func refresh(agentClient: FanCurveAgentClient) {
     let currentAgentServiceStatus = currentAgentStatus()
     let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
     let helperOK = agentClient.helperReachable
     let runtimeSetup = agentClient.runtimeState.setup
-    let agentConnected = agentClient.connectionState == .connected
+    let connectedNow = agentClient.connectionState == .connected
     let appBundlePath = Bundle.main.bundleURL.path
     let storedAgentFingerprint = suite.string(
       forKey: SharedConfigKeys.agentRegistrationFingerprint
@@ -246,23 +294,23 @@ final class InstallationState: ObservableObject {
     helperReachable = helperOK
     helperStatus = Self.helperStatus(from: runtimeSetup, helperReachable: helperOK)
 
-    agentLastTickEpoch = suite.double(forKey: SharedConfigKeys.agentLastTick)
-    agentExecutableHash = suite.string(forKey: SharedConfigKeys.agentExecutableHash) ?? ""
-    agentLastError = suite.string(forKey: SharedConfigKeys.agentLastError) ?? ""
-    agentSnapshotSchemaVersion = AgentSnapshotStore.storedSchemaVersion(defaults: suite)
+    let previousEvidence = agentLivenessEvidence
+    let previousPresence = agentPresence
+    adoptAgentSignals(connected: connectedNow, from: suite)
 
     let resolvedAgentStatus = resolveAgentStatus(
       agentStatus: currentAgentServiceStatus,
-      agentConnected: agentConnected,
+      agentConnected: connectedNow,
       appBundlePath: appBundlePath,
       applyInBackground: suite.bool(forKey: SharedConfigKeys.applyInBackground),
       storedFingerprint: storedAgentFingerprint
     )
-    let visibleAgentStatus = Self.visibleAgentStatus(
-      serviceStatus: resolvedAgentStatus,
-      agentConnected: agentConnected
-    )
-    agentStatus = visibleAgentStatus
+    // Registration alone decides "installed". An open connection proves the
+    // Agent is answering, which `agentLivenessEvidence` already reads, so
+    // forcing `.enabled` here only let an unregistered Agent claim it was
+    // installed.
+    agentStatus = resolvedAgentStatus
+    logAgentPresenceChange(from: previousPresence, previousEvidence: previousEvidence)
 
     let fingerprints = serviceRegistrationFingerprints()
     if resolvedAgentStatus == .enabled {
@@ -432,11 +480,23 @@ extension InstallationState {
     }
   }
 
-  nonisolated private static func visibleAgentStatus(
-    serviceStatus: ManagedServiceStatus,
-    agentConnected: Bool
-  ) -> ManagedServiceStatus {
-    guard agentConnected else { return serviceStatus }
-    return .enabled
+  /// Records what the Agent row now says and what decided it. Without this
+  /// the row's transitions leave no trace, so a user reporting a wrong dot
+  /// gives an investigator nothing to work from.
+  private func logAgentPresenceChange(
+    from previousPresence: AgentPresence,
+    previousEvidence: AgentLivenessEvidence
+  ) {
+    let evidence = agentLivenessEvidence
+    let presence = agentPresence
+    guard previousPresence != presence || previousEvidence != evidence else {
+      return
+    }
+    // The observation-stamped age, the same value the resolver decided on. A
+    // render-time recomputation could log an age the row never saw.
+    let heartbeatAge = heartbeatAgeAtObservation ?? -1
+    log.notice(
+      "agent.presence.changed from=\(previousPresence.rawValue, privacy: .public) to=\(presence.rawValue, privacy: .public) evidence=\(evidence.rawValue, privacy: .public) connected=\(agentConnected, privacy: .public) heartbeatAgeSeconds=\(String(format: "%.1f", heartbeatAge), privacy: .public)"
+    )
   }
 }

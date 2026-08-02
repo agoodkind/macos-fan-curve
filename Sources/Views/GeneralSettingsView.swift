@@ -259,21 +259,31 @@ struct GeneralSettingsView: View {
 }
 
 extension GeneralSettingsView {
-  private func statusRow(
+  /// One row shape for both services. `accessory` is a closure because only
+  /// the Agent row adds a spinner; sharing the rest is what stops the two
+  /// rows drifting apart.
+  private func statusRow<Accessory: View>(
     title: String,
     subtitle: String,
-    status: String,
-    state: ServiceRowState
+    state: ServiceRowState,
+    @ViewBuilder accessory: () -> Accessory
   ) -> some View {
-    SettingsAccessoryRow(accessoryWidth: GeneralSettingsConstants.statusRowAccessoryWidth) {
+    // Built once here. `SettingsAccessoryRow` stores its accessory closure,
+    // which a non-escaping parameter cannot be captured by.
+    let accessoryView = accessory()
+    return SettingsAccessoryRow(
+      accessoryWidth: GeneralSettingsConstants.statusRowAccessoryWidth
+    ) {
       HStack(
         alignment: .firstTextBaseline, spacing: GeneralSettingsConstants.rowHStackSpacing
       ) {
-        Circle()
-          .fill(state.color)
-          .frame(
-            width: GeneralSettingsConstants.indicatorDotSize,
-            height: GeneralSettingsConstants.indicatorDotSize)
+        // Decorative on purpose: the row's status text carries the state, so
+        // VoiceOver speaks one wording instead of a symbol label that could
+        // contradict it.
+        Image(systemName: state.symbolName)
+          .foregroundStyle(state.color)
+          .font(.system(size: GeneralSettingsConstants.indicatorDotSize))
+          .accessibilityHidden(true)
         VStack(
           alignment: .leading, spacing: GeneralSettingsConstants.indicatorDotVStackSpacing
         ) {
@@ -285,10 +295,7 @@ extension GeneralSettingsView {
         }
       }
     } accessory: {
-      Text(status)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.helperStatus)
+      accessoryView
     }
   }
 
@@ -296,9 +303,13 @@ extension GeneralSettingsView {
     statusRow(
       title: generatedHelperDisplayName,
       subtitle: generatedHelperBundleID,
-      status: helperStatusText,
       state: helperRowState
-    )
+    ) {
+      Text(helperStatusText)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.helperStatus)
+    }
     .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.helperRow)
   }
 
@@ -337,26 +348,11 @@ extension GeneralSettingsView {
   }
 
   private var agentRow: some View {
-    SettingsAccessoryRow(accessoryWidth: GeneralSettingsConstants.statusRowAccessoryWidth) {
-      HStack(
-        alignment: .firstTextBaseline, spacing: GeneralSettingsConstants.rowHStackSpacing
-      ) {
-        Circle()
-          .fill(agentRowState.color)
-          .frame(
-            width: GeneralSettingsConstants.indicatorDotSize,
-            height: GeneralSettingsConstants.indicatorDotSize)
-        VStack(
-          alignment: .leading, spacing: GeneralSettingsConstants.indicatorDotVStackSpacing
-        ) {
-          Text(generatedAgentDisplayName)
-            .font(.body)
-          Text(generatedAgentBundleID)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-      }
-    } accessory: {
+    statusRow(
+      title: generatedAgentDisplayName,
+      subtitle: generatedAgentBundleID,
+      state: agentRowState
+    ) {
       HStack(spacing: GeneralSettingsConstants.accessoryHStackSpacing) {
         if installState.isRegisteringAgent {
           ProgressView()
@@ -427,9 +423,7 @@ extension GeneralSettingsView {
   }
 
   private var agentRowState: ServiceRowState {
-    if installState.agentLive { return .healthy }
-    if installState.agentEnabled { return .degraded }
-    return .inactive
+    installState.agentPresence.rowState
   }
 
   @ViewBuilder
@@ -463,9 +457,7 @@ extension GeneralSettingsView {
   }
 
   private var agentStatusText: String {
-    if installState.agentLive { return "Running" }
-    if installState.agentEnabled { return "Installed" }
-    return "Not Installed"
+    installState.agentPresence.statusText
   }
 
   private func restartAgent() {
