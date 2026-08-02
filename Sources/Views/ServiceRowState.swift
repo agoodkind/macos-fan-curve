@@ -11,8 +11,9 @@ import SwiftUI
 /// How a service row reports a service's condition.
 ///
 /// Color alone must never carry the meaning, so every case also supplies a
-/// symbol and a spoken label. A viewer in grayscale, a viewer with color
-/// blindness, and a VoiceOver listener all read the same state.
+/// symbol. The row's status text carries the state for VoiceOver; the symbol
+/// is decorative there, so the spoken state and the visible words cannot
+/// disagree.
 enum ServiceRowState: Equatable {
   case degraded
   case healthy
@@ -36,19 +37,12 @@ enum ServiceRowState: Equatable {
     }
   }
 
-  var accessibilityLabel: String {
-    switch self {
-    case .healthy: return "Healthy"
-    case .degraded: return "Needs attention"
-    case .inactive: return "Inactive"
-    }
-  }
 }
 
 // MARK: - Agent presence
 
-/// The dot's color for a presence. Wording, symbol, and spoken label all live
-/// on `AgentPresence` itself, so every channel reads one value.
+/// The dot for a presence. The wording lives on `AgentPresence` itself, so
+/// every channel reads one value.
 extension AgentPresence {
   var rowState: ServiceRowState {
     switch self {

@@ -24,9 +24,9 @@ enum AgentLivenessEvidence: String, Equatable {
 
 // MARK: - AgentPresence
 
-/// What the Background Agent row reports. The dot, its spoken label, and the
-/// trailing words all derive from this one value, so they cannot disagree the
-/// way parallel condition chains could.
+/// What the Background Agent row reports. The dot and the trailing words both
+/// derive from this one value, so they cannot disagree the way parallel
+/// condition chains could. VoiceOver speaks the words; the dot is decorative.
 enum AgentPresence: String, Equatable, CaseIterable {
   case notInstalled
   case notResponding
@@ -40,24 +40,6 @@ enum AgentPresence: String, Equatable, CaseIterable {
     case .running: return "Running"
     case .notResponding: return "Not responding"
     case .notInstalled: return "Not Installed"
-    }
-  }
-
-  /// Distinct shapes, not three tints of one shape, so the states stay
-  /// separable once color is removed.
-  var symbolName: String {
-    switch self {
-    case .running: return "checkmark.circle.fill"
-    case .notResponding: return "exclamationmark.triangle.fill"
-    case .notInstalled: return "circle"
-    }
-  }
-
-  var accessibilityLabel: String {
-    switch self {
-    case .running: return "Running"
-    case .notResponding: return "Not responding"
-    case .notInstalled: return "Not installed"
     }
   }
 }

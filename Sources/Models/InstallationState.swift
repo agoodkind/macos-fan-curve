@@ -492,10 +492,9 @@ extension InstallationState {
     guard previousPresence != presence || previousEvidence != evidence else {
       return
     }
-    let heartbeatAge =
-      agentLastTickEpoch > 0
-      ? Date().timeIntervalSince(Date(timeIntervalSince1970: agentLastTickEpoch))
-      : -1
+    // The observation-stamped age, the same value the resolver decided on. A
+    // render-time recomputation could log an age the row never saw.
+    let heartbeatAge = heartbeatAgeAtObservation ?? -1
     log.notice(
       "agent.presence.changed from=\(previousPresence.rawValue, privacy: .public) to=\(presence.rawValue, privacy: .public) evidence=\(evidence.rawValue, privacy: .public) connected=\(agentConnected, privacy: .public) heartbeatAgeSeconds=\(String(format: "%.1f", heartbeatAge), privacy: .public)"
     )

@@ -277,10 +277,13 @@ extension GeneralSettingsView {
       HStack(
         alignment: .firstTextBaseline, spacing: GeneralSettingsConstants.rowHStackSpacing
       ) {
+        // Decorative on purpose: the row's status text carries the state, so
+        // VoiceOver speaks one wording instead of a symbol label that could
+        // contradict it.
         Image(systemName: state.symbolName)
           .foregroundStyle(state.color)
           .font(.system(size: GeneralSettingsConstants.indicatorDotSize))
-          .accessibilityLabel(state.accessibilityLabel)
+          .accessibilityHidden(true)
         VStack(
           alignment: .leading, spacing: GeneralSettingsConstants.indicatorDotVStackSpacing
         ) {

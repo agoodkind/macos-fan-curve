@@ -1,8 +1,10 @@
 # Service status in Settings
 
 The General pane shows one row each for the Background Agent and the
-Privileged Helper. Each row carries a symbol, a spoken label, and a status
-word. All three come from one value, so they cannot disagree.
+Privileged Helper. Each row carries a symbol and a status word, both derived
+from one value, so they cannot disagree. VoiceOver speaks the status word;
+the symbol is decorative, so the spoken state and the visible words are the
+same words.
 
 ## What the Background Agent row reports
 
@@ -12,7 +14,7 @@ word. All three come from one value, so they cannot disagree.
 | Filled triangle | Orange | Not responding | Registered, but nothing proves it is answering |
 | Hollow circle | Gray | Not Installed | Not registered with Service Management |
 
-The symbol and the word carry the state on their own. Color is a second
+The symbol and the word each carry the state on their own. Color is a second
 channel, never the only one, so the row stays readable in grayscale, with
 color blindness, and through VoiceOver.
 
@@ -24,7 +26,8 @@ Three signals can prove it, ranked. The strongest available one decides.
    and is serving it. This cannot go stale.
 2. **A recent heartbeat.** The Agent writes a timestamp to the shared defaults
    suite once a second, on a timer independent of its tick loop. It counts as
-   proof while it is under ten seconds old.
+   proof while it is strictly under ten seconds old; exactly at the window is
+   silent.
 3. **Nothing.** The row reports "Not responding".
 
 Registration and liveness are separate questions. An open connection proves

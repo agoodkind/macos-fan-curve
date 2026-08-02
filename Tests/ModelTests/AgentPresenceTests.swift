@@ -84,7 +84,8 @@ final class AgentPresenceTests: XCTestCase {
     expect(AgentPresenceResolver.presence(for: input)) == .notInstalled
   }
 
-  /// The boundary belongs to the running side, matching the window's name.
+  /// The window is exclusive: only an age strictly inside it proves liveness,
+  /// so a heartbeat exactly as old as the window counts as silent.
   func testHeartbeatExactlyAtWindowCountsAsSilent() {
     let atWindow = reading(
       registered: true,
@@ -101,12 +102,12 @@ final class AgentPresenceTests: XCTestCase {
     expect(AgentPresenceResolver.presence(for: justInside)) == .running
   }
 
-  func testEveryPresenceHasDistinctWordingSymbolAndLabel() {
+  /// VoiceOver speaks the status text, so distinct wording per state is what
+  /// keeps the states separable without color.
+  func testEveryPresenceHasDistinctWording() {
     let presences = AgentPresence.allCases
 
     expect(Set(presences.map(\.statusText)).count) == presences.count
-    expect(Set(presences.map(\.symbolName)).count) == presences.count
-    expect(Set(presences.map(\.accessibilityLabel)).count) == presences.count
   }
 
   /// Color is not information every viewer receives, so a warning state may
@@ -116,7 +117,6 @@ final class AgentPresenceTests: XCTestCase {
 
     for presence in [AgentPresence.notResponding, .notInstalled] {
       expect(reassuring).toNot(contain(presence.statusText))
-      expect(reassuring).toNot(contain(presence.accessibilityLabel))
     }
   }
 }
