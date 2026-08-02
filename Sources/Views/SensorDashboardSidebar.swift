@@ -271,7 +271,7 @@ struct SensorDashboardSidebar: View {
       && presentation.chartState != .degraded
   }
 
-  private var showsControllerStateLabel: Bool {
+  var showsControllerStateLabel: Bool {
     presentation.chartState == .active
       && fanControlReady
       && curveModel.isActive
@@ -291,11 +291,6 @@ struct SensorDashboardSidebar: View {
             Text(fanControlStateLabel)
               .font(.caption)
               .foregroundColor(fanControlStateColor)
-          }
-          if showsControllerStateLabel {
-            Text(controllerStateLabel)
-              .font(.caption2)
-              .foregroundStyle(.tertiary)
           }
         }
         Spacer()
