@@ -40,6 +40,18 @@ struct CurveShape: Equatable {
   }
 }
 
+// MARK: - BoostObservation
+
+/// Boost as a tick last saw it.
+///
+/// The state before the first active tick is not the same as Boost being off:
+/// a tick that has never seen Boost has no earlier value to compare against,
+/// and must not treat its first reading as a user press.
+enum BoostObservation: Equatable {
+  case observed(Bool)
+  case unobserved
+}
+
 private struct ActiveTickCurveState {
   let boost: Bool
   let baseCurvePercent: Double
@@ -133,10 +145,29 @@ extension AgentController {
     agentControllerLog.notice("agent.curve.edited fans=snap-to-curve")
   }
 
+  /// Snaps onto the new target when the user presses Boost, in either
+  /// direction. Boost is a direct request for a fan speed, so damping it the
+  /// way ambient temperature drift is damped would take about a minute to
+  /// reach full speed.
+  ///
+  /// The first observed value only records a starting point, since activation
+  /// has already snapped by the time this runs.
+  private func snapIfBoostChanged(to boost: Bool) {
+    defer { lastBoostObservation = .observed(boost) }
+    guard case .observed(let previous) = lastBoostObservation, previous != boost else {
+      return
+    }
+    beginRampSnap(resettingDemand: true)
+    agentControllerLog.notice(
+      "agent.boost.changed enabled=\(boost, privacy: .public) fans=snap-to-curve"
+    )
+  }
+
   private func activeTickCurveState(at pressureTemperature: Double)
     -> ActiveTickCurveState
   {
     let boost = sharedConfig.loadBoostEnabled()
+    snapIfBoostChanged(to: boost)
     let points = sharedConfig.loadCurve()
     let mode = sharedConfig.loadInterpolationMode()
     snapIfCurveChanged(to: CurveShape(points: points, interpolationMode: mode))
