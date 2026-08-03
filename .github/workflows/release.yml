@@ -6,6 +6,14 @@ on:
       - main
   workflow_dispatch:
     inputs:
+      release_track:
+        description: Release track
+        required: false
+        default: stable
+        type: choice
+        options:
+          - stable
+          - prerelease
       candidate_tag:
         description: Published pre-release tag to promote
         required: false
@@ -32,7 +40,8 @@ jobs:
     uses: agoodkind/swift-makefile/.github/workflows/_release.yml@main
     with:
       runner: macos-26
-      release-track: ${{ github.event_name == 'push' && 'prerelease' || 'stable' }}
+      release-track: ${{ github.event_name == 'workflow_dispatch' && inputs.release_track || '' }}
+      release-on-merge: stable
       candidate-tag: ${{ inputs.candidate_tag || '' }}
       candidate-asset-pattern: "FanCurve-*.dmg"
       source-sha: ${{ inputs.source_sha || '' }}
