@@ -40,6 +40,16 @@
     ]
   },
   {
+    "tag_name": "26.7.25-r1",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "FanCurve-26.7.25-r1.dmg"
+      }
+    ]
+  },
+  {
     "tag_name": "26.7.26-r1",
     "draft": true,
     "prerelease": false,
