@@ -28,14 +28,15 @@ fi
 expected_stable=$(
     printf '%s\n' \
         $'26.7.26\tFanCurve-26.7.26.dmg' \
-        $'202607230506-57-971f910\tFanCurve-20260723050687.dmg'
+        $'26.7.25-r1\tFanCurve-26.7.25-r1.dmg' \
+        $'26.7.24\tFanCurve-26.7.24.dmg'
 )
 actual_stable=$(
     jq --raw-output \
         --arg release_track stable \
         --arg asset_prefix "FanCurve-" \
         --arg asset_suffix ".dmg" \
-        --argjson release_limit 2 \
+        --argjson release_limit 3 \
         --from-file "${SELECTOR_PATH}" \
         "${FIXTURE_PATH}"
 )
