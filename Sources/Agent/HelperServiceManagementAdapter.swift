@@ -30,14 +30,6 @@ private enum HelperServiceManagementError: LocalizedError {
   }
 }
 
-// MARK: - ServiceManagementAdapters
-
-extension ServiceManagementAdapters {
-  static func helper() -> any HelperServiceManaging {
-    HelperServiceManagementAdapter()
-  }
-}
-
 // MARK: - HelperServiceManagementAdapter
 
 final class HelperServiceManagementAdapter: HelperServiceManaging, @unchecked Sendable {

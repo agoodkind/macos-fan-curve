@@ -141,6 +141,24 @@ private struct ControlledXPCLifecycleDependencies {
   let service: any HelperServiceManaging
 }
 
+// MARK: - ControlledXPCInitialStateConfiguration
+
+private struct ControlledXPCInitialStateConfiguration {
+  let sessionID: UUID
+  let backgroundAgentStatus: TestManagedServiceStatus
+  let helperStatus: TestManagedServiceStatus
+  let helperOperation: TestOperationDirective
+  let fault: TestXPCFault
+  let helperLifecycle: TestHelperLifecycleState
+}
+
+// MARK: - ControlledXPCRuntimeModes
+
+private struct ControlledXPCRuntimeModes {
+  let app: TestControlRuntimeMode
+  let agent: TestControlRuntimeMode
+}
+
 // MARK: - ControlledXPCHarness
 
 @MainActor
@@ -190,6 +208,9 @@ final class ControlledXPCHarness {
 
   init(
     backgroundAgentStatus: TestManagedServiceStatus = .enabled,
+    helperStatus: TestManagedServiceStatus = .enabled,
+    helperOperation: TestOperationDirective = .succeed,
+    helperLifecycle: TestHelperLifecycleState = .defaultState,
     fault: TestXPCFault = .noFault,
     recordsProxyErrorHandlers: Bool = false,
     lifecycleFixture: ControlledSystemHelperLifecycleFixture? = nil
@@ -199,29 +220,27 @@ final class ControlledXPCHarness {
         "FanCurveControlledXPC-\(UUID().uuidString)",
         isDirectory: true
       )
+    let initialConfiguration = ControlledXPCInitialStateConfiguration(
+      sessionID: sessionID,
+      backgroundAgentStatus: backgroundAgentStatus,
+      helperStatus: helperStatus,
+      helperOperation: helperOperation,
+      fault: fault,
+      helperLifecycle: helperLifecycle
+    )
+    let initialState = Self.makeInitialState(initialConfiguration)
     self.store = try TestControlSessionStore.initialize(
       at: directory,
-      initialState: Self.makeState(
-        sessionID: sessionID,
-        revision: 1,
-        backgroundAgentStatus: backgroundAgentStatus,
-        fault: fault
-      )
+      initialState: initialState
     )
     self.evidenceReader = XPCFaultEvidenceReader(store: store)
     self.recordsProxyErrorHandlers = recordsProxyErrorHandlers
-    let activation = TestControlActivation.controlled(
+    let runtimeModes = try Self.makeRuntimeModes(
       sessionID: sessionID,
       directory: directory
     )
-    self.appMode = try TestControlRuntimeMode.resolve(
-      participant: .app,
-      activation: activation
-    )
-    self.agentMode = try TestControlRuntimeMode.resolve(
-      participant: .agent,
-      activation: activation
-    )
+    self.appMode = runtimeModes.app
+    self.agentMode = runtimeModes.agent
     self.defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuiteName))
     defaults.removePersistentDomain(forName: defaultsSuiteName)
     let sharedConfig = SharedConfig(defaults: defaults)
@@ -241,7 +260,9 @@ final class ControlledXPCHarness {
       lifecycleGate: controller,
       bundledExecutableURL: lifecycleDependencies.executableURL,
       artifactValidator: lifecycleFixture?.artifactValidator
-        ?? HashingArtifactValidator(),
+        ?? AgentTestControlAdapters.artifactValidator(mode: agentMode) {
+          HashingArtifactValidator()
+        },
       fanResetDeadline: lifecycleFixture?.fanResetDeadline
         ?? ControlledXPCTestValues.systemHelperFanResetDeadline,
       verificationTimeout: lifecycleFixture?.verificationTimeout
@@ -252,6 +273,49 @@ final class ControlledXPCHarness {
       controller.updateSystemHelperRuntimeState(state)
     }
     self.listener = NSXPCListener.anonymous()
+  }
+
+  private static func makeInitialState(
+    _ configuration: ControlledXPCInitialStateConfiguration
+  ) -> TestControlState {
+    let baseState = makeState(
+      sessionID: configuration.sessionID,
+      revision: 1,
+      backgroundAgentStatus: configuration.backgroundAgentStatus,
+      fault: configuration.fault
+    )
+    return TestControlState(
+      sessionID: configuration.sessionID,
+      revision: 1,
+      services: TestServiceState(
+        backgroundAgentStatus: configuration.backgroundAgentStatus,
+        helperStatus: configuration.helperStatus,
+        nextOperation: configuration.helperOperation
+      ),
+      hardware: baseState.hardware,
+      xpcFault: configuration.fault,
+      helperLifecycle: configuration.helperLifecycle
+    )
+  }
+
+  private static func makeRuntimeModes(
+    sessionID: UUID,
+    directory: URL
+  ) throws -> ControlledXPCRuntimeModes {
+    let activation = TestControlActivation.controlled(
+      sessionID: sessionID,
+      directory: directory
+    )
+    return try ControlledXPCRuntimeModes(
+      app: TestControlRuntimeMode.resolve(
+        participant: .app,
+        activation: activation
+      ),
+      agent: TestControlRuntimeMode.resolve(
+        participant: .agent,
+        activation: activation
+      )
+    )
   }
 
   private func makeService() -> FanCurveAgentXPCService {

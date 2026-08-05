@@ -14,6 +14,64 @@ import XCTest
 
 @MainActor
 extension TestControlXPCIntegrationTests {
+  func testAutomaticHelperUpdateRecordsEvidence() async throws {
+    let outdatedIdentity = TestSystemHelperIdentity(
+      version: "0.3.0",
+      build: "3",
+      commit: "outdated-helper-commit",
+      executableHash: "outdated-helper-full-hash",
+      protocolVersion: 1
+    )
+    let bundledIdentity = TestHelperLifecycleState.bundledIdentity
+    let outdatedLifecycle = TestHelperLifecycleState(
+      active: .identity(outdatedIdentity),
+      bundled: bundledIdentity,
+      verificationBlocked: true
+    )
+    let harness = try ControlledXPCHarness(helperLifecycle: outdatedLifecycle)
+    defer { harness.stop() }
+    try await harness.startAndWaitUntilConnected()
+    let completion = TestControlBooleanObservation()
+    let reconciliation = Task { @MainActor in
+      defer { completion.record() }
+      return await harness.reconcile(.startup)
+    }
+    defer { reconciliation.cancel() }
+
+    try await harness.waitForSystemHelperState { state in
+      if case .updating = state {
+        return true
+      }
+      return false
+    }
+    try await harness.waitForAgentEvidence(
+      .helperClassification(
+        active: .identity(outdatedIdentity),
+        bundled: bundledIdentity
+      )
+    )
+    try await harness.waitForAgentEvidence(.helperFanReset(result: .succeed))
+
+    expect(completion.value) == false
+    expect(try harness.store.loadState().helperLifecycle.active)
+      == .identity(outdatedIdentity)
+    expect(try harness.agentEvidence()).toNot(
+      contain(.helperIdentityVerified(bundledIdentity))
+    )
+
+    try harness.applyHelperLifecycle(
+      TestHelperLifecycleState(
+        active: .identity(bundledIdentity),
+        bundled: bundledIdentity,
+        verificationBlocked: false
+      )
+    )
+    let result = await reconciliation.value
+
+    expect(result) == .running(active: SystemHelperIdentity(bundledIdentity))
+    try harness.assertSuccessfulHelperReplacement(beforeVerifiedIdentity: bundledIdentity)
+  }
+
   func testControlledCommandsTraverseRealXPCAndWriteParticipantEvidence() async throws {
     let harness = try ControlledXPCHarness()
     defer { harness.stop() }
@@ -231,6 +289,97 @@ extension TestControlXPCIntegrationTests {
         continuation.resume()
       }
     }
+  }
+}
+
+// MARK: - Controlled System Helper lifecycle evidence
+
+@MainActor
+extension ControlledXPCHarness {
+  func agentEvidence() throws -> [TestControlEventPayload] {
+    try store.loadEvents(for: .agent).map(\.payload)
+  }
+
+  func assertSuccessfulHelperReplacement(
+    beforeVerifiedIdentity identity: TestSystemHelperIdentity
+  ) throws {
+    let evidence = try agentEvidence()
+    let unregisterIndex = try XCTUnwrap(
+      evidence.firstIndex(
+        of: .serviceMutation(
+          service: .helper,
+          operation: .unregister,
+          result: .succeed
+        )
+      )
+    )
+    let registerIndex = try XCTUnwrap(
+      evidence[evidence.index(after: unregisterIndex)...].firstIndex(
+        of: .serviceMutation(
+          service: .helper,
+          operation: .register,
+          result: .succeed
+        )
+      )
+    )
+    let verifiedIdentityIndex = try XCTUnwrap(
+      evidence[evidence.index(after: registerIndex)...].firstIndex(
+        of: .helperIdentityVerified(identity)
+      )
+    )
+    expect(unregisterIndex) < registerIndex
+    expect(registerIndex) < verifiedIdentityIndex
+  }
+
+  func waitForAgentEvidence(
+    _ payload: TestControlEventPayload
+  ) async throws {
+    let revision = try store.loadState().revision.value
+    let store = store
+    let event: TestControlEvent = try await withCheckedThrowingContinuation { continuation in
+      DispatchQueue.global(qos: .userInitiated).async {
+        continuation.resume(
+          with: Result {
+            try store.waitForEvent(
+              participant: .agent,
+              kind: payload.kind,
+              revision: revision,
+              timeout: ControlledXPCTestValues.connectionTimeoutSeconds
+            )
+          }
+        )
+      }
+    }
+    guard event.payload == payload else {
+      throw TestControlError.invalidArguments(
+        "Unexpected System Helper lifecycle evidence"
+      )
+    }
+  }
+
+  func applyHelperLifecycle(_ lifecycle: TestHelperLifecycleState) throws {
+    let currentState = try store.loadState()
+    let revision = currentState.revision.value + 1
+    try store.apply(
+      TestControlState(
+        sessionID: sessionID,
+        revision: revision,
+        services: currentState.services,
+        hardware: currentState.hardware,
+        xpcFault: currentState.xpcFault,
+        helperLifecycle: lifecycle
+      )
+    )
+    _ = try store.waitForAcknowledgment(
+      participant: .agent,
+      revision: revision,
+      timeout: ControlledXPCTestValues.connectionTimeoutSeconds
+    )
+    _ = try store.waitForAcknowledgment(
+      participant: .app,
+      revision: revision,
+      timeout: ControlledXPCTestValues.connectionTimeoutSeconds
+    )
   }
 }
 
