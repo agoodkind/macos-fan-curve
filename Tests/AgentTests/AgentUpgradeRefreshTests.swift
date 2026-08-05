@@ -22,6 +22,7 @@ final class AgentUpgradeRefreshTests: XCTestCase {
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let context = AgentRefreshContext(
       agentConnected: true,
+      agentUnresponsive: false,
       runningHash: "outdated-agent",
       snapshotSchemaVersion: AgentSnapshot.currentSchemaVersion,
       storedFingerprint: "old-registration",
@@ -35,6 +36,55 @@ final class AgentUpgradeRefreshTests: XCTestCase {
     expect(service.unregisterCount) == 1
     expect(service.registerCount) == 1
     expect(service.status) == .enabled
+  }
+
+  func testUnresponsiveAgentWithMatchingHashRefreshesRegistration() throws {
+    let service = RecordingBackgroundAgentService()
+    let state = InstallationState(backgroundAgentService: service) {
+      "bundled-agent"
+    }
+    let suiteName = "AgentUpgradeRefreshTests.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let context = AgentRefreshContext(
+      agentConnected: false,
+      agentUnresponsive: true,
+      runningHash: "bundled-agent",
+      snapshotSchemaVersion: nil,
+      storedFingerprint: "new-registration",
+      expectedFingerprint: "new-registration",
+      defaults: defaults
+    )
+
+    state.refreshAgentIfNeeded(context)
+
+    expect(service.unregisterCount) == 1
+    expect(service.registerCount) == 1
+    expect(service.status) == .enabled
+  }
+
+  func testDisconnectedAgentInsideGraceKeepsRegistration() throws {
+    let service = RecordingBackgroundAgentService()
+    let state = InstallationState(backgroundAgentService: service) {
+      "bundled-agent"
+    }
+    let suiteName = "AgentUpgradeRefreshTests.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let context = AgentRefreshContext(
+      agentConnected: false,
+      agentUnresponsive: false,
+      runningHash: "bundled-agent",
+      snapshotSchemaVersion: nil,
+      storedFingerprint: "new-registration",
+      expectedFingerprint: "new-registration",
+      defaults: defaults
+    )
+
+    state.refreshAgentIfNeeded(context)
+
+    expect(service.unregisterCount) == 0
+    expect(service.registerCount) == 0
   }
 }
 
