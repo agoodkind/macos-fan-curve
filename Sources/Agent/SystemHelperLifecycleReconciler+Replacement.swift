@@ -183,7 +183,14 @@ extension SystemHelperLifecycleReconciler {
         )
       }
       if attempt < attempts, !Task.isCancelled {
-        try? await ContinuousClock().sleep(for: registerRetryDelay)
+        do {
+          try await ContinuousClock().sleep(for: registerRetryDelay)
+        } catch {
+          systemHelperLifecycleLog.notice(
+            "system_helper.register.retry_wait_cancelled recovery=stop-retrying"
+          )
+          break
+        }
       }
     }
     return result(

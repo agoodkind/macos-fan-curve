@@ -16,13 +16,14 @@ import Foundation
 /// the machine with no registered helper.
 protocol SystemHelperReplacementJournaling: Sendable {
   var hasPendingReplacement: Bool { get }
+
   func recordPendingReplacement()
   func clearPendingReplacement()
 }
 
-// MARK: - SharedDefaultsSystemHelperReplacementJournal
+// MARK: - SystemHelperReplacementJournal
 
-final class SharedDefaultsSystemHelperReplacementJournal:
+final class SystemHelperReplacementJournal:
   SystemHelperReplacementJournaling,
   @unchecked Sendable
 {

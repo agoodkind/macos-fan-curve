@@ -45,7 +45,7 @@ actor SystemHelperLifecycleReconciler {
     registerRetryDelay: Duration =
       SystemHelperReconcileTiming.registerRetryDelay,
     replacementJournal: any SystemHelperReplacementJournaling =
-      SharedDefaultsSystemHelperReplacementJournal(),
+      SystemHelperReplacementJournal(),
     publishState: @escaping @Sendable (SystemHelperRuntimeState) -> Void
   ) {
     self.fanHardware = fanHardware
