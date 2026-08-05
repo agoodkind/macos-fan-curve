@@ -17,6 +17,11 @@ private let testRepositoryURL = URL(fileURLWithPath: #filePath)
   .deletingLastPathComponent()
   .deletingLastPathComponent()
 
+private func addTestBuildVersion(to environment: inout [String: String]) {
+  environment["MARKETING_VERSION"] = "0.0.0-test"
+  environment["CURRENT_PROJECT_VERSION"] = "0"
+}
+
 final class TestControlCommandTests: XCTestCase {
   private var temporaryDirectories: [URL] = []
 
@@ -282,6 +287,7 @@ final class TestControlCommandTests: XCTestCase {
       "SRCROOT": root.path,
       "TARGET_NAME": "FanCurve",
     ]) { _, newValue in newValue }
+    addTestBuildVersion(to: &environment)
     environment["FANCURVE_TEST_CONTROL_PATH"] = testControlPath
     process.environment = environment
     let errorPipe = Pipe()

@@ -6,7 +6,7 @@ let package = Package(
   dependencies: [
     .package(
       url: "https://github.com/agoodkind/macos-smc-fan.git",
-      from: "0.1.0"
+      exact: "0.4.1"
     ),
     .package(
       url: "https://github.com/Quick/Nimble.git",

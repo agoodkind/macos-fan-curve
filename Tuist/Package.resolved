@@ -1,59 +1,59 @@
 {
-  "originHash": "f5775ef6caf7b805f02cfc7e4ce130267b4ebf334f951d8349aa3fc54bf6f8ba",
-  "pins": [
+  "originHash" : "0a2e85491a156ce4f647247f46c9019990439538fd2dcc3d7697a873792c239f",
+  "pins" : [
     {
-      "identity": "cwlcatchexception",
-      "kind": "remoteSourceControl",
-      "location": "https://github.com/mattgallagher/CwlCatchException.git",
-      "state": {
-        "revision": "07b2ba21d361c223e25e3c1e924288742923f08c",
-        "version": "2.2.1"
+      "identity" : "cwlcatchexception",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mattgallagher/CwlCatchException.git",
+      "state" : {
+        "revision" : "07b2ba21d361c223e25e3c1e924288742923f08c",
+        "version" : "2.2.1"
       }
     },
     {
-      "identity": "cwlpreconditiontesting",
-      "kind": "remoteSourceControl",
-      "location": "https://github.com/mattgallagher/CwlPreconditionTesting.git",
-      "state": {
-        "revision": "0139c665ebb45e6a9fbdb68aabfd7c39f3fe0071",
-        "version": "2.2.2"
+      "identity" : "cwlpreconditiontesting",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mattgallagher/CwlPreconditionTesting.git",
+      "state" : {
+        "revision" : "0139c665ebb45e6a9fbdb68aabfd7c39f3fe0071",
+        "version" : "2.2.2"
       }
     },
     {
-      "identity": "macos-smc-fan",
-      "kind": "remoteSourceControl",
-      "location": "https://github.com/agoodkind/macos-smc-fan.git",
-      "state": {
-        "revision": "5b829a4e1d5c4e4439a782cf048d2083567915fe",
-        "version": "0.3.0"
+      "identity" : "macos-smc-fan",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/agoodkind/macos-smc-fan.git",
+      "state" : {
+        "revision" : "2d36a6815ad227405f10f55d58d9377fe0b48366",
+        "version" : "0.4.1"
       }
     },
     {
-      "identity": "nimble",
-      "kind": "remoteSourceControl",
-      "location": "https://github.com/Quick/Nimble.git",
-      "state": {
-        "revision": "727f75d91a0f7501d08d938966d17e6728b76a2a"
+      "identity" : "nimble",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Quick/Nimble.git",
+      "state" : {
+        "revision" : "727f75d91a0f7501d08d938966d17e6728b76a2a"
       }
     },
     {
-      "identity": "sparkle",
-      "kind": "remoteSourceControl",
-      "location": "https://github.com/sparkle-project/Sparkle",
-      "state": {
-        "revision": "b6496a74a087257ef5e6da1c5b29a447a60f5bd7",
-        "version": "2.9.4"
+      "identity" : "sparkle",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sparkle-project/Sparkle",
+      "state" : {
+        "revision" : "b6496a74a087257ef5e6da1c5b29a447a60f5bd7",
+        "version" : "2.9.4"
       }
     },
     {
-      "identity": "swift-log",
-      "kind": "remoteSourceControl",
-      "location": "https://github.com/apple/swift-log.git",
-      "state": {
-        "revision": "5073617dac96330a486245e4c0179cb0a6fd2256",
-        "version": "1.12.0"
+      "identity" : "swift-log",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-log.git",
+      "state" : {
+        "revision" : "5073617dac96330a486245e4c0179cb0a6fd2256",
+        "version" : "1.12.0"
       }
     }
   ],
-  "version": 3
+  "version" : 3
 }

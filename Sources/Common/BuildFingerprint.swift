@@ -16,6 +16,14 @@ private enum BuildFingerprintConstants {
   static let shortHashHexLength: Int = 12
 }
 
+// MARK: - BuildFingerprintError
+
+enum BuildFingerprintError: LocalizedError {
+  case executableUnreadable(String)
+}
+
+// MARK: - BuildFingerprint
+
 enum BuildFingerprint {
   static var runningExecutableHash: String {
     shortHash(of: Bundle.main.executableURL)
@@ -27,19 +35,27 @@ enum BuildFingerprint {
         .appendingPathComponent("Contents/MacOS/\(generatedAgentExecutableName)"))
   }
 
-  static func shortHash(of url: URL?) -> String {
-    guard let url else { return "n/a" }
-    let data: Data
+  static func hash(of url: URL) throws -> String {
+    let bytes: Data
     do {
-      data = try Data(contentsOf: url)
+      bytes = try Data(contentsOf: url)
     } catch {
       buildFingerprintLog.notice(
-        "fingerprint.read_failed path=\(url.path, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=unavailable"
+        "fingerprint.read_failed executable=\(url.lastPathComponent, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=throw"
       )
+      throw BuildFingerprintError.executableUnreadable(error.localizedDescription)
+    }
+    return SHA256.hash(data: bytes)
+      .map { String(format: "%02x", $0) }
+      .joined()
+  }
+
+  static func shortHash(of url: URL?) -> String {
+    guard let url else { return "n/a" }
+    do {
+      return String(try hash(of: url).prefix(BuildFingerprintConstants.shortHashHexLength))
+    } catch {
       return "n/a"
     }
-    let digest = SHA256.hash(data: data)
-    let hex = digest.map { String(format: "%02x", $0) }.joined()
-    return String(hex.prefix(BuildFingerprintConstants.shortHashHexLength))
   }
 }

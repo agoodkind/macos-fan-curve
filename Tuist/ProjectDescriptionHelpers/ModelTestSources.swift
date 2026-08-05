@@ -26,6 +26,7 @@ public func makeModelTestSources(
     "Sources/App/L10n.swift",
     "Sources/Common/SharedConfigKeys.swift",
     "Sources/Common/AppAccessibilityIdentifier.swift",
+    "Sources/Common/BuildFingerprint.swift",
     "Sources/Common/AgentFanSnapshot.swift",
     "Sources/Common/AgentControllerMode.swift",
     "Sources/Common/AgentSnapshot.swift",
