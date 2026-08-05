@@ -52,8 +52,22 @@
           "test_control.helper.verification_resumed revision=\(state.revision.value, privacy: .public)"
         )
       }
+      if !isVerification {
+        try runtime.record(
+          .helperClassification(
+            active: state.helperLifecycle.active,
+            bundled: state.helperLifecycle.bundled
+          ),
+          state: state
+        )
+      }
       switch state.helperLifecycle.active {
       case .identity(let identity):
+        if isVerification,
+          identity.executableHash == state.helperLifecycle.bundled.executableHash
+        {
+          try runtime.record(.helperIdentityVerified(identity), state: state)
+        }
         controlledHardwareLog.debug(
           "test_control.helper.identity_returned version=\(identity.version, privacy: .public) build=\(identity.build, privacy: .public) revision=\(state.revision.value, privacy: .public)"
         )
@@ -88,6 +102,12 @@
     func resetAllDiscoveredFansToAuto() async throws {
       await Task.yield()
       let state = try runtime.refresh()
+      if case .fail = state.hardware.nextOperation {
+        try runtime.record(
+          .helperFanReset(result: state.hardware.nextOperation),
+          state: state
+        )
+      }
       try requireSuccess(state.hardware.nextOperation)
       let fanIndices = Set(
         state.hardware.fanReadings.compactMap { reading in
@@ -97,6 +117,7 @@
       for fanIndex in fanIndices.sorted() {
         try runtime.record(.fanAutoReset(fanIndex: fanIndex), state: state)
       }
+      try runtime.record(.helperFanReset(result: .succeed), state: state)
       controlledHardwareLog.info(
         "test_control.helper.fan_reset_completed count=\(fanIndices.count, privacy: .public) revision=\(state.revision.value, privacy: .public)"
       )
