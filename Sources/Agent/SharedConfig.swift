@@ -21,13 +21,21 @@ private enum SharedConfigConstants {
 /// Writes agent status (PID, last tick) back for GUI health display.
 struct SharedConfig {
   let defaults: UserDefaults
+  let runningExecutableHash: String
 
   init() {
-    self.init(defaults: UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard)
+    self.init(
+      defaults: UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard,
+      runningExecutableHash: BuildFingerprint.runningExecutableHash
+    )
   }
 
-  init(defaults: UserDefaults) {
+  init(
+    defaults: UserDefaults,
+    runningExecutableHash: String = BuildFingerprint.runningExecutableHash
+  ) {
     self.defaults = defaults
+    self.runningExecutableHash = runningExecutableHash
     LoadAssistStore.migrateLegacyIfNeeded(defaults: self.defaults)
   }
 
@@ -108,8 +116,7 @@ struct SharedConfig {
   func writeAgentStatus(pid: Int32, lastTick: Date) {
     defaults.set(Int(pid), forKey: SharedConfigKeys.agentPID)
     defaults.set(lastTick.timeIntervalSince1970, forKey: SharedConfigKeys.agentLastTick)
-    defaults.set(
-      BuildFingerprint.runningExecutableHash, forKey: SharedConfigKeys.agentExecutableHash)
+    defaults.set(runningExecutableHash, forKey: SharedConfigKeys.agentExecutableHash)
   }
 
   func writeAgentSnapshot(_ snapshot: AgentSnapshot) {

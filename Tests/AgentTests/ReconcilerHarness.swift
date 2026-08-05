@@ -35,6 +35,7 @@ final class ReconcilerHarness: @unchecked Sendable {
   let hardware: StatefulFanHardware
   let outdatedIdentity: SystemHelperIdentity
   let recorder = SystemHelperStateRecorder()
+  let replacementJournal = InMemorySystemHelperReplacementJournal()
   let service: StatefulHelperService
 
   private let reconciler: SystemHelperLifecycleReconciler
@@ -117,7 +118,9 @@ final class ReconcilerHarness: @unchecked Sendable {
       artifactValidator: artifactValidator,
       fanResetDeadline: Self.fanResetDeadlineSeconds,
       verificationTimeout: verificationTimeout,
-      verificationPollInterval: verificationPollInterval
+      verificationPollInterval: verificationPollInterval,
+      registerRetryDelay: .milliseconds(1),
+      replacementJournal: replacementJournal
     ) { [recorder] state in
       recorder.record(state)
     }
@@ -145,6 +148,21 @@ final class ReconcilerHarness: @unchecked Sendable {
       return .unreachable
     }
   }
+}
+
+// MARK: - InMemorySystemHelperReplacementJournal
+
+final class InMemorySystemHelperReplacementJournal:
+  SystemHelperReplacementJournaling,
+  @unchecked Sendable
+{
+  private let lock = NSLock()
+  private var pending = false
+
+  var hasPendingReplacement: Bool { lock.withLock { pending } }
+
+  func recordPendingReplacement() { lock.withLock { pending = true } }
+  func clearPendingReplacement() { lock.withLock { pending = false } }
 }
 
 // MARK: - RecordingLifecycleGate

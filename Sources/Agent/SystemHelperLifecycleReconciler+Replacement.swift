@@ -27,6 +27,10 @@ extension SystemHelperLifecycleReconciler {
     if Task.isCancelled {
       return cancelled(context: context, stage: .unregister)
     }
+    replacementJournal.recordPendingReplacement()
+    systemHelperLifecycleLog.notice(
+      "system_helper.replace.journal.recorded operation=\(context.operation.rawValue, privacy: .public)"
+    )
     let inactiveContext = SystemHelperFailureContext(
       operation: context.operation,
       activeIdentity: nil,
@@ -160,23 +164,44 @@ extension SystemHelperLifecycleReconciler {
     ) {
       return artifactFailure
     }
-    do {
-      try await service.register()
-      systemHelperLifecycleLog.notice(
-        "system_helper.register.finished operation=\(context.operation.rawValue, privacy: .public)"
-      )
-    } catch {
-      return result(
-        fail(
-          context: context,
-          stage: .register,
-          reason: error.localizedDescription,
-          recovery: "Retry System Helper repair"
-        ),
-        registrationMutated: recoveringAfterUnregister
-      )
+    let attempts =
+      recoveringAfterUnregister
+      ? SystemHelperReconcileTiming.registerRetryAttempts
+      : 1
+    var lastFailureReason = ""
+    for attempt in 1...attempts {
+      do {
+        try await service.register()
+        systemHelperLifecycleLog.notice(
+          "system_helper.register.finished operation=\(context.operation.rawValue, privacy: .public)"
+        )
+        return nil
+      } catch {
+        lastFailureReason = error.localizedDescription
+        systemHelperLifecycleLog.notice(
+          "system_helper.register.attempt_failed operation=\(context.operation.rawValue, privacy: .public) attempt=\(attempt, privacy: .public) of=\(attempts, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=retry-after-delay"
+        )
+      }
+      if attempt < attempts, !Task.isCancelled {
+        do {
+          try await ContinuousClock().sleep(for: registerRetryDelay)
+        } catch {
+          systemHelperLifecycleLog.notice(
+            "system_helper.register.retry_wait_cancelled recovery=stop-retrying"
+          )
+          break
+        }
+      }
     }
-    return nil
+    return result(
+      fail(
+        context: context,
+        stage: .register,
+        reason: lastFailureReason,
+        recovery: "Retry System Helper repair"
+      ),
+      registrationMutated: recoveringAfterUnregister
+    )
   }
 
   private func revalidateRegistrationArtifact(
@@ -217,6 +242,10 @@ extension SystemHelperLifecycleReconciler {
     context: SystemHelperFailureContext,
     bundledIdentity: SystemHelperIdentity
   ) async -> SystemHelperReconcileResult {
+    replacementJournal.clearPendingReplacement()
+    systemHelperLifecycleLog.notice(
+      "system_helper.replace.journal.cleared operation=\(context.operation.rawValue, privacy: .public)"
+    )
     if service.status == .requiresApproval {
       publish(.approvalRequired)
       return result(.approvalRequired, registrationMutated: true)
