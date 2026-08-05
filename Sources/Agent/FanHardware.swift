@@ -13,6 +13,16 @@ struct FanHardwareBatchRead: Sendable {
   let temps: [String: Float]
 }
 
+// MARK: - SystemHelperIdentityRequestError
+
+enum SystemHelperIdentityRequestError: LocalizedError, Sendable {
+  case unsupported
+
+  var errorDescription: String? {
+    "System Helper lifecycle operations are unavailable"
+  }
+}
+
 // MARK: - FanHardware
 
 /// The agent's single seam onto fan and sensor hardware. Refines
@@ -21,6 +31,10 @@ struct FanHardwareBatchRead: Sendable {
 /// discovery stays inside the injected port rather than reaching around it.
 protocol FanHardware: SMCKeyDiscovering {
   func shutdown()
+
+  func getHelperIdentity() async throws -> SystemHelperIdentity
+  func probeLegacyHelperReachability() async throws
+  func resetAllDiscoveredFansToAuto() async throws
 
   func readAndApply(
     fanCount: UInt,
@@ -47,6 +61,21 @@ protocol FanHardware: SMCKeyDiscovering {
 // MARK: - FanHardware
 
 extension FanHardware {
+  func getHelperIdentity() async throws -> SystemHelperIdentity {
+    await Task.yield()
+    throw SystemHelperIdentityRequestError.unsupported
+  }
+
+  func probeLegacyHelperReachability() async throws {
+    await Task.yield()
+    throw SystemHelperIdentityRequestError.unsupported
+  }
+
+  func resetAllDiscoveredFansToAuto() async throws {
+    await Task.yield()
+    throw SystemHelperIdentityRequestError.unsupported
+  }
+
   func readAndApply(
     fanCount: UInt,
     tempKeys: [String]

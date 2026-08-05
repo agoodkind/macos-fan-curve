@@ -96,16 +96,12 @@ extension SensorDashboardSidebar {
   }
 
   var statusLabel: String {
-    let helperReachable =
-      runtime.isFresh ? runtime.helperReachable : installState.helperReachable
-    if installState.step == .helperMissing {
-      return helperReachable ? "System Helper Needs Repair" : "System Helper Required"
-    }
+    let helperNeedsSetup =
+      installState.step == .helperMissing
+      || installState.step == .helperAwaitingApproval
+    if helperNeedsSetup { return systemHelperPresentation.status }
     if presentation.installationStep == .agentMissing { return "Background Control Required" }
-    let approvalPending =
-      presentation.installationStep == .agentAwaitingApproval
-      || presentation.installationStep == .helperAwaitingApproval
-    if approvalPending {
+    if presentation.installationStep == .agentAwaitingApproval {
       return "Approval Required"
     }
     if runtime.runtimeState.health == .ownershipPreempted {
@@ -134,6 +130,13 @@ extension SensorDashboardSidebar {
       return "Fan Control Offline"
     case .red: return "Fan Control Unavailable"
     }
+  }
+
+  private var systemHelperPresentation: SystemHelperPresentation {
+    SystemHelperPresentation.resolve(
+      state: installState.systemHelperState,
+      repairInFlight: installState.isRegisteringHelper
+    )
   }
 
   var statusColor: Color {

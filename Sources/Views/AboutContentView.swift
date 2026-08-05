@@ -30,6 +30,7 @@ private enum AboutConstants {
 /// version, update check, author, and build hashes in one place.
 struct AboutContentView: View {
   @EnvironmentObject private var appUpdater: AppUpdater
+  @EnvironmentObject private var agentClient: FanCurveAgentClient
 
   var body: some View {
     Form {
@@ -147,6 +148,13 @@ struct AboutContentView: View {
       buildInfoRow(label: "Branch", value: generatedGitBranch)
       buildInfoRow(label: "Built", value: generatedBuildDate)
       buildInfoRow(label: "Binaries", value: binariesLine)
+      buildInfoRow(label: "System Helper", value: systemHelperVersion)
+        .accessibilityIdentifier(
+          AppAccessibilityIdentifier.Application.aboutSystemHelperVersion
+        )
+      buildInfoRow(label: "System Helper Hash", value: systemHelperHash)
+        .textSelection(.enabled)
+        .accessibilityIdentifier(AppAccessibilityIdentifier.Application.aboutSystemHelperHash)
     } header: {
       Text("Build Details")
     }
@@ -194,6 +202,14 @@ struct AboutContentView: View {
 
   private var binariesLine: String {
     "FanCurve \(BuildHashes.appHash) · FanCurveAgent \(BuildHashes.agentHash)"
+  }
+
+  private var systemHelperVersion: String {
+    SystemHelperPresentation.activeVersion(for: agentClient.runtimeState.systemHelper)
+  }
+
+  private var systemHelperHash: String {
+    BuildHashes.systemHelperHash(from: agentClient.runtimeState.systemHelper)
   }
 
   @ViewBuilder

@@ -19,14 +19,16 @@ final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
   private let listener: NSXPCListener
   private let faultController: any FanCurveAgentXPCFaultControlling
   private let processTerminator: @Sendable () -> Void
+  private let reconciler: SystemHelperLifecycleReconciler
   private let callbackLock = NSLock()
   private var eventCallbacks: [ObjectIdentifier: FanCurveAgentXPCEventProtocol] = [:]
   private var connections: [ObjectIdentifier: NSXPCConnection] = [:]
 
   convenience init(
     controller: AgentController,
+    helperService: any HelperServiceManaging,
+    reconciler: SystemHelperLifecycleReconciler,
     serviceName: String = FanCurveAgentXPC.serviceName,
-    helperService: any HelperServiceManaging = ServiceManagementAdapters.helper(),
     faultController: any FanCurveAgentXPCFaultControlling =
       ProductionAgentXPCFaultControl(),
     processTerminator: @escaping @Sendable () -> Void = { Darwin.exit(0) }
@@ -35,6 +37,7 @@ final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
       controller: controller,
       listener: NSXPCListener(machServiceName: serviceName),
       helperService: helperService,
+      reconciler: reconciler,
       faultController: faultController,
       processTerminator: processTerminator
     )
@@ -44,6 +47,7 @@ final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
     controller: AgentController,
     listener: NSXPCListener,
     helperService: any HelperServiceManaging,
+    reconciler: SystemHelperLifecycleReconciler,
     faultController: any FanCurveAgentXPCFaultControlling =
       ProductionAgentXPCFaultControl(),
     processTerminator: @escaping @Sendable () -> Void = { Darwin.exit(0) }
@@ -51,6 +55,7 @@ final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
     self.controller = controller
     self.helperService = helperService
     self.listener = listener
+    self.reconciler = reconciler
     self.faultController = faultController
     self.processTerminator = processTerminator
     super.init()
@@ -58,7 +63,6 @@ final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
     self.controller.runtimeSetupProvider = { _ in
       RuntimeSetupInputs(backgroundAgent: .satisfied)
     }
-    self.controller.systemHelperStateProvider = { .checking }
     self.controller.runtimeStateDidChange = { [weak self] runtimeState in
       self?.publishRuntimeState(runtimeState)
     }
@@ -70,6 +74,19 @@ final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
     )
     listener.resume()
     agentXPCLog.notice("agent.xpc.started")
+  }
+
+  func reconcileSystemHelper(
+    trigger: SystemHelperReconcileTrigger
+  ) async -> SystemHelperRuntimeState {
+    agentXPCLog.notice(
+      "agent.xpc.system_helper.reconcile.started operation=\(trigger.operation.rawValue, privacy: .public)"
+    )
+    let state = await reconciler.reconcile(trigger: trigger)
+    agentXPCLog.notice(
+      "agent.xpc.system_helper.reconcile.finished operation=\(trigger.operation.rawValue, privacy: .public) state=\(state.logName, privacy: .public)"
+    )
+    return state
   }
 }
 
@@ -155,7 +172,7 @@ extension FanCurveAgentXPCService: FanCurveAgentXPCProtocol {
 
   func requestRefresh(reply: @Sendable (Bool, String?) -> Void) {
     agentXPCLog.info("agent.xpc.refresh.requested")
-    controller.requestTick()
+    controller.requestTickIfRunning()
     reply(true, nil)
   }
 
@@ -263,7 +280,7 @@ extension FanCurveAgentXPCService: FanCurveAgentXPCProtocol {
 extension FanCurveAgentXPCService {
   func publishConfigChange() {
     controller.sharedConfig.defaults.synchronize()
-    controller.requestTick()
+    controller.requestTickIfRunning()
   }
 
   func handleCommand(_ command: AgentCommand) async -> AgentCommandResponse {
@@ -288,28 +305,25 @@ extension FanCurveAgentXPCService {
   }
 
   func installOrRepairHelperCommandResponse() async -> AgentCommandResponse {
-    agentXPCLog.notice("agent.xpc.command.helper_install.started owner=agent")
-    let result = await MainActor.run {
-      HelperServiceRegistration.installOrRepair(service: helperService)
-    }
-    if let errorDescription = result.errorDescription {
-      agentXPCLog.error(
-        "agent.xpc.command.helper_install.failed status=\(result.statusBefore.description, privacy: .public) error=\(errorDescription, privacy: .public) recovery=return-error"
+    agentXPCLog.notice("agent.xpc.command.helper_install.started owner=reconciler")
+    let state = await reconcileSystemHelper(trigger: .forcedRepair)
+    if case .running = state {
+      agentXPCLog.notice(
+        "agent.xpc.command.helper_install.finished result=verified-running"
       )
-      return AgentCommandResponse(accepted: false, message: errorDescription)
+      return AgentCommandResponse(accepted: true, message: nil)
     }
-
-    agentXPCLog.notice(
-      "agent.xpc.command.helper_install.finished status=\(result.statusAfterRegister?.description ?? "unknown", privacy: .public)"
+    let failure = state.commandFailureMessage
+    agentXPCLog.error(
+      "agent.xpc.command.helper_install.failed state=\(state.logName, privacy: .public) error=\(failure, privacy: .public) recovery=return-durable-failure"
     )
-    controller.requestTick()
-    return AgentCommandResponse(accepted: true, message: nil)
+    return AgentCommandResponse(accepted: false, message: failure)
   }
 
   func handleFanAutoCommand(_ fanIndex: UInt) async -> AgentCommandResponse {
     do {
       try await controller.setFanAuto(fanIndex)
-      controller.requestTick()
+      controller.requestTickIfRunning()
       return AgentCommandResponse(accepted: true, message: nil)
     } catch {
       agentXPCLog.notice(
@@ -324,7 +338,7 @@ extension FanCurveAgentXPCService {
   ) async -> AgentCommandResponse {
     do {
       try await controller.setFanRPM(request.fanIndex, rpm: request.rpm)
-      controller.requestTick()
+      controller.requestTickIfRunning()
       return AgentCommandResponse(accepted: true, message: nil)
     } catch {
       agentXPCLog.notice(

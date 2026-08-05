@@ -35,6 +35,18 @@ extension FanCurveUITestDriver {
     return candidate
   }
 
+  func waitForElementToDisappear(
+    _ identifier: String,
+    timeout: TimeInterval = FanCurveUITestDriver.conditionTimeout
+  ) throws {
+    try waitForPredicate(
+      NSPredicate(format: "exists == false"),
+      object: element(identifier),
+      description: "accessibility element \(identifier) to disappear",
+      timeout: timeout
+    )
+  }
+
   func waitForLabel(
     _ identifier: String,
     equals expectedLabel: String,

@@ -34,6 +34,8 @@ final class AgentController: @unchecked Sendable {
   let loadSampler = CPULoadSampler()
   let eventWriter = EventArtifactWriter()
   let tickCoordinator = TickCoordinator()
+  private let lifecycleLock = NSLock()
+  private let systemHelperStateLock = NSLock()
   lazy var heartbeatScheduler = TickHeartbeatScheduler(interval: heartbeatInterval) { [weak self] in
     self?.publishHeartbeat()
   }
@@ -58,9 +60,10 @@ final class AgentController: @unchecked Sendable {
   var conditionedDemandTemperatureVelocityC: Double = 0
   var lastDemandConditioningTime: Date?
   var runtimeSetupProvider: (@Sendable (AgentSnapshot?) -> RuntimeSetupInputs)?
-  var systemHelperStateProvider: @Sendable () -> SystemHelperRuntimeState = { .checking }
   var runtimeHealthOverrideProvider: (@Sendable (Date?) -> AgentRuntimeHealthOverride?)?
   var runtimeStateDidChange: (@Sendable (RuntimeState) -> Void)?
+  private var lifecycleRunning = false
+  private var storedSystemHelperState = SystemHelperRuntimeState.checking
   let acousticRampGovernor = AcousticRampGovernor()
 
   let pollInterval: TimeInterval = 1.0
@@ -111,17 +114,58 @@ final class AgentController: @unchecked Sendable {
     agentControllerLog.notice("agent.hardware.configured owner=agent")
   }
 
-  func start() {
-    agentControllerLog.notice("agent.started pollInterval=\(pollInterval, privacy: .public)s")
+  func resume() {
+    let shouldResume = lifecycleLock.withLock {
+      guard !lifecycleRunning else { return false }
+      lifecycleRunning = true
+      return true
+    }
+    guard shouldResume else {
+      agentControllerLog.debug("agent.lifecycle.resume.skipped reason=already-running")
+      return
+    }
+    performOnMainThread { [self] in
+      guard lifecycleLock.withLock({ lifecycleRunning }) else { return }
+      startLifecycle()
+    }
+  }
+
+  func pause() {
+    let shouldPause = lifecycleLock.withLock {
+      guard lifecycleRunning else { return false }
+      lifecycleRunning = false
+      return true
+    }
+    guard shouldPause else {
+      agentControllerLog.debug("agent.lifecycle.pause.skipped reason=already-paused")
+      return
+    }
+    performOnMainThread { [self] in
+      stopLifecycle()
+    }
+  }
+
+  private func startLifecycle() {
+    agentControllerLog.notice(
+      "agent.lifecycle.resumed pollInterval=\(pollInterval, privacy: .public)s"
+    )
     timer = Timer.scheduledTimer(
       withTimeInterval: pollInterval,
       repeats: true
     ) { [weak self] _ in
-      self?.requestTick()
+      self?.requestTickIfRunning()
     }
     heartbeatScheduler.start()
     registerDarwinObserver()
     requestTick()
+  }
+
+  private func stopLifecycle() {
+    timer?.invalidate()
+    timer = nil
+    heartbeatScheduler.stop()
+    unregisterDarwinObserver()
+    agentControllerLog.notice("agent.lifecycle.paused")
   }
 
   /// Stops tick scheduling without touching shared status or the XPC
@@ -129,14 +173,11 @@ final class AgentController: @unchecked Sendable {
   /// competing with the reset-to-auto call for the same serialized XPC
   /// channel (see `AgentShutdownSequencer`).
   func stopTickTimer() {
-    timer?.invalidate()
-    timer = nil
-    heartbeatScheduler.stop()
-    unregisterDarwinObserver()
+    pause()
   }
 
   func stop() {
-    stopTickTimer()
+    pause()
     sharedConfig.clearAgentStatus()
     fanHardware.shutdown()
     agentControllerLog.notice("agent.stopped")
@@ -217,10 +258,36 @@ final class AgentController: @unchecked Sendable {
     return RuntimeState.fromSharedDefaultsSnapshot(
       lastPublishedSnapshot,
       setup: runtimeSetupProvider?(lastPublishedSnapshot) ?? .ready,
-      systemHelper: systemHelperStateProvider(),
+      systemHelper: systemHelperStateLock.withLock { storedSystemHelperState },
       now: healthOverride?.now ?? Date(),
       ownershipPreempted: healthOverride?.ownershipPreempted ?? false
     )
+  }
+
+  func updateSystemHelperRuntimeState(_ state: SystemHelperRuntimeState) {
+    systemHelperStateLock.withLock {
+      storedSystemHelperState = state
+    }
+    agentControllerLog.notice(
+      "agent.system_helper.state_changed state=\(state.logName, privacy: .public)"
+    )
+    runtimeStateDidChange?(currentRuntimeStateForXPC())
+  }
+
+  func requestTickIfRunning() {
+    guard lifecycleLock.withLock({ lifecycleRunning }) else {
+      agentControllerLog.debug("agent.tick.skipped reason=lifecycle-paused")
+      return
+    }
+    requestTick()
+  }
+
+  private func performOnMainThread(_ operation: @escaping @Sendable () -> Void) {
+    if Thread.isMainThread {
+      operation()
+      return
+    }
+    DispatchQueue.main.sync(execute: operation)
   }
 
   func registerDarwinObserver() {
@@ -232,7 +299,7 @@ final class AgentController: @unchecked Sendable {
         guard let observer else { return }
         let controller = Unmanaged<AgentController>
           .fromOpaque(observer).takeUnretainedValue()
-        controller.requestTick()
+        controller.requestTickIfRunning()
       },
       SharedConfigPush.notificationName,
       nil,
@@ -251,3 +318,7 @@ final class AgentController: @unchecked Sendable {
     )
   }
 }
+
+// MARK: - SystemHelperControllerLifecycleGating
+
+extension AgentController: SystemHelperControllerLifecycleGating {}

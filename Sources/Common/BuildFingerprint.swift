@@ -50,10 +50,14 @@ enum BuildFingerprint {
       .joined()
   }
 
+  static func presented(_ hash: String) -> String {
+    String(hash.prefix(BuildFingerprintConstants.shortHashHexLength))
+  }
+
   static func shortHash(of url: URL?) -> String {
     guard let url else { return "n/a" }
     do {
-      return String(try hash(of: url).prefix(BuildFingerprintConstants.shortHashHexLength))
+      return presented(try hash(of: url))
     } catch {
       return "n/a"
     }

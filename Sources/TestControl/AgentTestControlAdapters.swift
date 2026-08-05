@@ -20,6 +20,20 @@
   }
 
   enum AgentTestControlAdapters {
+    static func artifactValidator(
+      mode: TestControlRuntimeMode,
+      production: () -> any SystemHelperArtifactValidating
+    ) -> any SystemHelperArtifactValidating {
+      switch mode {
+      case .production:
+        return production()
+      case .controlled(let runtime):
+        return ControlledSystemHelperArtifactValidator(runtime: runtime)
+      case .refused(let path):
+        return RefusedSystemHelperArtifactValidator(path: path)
+      }
+    }
+
     static func helperService(
       mode: TestControlRuntimeMode,
       production: () -> any HelperServiceManaging
@@ -80,6 +94,45 @@
           return nil
         }
       }
+    }
+  }
+
+  extension SystemHelperIdentity {
+    init(_ identity: TestSystemHelperIdentity) {
+      self.init(
+        version: identity.version,
+        build: identity.build,
+        commit: identity.commit,
+        executableHash: identity.executableHash,
+        protocolVersion: identity.protocolVersion
+      )
+    }
+  }
+
+  private struct ControlledSystemHelperArtifactValidator:
+    SystemHelperArtifactValidating
+  {
+    let runtime: TestControlRuntime
+
+    func validate(at executableURL: URL) throws -> SystemHelperIdentity {
+      let state = try runtime.refresh()
+      agentTestControlAdaptersLog.debug(
+        "test_control.helper.artifact_validated path=\(executableURL.path, privacy: .public) revision=\(state.revision.value, privacy: .public)"
+      )
+      return SystemHelperIdentity(state.helperLifecycle.bundled)
+    }
+  }
+
+  private struct RefusedSystemHelperArtifactValidator:
+    SystemHelperArtifactValidating
+  {
+    let path: String
+
+    func validate(at _: URL) throws -> SystemHelperIdentity {
+      agentTestControlAdaptersLog.error(
+        "test_control.helper.artifact_refused path=\(path, privacy: .public) recovery=return-error"
+      )
+      throw TestControlRefusalError(path: path)
     }
   }
 

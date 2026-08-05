@@ -130,6 +130,9 @@ struct GeneralSettingsView: View {
     .onChange(of: agentClient.helperReachable) { _ in
       refreshInstallationState(reason: "helper-reachability-changed")
     }
+    .onChange(of: agentClient.runtimeState.systemHelper) { _ in
+      refreshInstallationState(reason: "system-helper-state-changed")
+    }
     .onDisappear {
       setMonitoring(active: false)
     }
@@ -305,7 +308,7 @@ extension GeneralSettingsView {
       subtitle: generatedHelperBundleID,
       state: helperRowState
     ) {
-      Text(helperStatusText)
+      Text(helperPresentation.status)
         .font(.caption)
         .foregroundStyle(.secondary)
         .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.helperStatus)
@@ -315,33 +318,37 @@ extension GeneralSettingsView {
 
   @ViewBuilder
   private var helperAction: some View {
-    let showsHelperRepairAction =
+    let presentation = helperPresentation
+    let showsAction =
       agentClient.connectionState == .connected
-      && (installState.helperNeedsRepair
-        || !installState.helperEnabled
-        || !installState.helperReachable)
-    if showsHelperRepairAction {
+      && presentation.action != nil
+      && presentation.actionTitle != nil
+    if showsAction || presentation.detail != nil {
       VStack(alignment: .leading, spacing: GeneralSettingsConstants.helperActionSpacing) {
-        Button {
-          performHelperAction()
-        } label: {
-          HStack(spacing: GeneralSettingsConstants.helperActionButtonHStackSpacing) {
-            if installState.isRegisteringHelper {
-              ProgressView()
-                .controlSize(.small)
-                .scaleEffect(GeneralSettingsConstants.progressViewScale)
+        if showsAction, let actionTitle = presentation.actionTitle {
+          Button {
+            performHelperAction(presentation.action)
+          } label: {
+            HStack(spacing: GeneralSettingsConstants.helperActionButtonHStackSpacing) {
+              if presentation.isBusy {
+                ProgressView()
+                  .controlSize(.small)
+                  .scaleEffect(GeneralSettingsConstants.progressViewScale)
+                  .accessibilityIdentifier(
+                    AppAccessibilityIdentifier.Settings.helperProgress
+                  )
+              }
+              Text(actionTitle)
             }
-            Text(helperActionTitle)
           }
+          .disabled(presentation.isBusy)
+          .controlSize(.small)
+          .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.helperAction)
         }
-        .disabled(installState.isRegisteringHelper)
-        .controlSize(.small)
-        .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.helperAction)
 
-        if installState.helperNeedsRepair {
-          SettingsDescription(
-            text: helperRepairDescription
-          )
+        if let detail = presentation.detail {
+          SettingsDescription(text: detail)
+            .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.helperDetail)
         }
       }
     }
@@ -369,39 +376,25 @@ extension GeneralSettingsView {
   }
 
   private var helperRowState: ServiceRowState {
-    if installState.helperNeedsRepair || installState.helperApprovalPending { return .degraded }
-    if installState.helperEnabled, installState.helperReachable { return .healthy }
-    if installState.helperReachable { return .degraded }
-    return .inactive
-  }
-
-  private var helperStatusText: String {
-    if installState.helperNeedsRepair { return "Reachable, registration needs repair" }
-    if installState.helperApprovalPending { return "Awaiting approval" }
-    if installState.helperEnabled, installState.helperReachable { return "Running" }
-    if installState.helperEnabled { return "Installed" }
-    return "Not Installed"
-  }
-
-  private var helperActionTitle: String {
-    if installState.helperApprovalPending {
-      return "Open System Settings"
+    switch helperPresentation.tone {
+    case .healthy:
+      return .healthy
+    case .degraded:
+      return .degraded
+    case .inactive:
+      return .inactive
     }
-    if installState.isRegisteringHelper {
-      return installState.helperNeedsRepair
-        ? "Reinstalling System Helper"
-        : "Installing System Helper"
-    }
-    return installState.helperNeedsRepair ? "Reinstall System Helper" : "Install System Helper"
   }
 
-  private var helperRepairDescription: String {
-    "Fan Curve can still reach the System Helper, but this app install needs to "
-      + "repair its helper registration."
+  private var helperPresentation: SystemHelperPresentation {
+    SystemHelperPresentation.resolve(
+      state: installState.systemHelperState,
+      repairInFlight: installState.isRegisteringHelper
+    )
   }
 
-  private func performHelperAction() {
-    if installState.helperApprovalPending {
+  private func performHelperAction(_ action: SystemHelperPresentation.Action?) {
+    if action == .openSystemSettings {
       generalSettingsLog.info("general_settings.helper.approval.tapped owner=agent-xpc")
       Task {
         do {
@@ -418,6 +411,7 @@ extension GeneralSettingsView {
       return
     }
 
+    guard action == .repair else { return }
     generalSettingsLog.info("general_settings.helper.install.tapped owner=agent-xpc")
     installState.installOrRepairHelper(agentClient: agentClient)
   }

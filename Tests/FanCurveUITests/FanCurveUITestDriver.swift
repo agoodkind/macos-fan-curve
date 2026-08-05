@@ -116,7 +116,8 @@ final class FanCurveUITestDriver {
       revision: nextRevision,
       services: fixture.services,
       hardware: fixture.hardware,
-      xpcFault: fixture.xpcFault
+      xpcFault: fixture.xpcFault,
+      helperLifecycle: fixture.helperLifecycle
     )
     let stateURL = sessionURL.appendingPathComponent(
       "ui-state-\(nextRevision).json"

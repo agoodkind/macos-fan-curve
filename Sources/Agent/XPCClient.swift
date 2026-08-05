@@ -22,6 +22,7 @@ import SMCFanXPCClient
 private let log = AppLog.make(category: "XPCClient")
 
 private enum XPCClientConstants {
+  static let legacyProbeTimeoutSeconds: TimeInterval = 5
   static let maxPlausibleTemperatureC: Float = 150
 }
 
@@ -57,6 +58,7 @@ enum XPCClientError: LocalizedError {
 /// types. Convert at the XPC boundary so AgentController keeps using the
 /// local type.
 private typealias UpstreamFanInfo = SMCFanProtocol.FanInfo
+private typealias UpstreamHelperIdentity = SMCFanProtocol.SMCFanHelperIdentity
 
 private func toLocal(_ up: UpstreamFanInfo) -> FanInfo {
   FanInfo(
@@ -65,6 +67,16 @@ private func toLocal(_ up: UpstreamFanInfo) -> FanInfo {
     minRPM: up.minRPM,
     maxRPM: up.maxRPM,
     manualMode: up.manualMode
+  )
+}
+
+private func toLocal(_ identity: UpstreamHelperIdentity) -> SystemHelperIdentity {
+  SystemHelperIdentity(
+    version: identity.version,
+    build: identity.build,
+    commit: identity.commit,
+    executableHash: identity.executableHash,
+    protocolVersion: identity.protocolVersion
   )
 }
 
@@ -77,12 +89,14 @@ enum ConnectionState: Sendable {
 // MARK: - XPCClient
 
 /// Thin wrapper around `SMCFanXPCClient` that preserves the `@Published`
-/// connection state used by the GUI. All XPC reliability (invalidation,
-/// reconnect, `ResumeGuard`) is handled by `SMCFanXPCClient` internally,
-/// and the privileged helper arbitrates priority.
+/// connection state used by the GUI. The upstream client handles routine
+/// reconnects and reply safety. Lifecycle probes invalidate it when a caller
+/// cancels or a deadline expires. The privileged helper arbitrates priority.
 final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
   private let client: SMCFanXPCClient?
   private let initializationError: String?
+  private let legacyProbeTimeoutSeconds: TimeInterval
+  let lifecycleRequestDispatchGate: @Sendable () async -> Void
   private let stateLock = NSLock()
 
   @Published var state: ConnectionState = .disconnected
@@ -91,21 +105,34 @@ final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
     clientName: String = generatedAppBundleID,
     defaultPriority: Int = SMCFanPriority.curveNormal
   ) {
-    do {
-      self.client = try SMCFanXPCClient(
-        clientName: clientName,
-        defaultPriority: defaultPriority
-      )
-      self.initializationError = nil
-    } catch {
-      self.client = nil
-      self.initializationError = error.localizedDescription
-      log.error(
-        "xpc.client_init_failed error=\(error.localizedDescription, privacy: .public)")
+    self.client = SMCFanXPCClient(
+      clientName: clientName,
+      defaultPriority: defaultPriority
+    )
+    self.initializationError = nil
+    self.legacyProbeTimeoutSeconds =
+      XPCClientConstants.legacyProbeTimeoutSeconds
+    self.lifecycleRequestDispatchGate = {
+      // Production lifecycle requests dispatch immediately.
     }
     log.debug(
       "xpc.client_init name=\(clientName, privacy: .public) default_priority=\(defaultPriority, privacy: .public)"
     )
+  }
+
+  init(
+    upstreamClient: SMCFanXPCClient,
+    legacyProbeTimeoutSeconds: TimeInterval =
+      XPCClientConstants.legacyProbeTimeoutSeconds,
+    lifecycleRequestDispatchGate: @escaping @Sendable () async -> Void = {
+      // Injected lifecycle requests dispatch immediately unless tests provide a gate.
+    }
+  ) {
+    self.client = upstreamClient
+    self.initializationError = nil
+    self.legacyProbeTimeoutSeconds = legacyProbeTimeoutSeconds
+    self.lifecycleRequestDispatchGate = lifecycleRequestDispatchGate
+    log.debug("xpc.client_init source=injected-upstream")
   }
 
   /// Invalidate on app termination.
@@ -116,6 +143,87 @@ final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
   }
 
   // MARK: - SMC Operations
+}
+
+// MARK: - XPCClient
+
+extension XPCClient {
+  func getHelperIdentity() async throws -> SystemHelperIdentity {
+    do {
+      let xpcClient = try requireClient()
+      let identity = try await xpcClient.getHelperIdentity()
+      self.markConnected()
+      log.info(
+        "xpc.helper_identity.completed version=\(identity.version, privacy: .public) build=\(identity.build, privacy: .public) protocol=\(identity.protocolVersion, privacy: .public) hash=\(BuildFingerprint.presented(identity.executableHash), privacy: .public)"
+      )
+      return toLocal(identity)
+    } catch {
+      self.markError(error)
+      log.notice(
+        "xpc.helper_identity.failed error=\(error.localizedDescription, privacy: .public) recovery=propagate"
+      )
+      throw error
+    }
+  }
+
+  func probeLegacyHelperReachability() async throws {
+    let xpcClient = try requireClient()
+    let completion = XPCProbeCompletion()
+    log.notice(
+      "xpc.legacy_probe.started timeoutSeconds=\(legacyProbeTimeoutSeconds, privacy: .public)"
+    )
+    try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation { continuation in
+        completion.install(continuation)
+        let operationTask = Task {
+          switch await performLegacyProbe(xpcClient) {
+          case .success:
+            completion.finish(with: .success(()))
+          case .failure(let error):
+            guard completion.finish(with: .failure(error)) else { return }
+            log.notice(
+              "xpc.legacy_probe.failed error=\(error.localizedDescription, privacy: .public) recovery=return-error"
+            )
+          }
+        }
+        let timeoutTask = Task {
+          do {
+            try await ContinuousClock().sleep(
+              for: .seconds(legacyProbeTimeoutSeconds)
+            )
+          } catch {
+            log.notice(
+              "xpc.legacy_probe.timeout_cancelled recovery=stop-deadline"
+            )
+            return
+          }
+          let timeoutError = SMCXPCTimeoutError(
+            label: "legacyHelperProbe",
+            seconds: legacyProbeTimeoutSeconds
+          )
+          if completion.finish(with: .failure(timeoutError)) {
+            xpcClient.shutdown()
+            log.notice(
+              "xpc.legacy_probe.failed error=timeout timeoutSeconds=\(legacyProbeTimeoutSeconds, privacy: .public) recovery=invalidate-connection"
+            )
+          }
+        }
+        completion.installTasks(
+          operationTask: operationTask,
+          timeoutTask: timeoutTask
+        )
+      }
+    } onCancel: {
+      if completion.finish(with: .failure(CancellationError())) {
+        xpcClient.shutdown()
+        log.notice(
+          "xpc.legacy_probe.cancelled recovery=invalidate-connection"
+        )
+      }
+    }
+    self.markConnected()
+    log.notice("xpc.legacy_probe.completed result=reachable")
+  }
 
   func getFanInfo(_ index: UInt) async throws -> FanInfo {
     do {
@@ -398,7 +506,7 @@ final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
 
   // MARK: - State transitions
 
-  private func requireClient() throws -> SMCFanXPCClient {
+  func requireClient() throws -> SMCFanXPCClient {
     if let client {
       return client
     }
@@ -408,6 +516,36 @@ final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
       "xpc.client_unavailable error=\(message, privacy: .public) recovery=propagate"
     )
     throw XPCClientError.unavailable(message)
+  }
+
+  private static func requestLegacyProbe(
+    _ client: SMCFanXPCClient
+  ) async -> Result<Void, Error> {
+    do {
+      try Task.checkCancellation()
+      _ = try await client.getFanCount()
+      return .success(())
+    } catch {
+      log.notice(
+        "xpc.legacy_probe.request_failed error=\(error.localizedDescription, privacy: .public) recovery=resolve-race"
+      )
+      return .failure(error)
+    }
+  }
+
+  private func performLegacyProbe(
+    _ client: SMCFanXPCClient
+  ) async -> Result<Void, Error> {
+    await lifecycleRequestDispatchGate()
+    do {
+      try Task.checkCancellation()
+      return await Self.requestLegacyProbe(client)
+    } catch {
+      log.notice(
+        "xpc.legacy_probe.request_cancelled recovery=skip-request"
+      )
+      return .failure(error)
+    }
   }
 
   private func markConnected() {
