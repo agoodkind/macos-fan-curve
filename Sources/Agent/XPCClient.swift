@@ -169,7 +169,7 @@ extension XPCClient {
 
   func probeLegacyHelperReachability() async throws {
     let xpcClient = try requireClient()
-    let completion = XPCProbeCompletion()
+    let completion = XPCOperationCompletion()
     log.notice(
       "xpc.legacy_probe.started timeoutSeconds=\(legacyProbeTimeoutSeconds, privacy: .public)"
     )
@@ -208,10 +208,7 @@ extension XPCClient {
             )
           }
         }
-        completion.installTasks(
-          operationTask: operationTask,
-          timeoutTask: timeoutTask
-        )
+        completion.install(tasks: [operationTask, timeoutTask])
       }
     } onCancel: {
       if completion.finish(with: .failure(CancellationError())) {

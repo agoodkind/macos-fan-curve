@@ -1,5 +1,5 @@
 //
-//  XPCVoidOperationCompletion.swift
+//  XPCOperationCompletion.swift
 //  FanCurveAgent
 //
 //  Created by Codex <noreply@openai.com> on 2026-08-05.
@@ -8,11 +8,11 @@
 
 import Foundation
 
-final class XPCVoidOperationCompletion: @unchecked Sendable {
+final class XPCOperationCompletion: @unchecked Sendable {
   private let lock = NSLock()
   private var continuation: CheckedContinuation<Void, Error>?
-  private var operationTask: Task<Void, Never>?
   private var result: Result<Void, Error>?
+  private var tasks: [Task<Void, Never>] = []
 
   func install(_ continuation: CheckedContinuation<Void, Error>) {
     let pendingResult = lock.withLock { () -> Result<Void, Error>? in
@@ -25,53 +25,43 @@ final class XPCVoidOperationCompletion: @unchecked Sendable {
     }
   }
 
-  func install(operationTask: Task<Void, Never>) {
+  func install(tasks: [Task<Void, Never>]) {
     let shouldCancel = lock.withLock {
       guard result == nil else { return true }
-      self.operationTask = operationTask
+      self.tasks = tasks
       return false
     }
-    if shouldCancel {
-      operationTask.cancel()
+    guard shouldCancel else { return }
+    for task in tasks {
+      task.cancel()
     }
   }
 
   @discardableResult
   func finish(with resolution: Result<Void, Error>) -> Bool {
-    let completion = lock.withLock {
-      guard result == nil else {
-        return XPCVoidOperationResolution(didFinish: false)
-      }
+    let completion = lock.withLock { () -> XPCOperationResolution? in
+      guard result == nil else { return nil }
       result = resolution
-      let completion = XPCVoidOperationResolution(
-        didFinish: true,
+      let completion = XPCOperationResolution(
         continuation: continuation,
-        operationTask: operationTask
+        tasks: tasks
       )
       continuation = nil
-      operationTask = nil
+      tasks = []
       return completion
     }
-    completion.operationTask?.cancel()
+    guard let completion else { return false }
+    for task in completion.tasks {
+      task.cancel()
+    }
     completion.continuation?.resume(with: resolution)
-    return completion.didFinish
+    return true
   }
 }
 
-// MARK: - XPCVoidOperationResolution
+// MARK: - XPCOperationResolution
 
-private struct XPCVoidOperationResolution {
+private struct XPCOperationResolution {
   let continuation: CheckedContinuation<Void, Error>?
-  let operationTask: Task<Void, Never>?
-  let didFinish: Bool
-
-  init(
-    didFinish: Bool,
-    continuation: CheckedContinuation<Void, Error>? = nil,
-    operationTask: Task<Void, Never>? = nil
-  ) {
-    self.continuation = continuation
-    self.operationTask = operationTask
-    self.didFinish = didFinish
-  }
+  let tasks: [Task<Void, Never>]
 }

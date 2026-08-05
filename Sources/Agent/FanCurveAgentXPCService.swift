@@ -60,9 +60,6 @@ final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
     self.processTerminator = processTerminator
     super.init()
     self.listener.delegate = self
-    self.controller.runtimeSetupProvider = { _ in
-      RuntimeSetupInputs(backgroundAgent: .satisfied)
-    }
     self.controller.runtimeStateDidChange = { [weak self] runtimeState in
       self?.publishRuntimeState(runtimeState)
     }
