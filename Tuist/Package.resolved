@@ -1,5 +1,5 @@
 {
-  "originHash" : "0a2e85491a156ce4f647247f46c9019990439538fd2dcc3d7697a873792c239f",
+  "originHash" : "b5cc54defda64214d685ee6b6dd0ad5a190d3f1d0fab357237f79cc6fa452aeb",
   "pins" : [
     {
       "identity" : "cwlcatchexception",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/agoodkind/macos-smc-fan.git",
       "state" : {
-        "revision" : "2d36a6815ad227405f10f55d58d9377fe0b48366",
-        "version" : "0.4.1"
+        "revision" : "3be3de57776509ad7049d6bff51009708319faa4",
+        "version" : "0.4.2"
       }
     },
     {
