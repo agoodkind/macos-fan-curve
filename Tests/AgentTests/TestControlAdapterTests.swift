@@ -362,8 +362,11 @@ extension TestControlAdapterTests {
     let batch = await hardware.readAndApply(fanCount: 2, tempKeys: ["TC0P"])
 
     expect(service.status) == .unknown(rawValue: -1)
-    expect { try service.register() }.to(
-      throwError(TestControlRefusalError(path: "/invalid/control/session"))
+    let serviceError = await captureError {
+      try await service.register()
+    }
+    expect(serviceError).to(
+      matchError(TestControlRefusalError(path: "/invalid/control/session"))
     )
     expect(batch.fans).to(beEmpty())
     let rpmError = await captureError {

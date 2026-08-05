@@ -208,24 +208,13 @@ extension TestControlXPCIntegrationTests {
     expect(replacementClient.connectionState) == .connected
   }
 
-  private func captureError(
-    operation: () async throws -> Void
-  ) async -> Error? {
-    do {
-      try await operation()
-      return nil
-    } catch {
-      return error
-    }
-  }
-
   private func operationErrorWithinTimeout(
     operation: @escaping @MainActor () async throws -> Void
   ) async -> Error? {
     let completed = expectation(description: "XPC operation completed")
     var operationError: Error?
     let operationTask = Task { @MainActor in
-      operationError = await captureError(operation: operation)
+      operationError = await captureError(operation)
       completed.fulfill()
     }
     await fulfillment(

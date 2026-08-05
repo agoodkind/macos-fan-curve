@@ -48,9 +48,7 @@ extension SensorDashboardSidebar {
   private var setupButtonSystemImage: String? {
     switch installState.step {
     case .helperMissing:
-      return installState.helperNeedsRepair
-        ? "arrow.triangle.2.circlepath.circle.fill"
-        : nil
+      return "arrow.triangle.2.circlepath.circle.fill"
     case .agentMissing:
       return "arrow.triangle.2.circlepath.circle.fill"
     case .agentAwaitingApproval, .helperAwaitingApproval:
@@ -63,17 +61,16 @@ extension SensorDashboardSidebar {
   private var setupHelp: String {
     switch installState.step {
     case .helperMissing:
-      if installState.helperNeedsRepair {
-        return
-          "The helper is reachable, but this app install needs to repair its registration."
-      }
-      return "Install the helper so Fan Curve can apply fan speeds."
+      return helperPresentation.detail
+        ?? "Install the helper so Fan Curve can apply fan speeds."
     case .agentMissing:
       return
         "Enable background control so Fan Curve can keep applying your curve after the app closes."
-    case .agentAwaitingApproval, .helperAwaitingApproval:
+    case .agentAwaitingApproval:
       return
         "Open Login Items in System Settings and allow Fan Curve to run in the background."
+    case .helperAwaitingApproval:
+      return helperPresentation.detail ?? "Open System Settings to allow the System Helper."
     case .ready, .checking:
       return ""
     }
@@ -81,17 +78,9 @@ extension SensorDashboardSidebar {
 
   private var setupAction: (String, () -> Void)? {
     switch installState.step {
-    case .helperMissing:
-      return (
-        installState.helperNeedsRepair
-          ? "Reinstall System Helper"
-          : "Install System Helper",
-        {
-          sensorDashboardSidebarSetupLog.notice("sidebar.helper_setup.tapped")
-          beginPendingAction(.helperSetup)
-          installState.installOrRepairHelper(agentClient: runtime)
-        }
-      )
+    case .helperMissing, .helperAwaitingApproval:
+      guard let title = helperPresentation.actionTitle else { return nil }
+      return (title, { performSystemHelperAction(helperPresentation.action) })
     case .agentMissing:
       return (
         "Enable Background Control",
@@ -112,29 +101,6 @@ extension SensorDashboardSidebar {
           installState.openAgentLoginItemsSettings()
         }
       )
-    case .helperAwaitingApproval:
-      return (
-        "Open System Settings",
-        {
-          sensorDashboardSidebarSetupLog.notice(
-            "sidebar.login_items_settings.tapped step=\(String(describing: installState.step), privacy: .public)"
-          )
-          beginPendingAction(.openSystemSettings)
-          Task {
-            do {
-              try await runtime.openSystemSettings()
-            } catch {
-              sensorDashboardSidebarSetupLog.notice(
-                "sidebar.login_items_settings.agent_command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-agent-command-error"
-              )
-              await MainActor.run {
-                installState.lastError = error.localizedDescription
-                completePendingAction(.openSystemSettings, reason: "command-failed")
-              }
-            }
-          }
-        }
-      )
     case .ready, .checking:
       return nil
     }
@@ -142,7 +108,7 @@ extension SensorDashboardSidebar {
 
   private var setupButtonBusy: Bool {
     installState.isRegisteringAgent
-      || installState.isRegisteringHelper
+      || helperPresentation.isBusy
       || isPendingAction(.helperSetup)
       || isPendingAction(.agentSetup)
       || isPendingAction(.openSystemSettings)
@@ -150,19 +116,56 @@ extension SensorDashboardSidebar {
 
   private func setupButtonLabel(fallback: String) -> String {
     if isPendingAction(.helperSetup) {
-      return installState.helperNeedsRepair
-        ? "Reinstalling System Helper"
-        : "Installing System Helper"
+      return busyHelperPresentation.actionTitle ?? fallback
     }
     if isPendingAction(.agentSetup) { return "Enabling Background Control" }
     if isPendingAction(.openSystemSettings) { return "Opening System Settings" }
-    if installState.isRegisteringHelper {
-      return installState.helperNeedsRepair
-        ? "Reinstalling System Helper"
-        : "Installing System Helper"
-    }
+    if installState.isRegisteringHelper { return busyHelperPresentation.actionTitle ?? fallback }
     if installState.isRegisteringAgent { return "Enabling Background Control" }
     return fallback
+  }
+
+  private var helperPresentation: SystemHelperPresentation {
+    SystemHelperPresentation.resolve(
+      state: installState.systemHelperState,
+      repairInFlight: installState.isRegisteringHelper
+    )
+  }
+
+  private var busyHelperPresentation: SystemHelperPresentation {
+    SystemHelperPresentation.resolve(
+      state: installState.systemHelperState,
+      repairInFlight: true
+    )
+  }
+
+  private func performSystemHelperAction(_ action: SystemHelperPresentation.Action?) {
+    switch action {
+    case .repair:
+      sensorDashboardSidebarSetupLog.notice("sidebar.helper_setup.tapped")
+      beginPendingAction(.helperSetup)
+      installState.installOrRepairHelper(agentClient: runtime)
+    case .openSystemSettings:
+      sensorDashboardSidebarSetupLog.notice(
+        "sidebar.login_items_settings.tapped step=\(String(describing: installState.step), privacy: .public)"
+      )
+      beginPendingAction(.openSystemSettings)
+      Task {
+        do {
+          try await runtime.openSystemSettings()
+        } catch {
+          sensorDashboardSidebarSetupLog.notice(
+            "sidebar.login_items_settings.agent_command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-agent-command-error"
+          )
+          await MainActor.run {
+            installState.lastError = error.localizedDescription
+            completePendingAction(.openSystemSettings, reason: "command-failed")
+          }
+        }
+      }
+    case nil:
+      return
+    }
   }
 
   var fanControlToggleHelp: String {

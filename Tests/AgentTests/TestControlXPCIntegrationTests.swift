@@ -12,11 +12,12 @@ import Nimble
 import XCTest
 
 enum ControlledXPCTestValues {
-  static let connectionTimeoutSeconds = 2
+  static let connectionTimeoutSeconds: TimeInterval = 2
   static let pollingIntervalMilliseconds = 10
   static let reconnectDelay: TimeInterval = 0.01
   static let controlledRevision: UInt64 = 2
   static let commandedFanIndex: UInt = 1
+  static let firstFanIndex = 0
   static let commandedFanEventIndex = 1
   static let commandedFanRPM: Float = 4_500
   static let commandPriority = 0
@@ -36,6 +37,14 @@ enum ControlledXPCTestValues {
   static let cpuLoadPercent = 42.0
   static let gpuLoadPercent = 18.0
   static let ownershipPriority = 50
+  static let systemHelperFanResetDeadline: TimeInterval = 0.05
+  static let helperVerificationTimeoutMilliseconds: Int64 = 300
+  static let systemHelperVerificationPollInterval: Duration = .milliseconds(
+    pollingIntervalMilliseconds
+  )
+  static let systemHelperVerificationTimeout: Duration = .milliseconds(
+    helperVerificationTimeoutMilliseconds
+  )
 }
 
 // MARK: - TestControlXPCIntegrationTests
@@ -76,20 +85,21 @@ final class TestControlXPCIntegrationTests: XCTestCase {
 
     try harness.store.apply(
       harness.makeState(
-        revision: 2,
+        revision: ControlledXPCTestValues.controlledRevision,
         backgroundAgentStatus: .enabled,
         fault: .noFault
       )
     )
     _ = try harness.store.waitForAcknowledgment(
       participant: .app,
-      revision: 2,
-      timeout: 1
+      revision: ControlledXPCTestValues.controlledRevision,
+      timeout: ControlledXPCTestValues.connectionTimeoutSeconds
     )
     harness.start()
     try await harness.waitUntilConnected()
 
-    expect(harness.connectionFactoryCount) == 1
+    expect(harness.connectionFactoryCount)
+      == ControlledXPCTestValues.initialConnectionCount
   }
 
   private func verifyStartupFault(_ fault: TestXPCFault) async throws {
@@ -123,6 +133,14 @@ final class TestControlXPCIntegrationTests: XCTestCase {
   }
 }
 
+// MARK: - ControlledXPCLifecycleDependencies
+
+private struct ControlledXPCLifecycleDependencies {
+  let executableURL: URL
+  let hardware: any FanHardware
+  let service: any HelperServiceManaging
+}
+
 // MARK: - ControlledXPCHarness
 
 @MainActor
@@ -130,19 +148,20 @@ final class ControlledXPCHarness {
   let store: TestControlSessionStore
   private(set) lazy var client = makeClient()
 
-  private let sessionID = UUID()
-  private let defaultsSuiteName = "io.goodkind.fancurve.xpc-tests.\(UUID().uuidString)"
-  private let defaults: UserDefaults
-  private let listener: NSXPCListener
-  private lazy var service = makeService()
-  private let appMode: TestControlRuntimeMode
-  private let agentMode: TestControlRuntimeMode
-  private let controller: AgentController
+  let sessionID = UUID()
+  let defaultsSuiteName = "io.goodkind.fancurve.xpc-tests.\(UUID().uuidString)"
+  let defaults: UserDefaults
+  let listener: NSXPCListener
+  lazy var service = makeService()
+  let appMode: TestControlRuntimeMode
+  let agentMode: TestControlRuntimeMode
+  let controller: AgentController
   private let helperService: any HelperServiceManaging
+  private let reconciler: SystemHelperLifecycleReconciler
   private let evidenceReader: XPCFaultEvidenceReader
   let recordsProxyErrorHandlers: Bool
   private let connectionCounter = XPCConnectionCounter()
-  private let connectionRegistry = XPCConnectionRegistry()
+  let connectionRegistry = XPCConnectionRegistry()
   private let faultObservations = XPCFaultObservations()
   let requestDispatchController = XPCRequestDispatchController()
   let proxyErrorHandlerRecorder = XPCProxyErrorHandlerRecorder()
@@ -151,7 +170,7 @@ final class ControlledXPCHarness {
     counter: connectionCounter,
     registry: connectionRegistry
   )
-  private var serviceStarted = false
+  var serviceStarted = false
 
   var connectionFactoryCount: Int {
     connectionCounter.value
@@ -172,7 +191,8 @@ final class ControlledXPCHarness {
   init(
     backgroundAgentStatus: TestManagedServiceStatus = .enabled,
     fault: TestXPCFault = .noFault,
-    recordsProxyErrorHandlers: Bool = false
+    recordsProxyErrorHandlers: Bool = false,
+    lifecycleFixture: ControlledSystemHelperLifecycleFixture? = nil
   ) throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent(
@@ -205,18 +225,32 @@ final class ControlledXPCHarness {
     self.defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuiteName))
     defaults.removePersistentDomain(forName: defaultsSuiteName)
     let sharedConfig = SharedConfig(defaults: defaults)
-    let hardware = AgentTestControlAdapters.fanHardware(mode: agentMode) {
-      XCTFail("Controlled XPC harness constructed production hardware")
-      return XPCFallbackHardware()
-    }
-    self.helperService = AgentTestControlAdapters.helperService(mode: agentMode) {
-      XCTFail("Controlled XPC harness constructed production helper service")
-      return XPCFallbackService()
-    }
+    let lifecycleDependencies = try Self.makeLifecycleDependencies(
+      directory: directory,
+      agentMode: agentMode,
+      lifecycleFixture: lifecycleFixture
+    )
+    self.helperService = lifecycleDependencies.service
     self.controller = AgentController(
-      fanHardware: hardware,
+      fanHardware: lifecycleDependencies.hardware,
       sharedConfig: sharedConfig
     )
+    self.reconciler = SystemHelperLifecycleReconciler(
+      fanHardware: lifecycleDependencies.hardware,
+      service: helperService,
+      lifecycleGate: controller,
+      bundledExecutableURL: lifecycleDependencies.executableURL,
+      artifactValidator: lifecycleFixture?.artifactValidator
+        ?? HashingArtifactValidator(),
+      fanResetDeadline: lifecycleFixture?.fanResetDeadline
+        ?? ControlledXPCTestValues.systemHelperFanResetDeadline,
+      verificationTimeout: lifecycleFixture?.verificationTimeout
+        ?? ControlledXPCTestValues.systemHelperVerificationTimeout,
+      verificationPollInterval: lifecycleFixture?.verificationPollInterval
+        ?? ControlledXPCTestValues.systemHelperVerificationPollInterval
+    ) { [controller] state in
+      controller.updateSystemHelperRuntimeState(state)
+    }
     self.listener = NSXPCListener.anonymous()
   }
 
@@ -234,13 +268,14 @@ final class ControlledXPCHarness {
       controller: controller,
       listener: listener,
       helperService: helperService,
+      reconciler: reconciler,
       faultController: agentFaultControl
     ) {
       agentFaultObserver.recordInterruptionTermination()
     }
   }
 
-  private func makeClient() -> FanCurveAgentClient {
+  func makeClient() -> FanCurveAgentClient {
     let appFaultObserver = XPCFaultObserver(
       reader: evidenceReader,
       observations: faultObservations,
@@ -259,227 +294,41 @@ final class ControlledXPCHarness {
       remoteProxyProvider: remoteProxyProvider
     )
   }
-}
 
-// MARK: - ControlledXPCHarness operations
-
-@MainActor
-extension ControlledXPCHarness {
-  func makeAdditionalClient() -> FanCurveAgentClient {
-    makeClient()
+  private static func bundledHelperExecutableURL(
+    in directory: URL
+  ) throws -> URL {
+    let executableURL = directory.appendingPathComponent("SystemHelper")
+    try Data("controlled-system-helper".utf8).write(to: executableURL)
+    return executableURL
   }
 
-  func start() {
-    if !serviceStarted {
-      service.start()
-      serviceStarted = true
-    }
-    client.start()
-  }
-
-  func startAndWaitUntilConnected() async throws {
-    start()
-    try await waitUntilConnected()
-  }
-
-  func waitUntilConnected() async throws {
-    try await waitUntilConnected(client)
-  }
-
-  func waitUntilConnected(_ candidateClient: FanCurveAgentClient) async throws {
-    let clock = ContinuousClock()
-    let deadline = clock.now.advanced(
-      by: .seconds(ControlledXPCTestValues.connectionTimeoutSeconds)
-    )
-    while clock.now < deadline {
-      if candidateClient.connectionState == .connected {
-        return
-      }
-      try await clock.sleep(
-        for: .milliseconds(ControlledXPCTestValues.pollingIntervalMilliseconds)
+  private static func makeLifecycleDependencies(
+    directory: URL,
+    agentMode: TestControlRuntimeMode,
+    lifecycleFixture: ControlledSystemHelperLifecycleFixture?
+  ) throws -> ControlledXPCLifecycleDependencies {
+    if let lifecycleFixture {
+      return ControlledXPCLifecycleDependencies(
+        executableURL: lifecycleFixture.executableURL,
+        hardware: lifecycleFixture.fanHardware,
+        service: lifecycleFixture.service
       )
     }
-    throw TestControlError.timeout("real XPC client connection")
-  }
-
-  func waitForConnectionState(
-    _ expectedState: FanCurveAgentConnectionState
-  ) async throws {
-    try await waitForCondition("XPC connection state") {
-      self.client.connectionState == expectedState
+    let controlledHardware = AgentTestControlAdapters.fanHardware(mode: agentMode) {
+      XCTFail("Controlled XPC harness constructed production hardware")
+      return XPCFallbackHardware()
     }
-  }
-
-  func waitForRegisteredEventCallbackCount(_ expectedCount: Int) async throws {
-    try await waitForCondition("registered XPC event callback count") {
-      self.registeredEventCallbackCount == expectedCount
+    let controlledService = AgentTestControlAdapters.helperService(mode: agentMode) {
+      XCTFail("Controlled XPC harness constructed production helper service")
+      return XPCFallbackService()
     }
-  }
-
-  func waitForAcceptedRuntimeEventCount(_ expectedCount: Int) async throws {
-    try await waitForCondition("accepted runtime event count") {
-      try self.acceptedRuntimeEventCount() >= expectedCount
-    }
-  }
-
-  func acceptedRuntimeEventCount() throws -> Int {
-    try store.loadEvents(for: .app)
-      .filter { $0.payload == .xpcState(.runtimeEventAccepted) }
-      .count
-  }
-
-  func applyState(
-    revision: UInt64,
-    backgroundAgentStatus: TestManagedServiceStatus = .enabled,
-    fault: TestXPCFault = .noFault
-  ) throws {
-    try store.apply(
-      makeState(
-        revision: revision,
-        backgroundAgentStatus: backgroundAgentStatus,
-        fault: fault
-      )
-    )
-    _ = try store.waitForAcknowledgment(
-      participant: .agent,
-      revision: revision,
-      timeout: 1
-    )
-    _ = try store.waitForAcknowledgment(
-      participant: .app,
-      revision: revision,
-      timeout: 1
-    )
-  }
-
-  func invalidateMostRecentClientConnection() {
-    connectionRegistry.invalidateMostRecent()
-  }
-
-  func waitForPendingRequestDispatch() async throws {
-    try await waitForCondition("pending XPC request dispatch") {
-      self.requestDispatchController.pendingOperationCount == 1
-    }
-  }
-
-  func waitForReplacementConnection() async throws {
-    try await waitForCondition("replacement XPC connection") {
-      self.connectionFactoryCount
-        >= ControlledXPCTestValues.replacementConnectionCount
-        && self.client.connectionState == .connected
-    }
-  }
-
-  func publishRuntimeState() {
-    service.publishRuntimeState(controller.currentRuntimeStateForXPC())
-  }
-
-  func stop() {
-    client.stop()
-    listener.invalidate()
-    service.invalidateConnections()
-    if case .controlled(let runtime) = appMode {
-      runtime.stopMonitoring()
-    }
-    if case .controlled(let runtime) = agentMode {
-      runtime.stopMonitoring()
-    }
-    defaults.removePersistentDomain(forName: defaultsSuiteName)
-    removeSessionDirectory()
-    withExtendedLifetime((appMode, agentMode, service)) {
-      _ = service
-    }
-  }
-
-  func makeState(
-    revision: UInt64,
-    backgroundAgentStatus: TestManagedServiceStatus,
-    fault: TestXPCFault
-  ) -> TestControlState {
-    Self.makeState(
-      sessionID: sessionID,
-      revision: revision,
-      backgroundAgentStatus: backgroundAgentStatus,
-      fault: fault
-    )
-  }
-
-  private func waitForCondition(
-    _ description: String,
-    condition: () throws -> Bool
-  ) async throws {
-    let clock = ContinuousClock()
-    let deadline = clock.now.advanced(
-      by: .seconds(ControlledXPCTestValues.connectionTimeoutSeconds)
-    )
-    while clock.now < deadline {
-      if try condition() {
-        return
-      }
-      try await clock.sleep(
-        for: .milliseconds(ControlledXPCTestValues.pollingIntervalMilliseconds)
-      )
-    }
-    throw TestControlError.timeout(description)
-  }
-
-  private static func makeState(
-    sessionID: UUID,
-    revision: UInt64,
-    backgroundAgentStatus: TestManagedServiceStatus,
-    fault: TestXPCFault
-  ) -> TestControlState {
-    TestControlState(
-      sessionID: sessionID,
-      revision: revision,
-      services: TestServiceState(
-        backgroundAgentStatus: backgroundAgentStatus,
-        helperStatus: .enabled,
-        nextOperation: .succeed
+    return try ControlledXPCLifecycleDependencies(
+      executableURL: bundledHelperExecutableURL(
+        in: directory
       ),
-      hardware: TestHardwareState(
-        sensorTemperatures: [
-          TestSensorTemperature(
-            name: "TC0P",
-            temperatureC: ControlledXPCTestValues.cpuTemperatureC
-          )
-        ],
-        fanReadings: [
-          TestFanReading(
-            fanIndex: 0,
-            name: "Left Fan",
-            actualRPM: ControlledXPCTestValues.leftActualRPM,
-            targetRPM: ControlledXPCTestValues.leftTargetRPM,
-            minimumRPM: ControlledXPCTestValues.leftMinimumRPM,
-            maximumRPM: ControlledXPCTestValues.leftMaximumRPM,
-            isAutomatic: true
-          ),
-          TestFanReading(
-            fanIndex: 1,
-            name: "Right Fan",
-            actualRPM: ControlledXPCTestValues.rightActualRPM,
-            targetRPM: ControlledXPCTestValues.rightTargetRPM,
-            minimumRPM: ControlledXPCTestValues.rightMinimumRPM,
-            maximumRPM: ControlledXPCTestValues.rightMaximumRPM,
-            isAutomatic: false
-          ),
-        ],
-        ownership: [
-          TestFanOwnership(
-            fanIndex: 1,
-            processName: "FanCurveAgent",
-            priority: ControlledXPCTestValues.ownershipPriority
-          )
-        ],
-        cpuLoadPercent: ControlledXPCTestValues.cpuLoadPercent,
-        gpuLoadPercent: ControlledXPCTestValues.gpuLoadPercent,
-        runtimeFlags: TestRuntimeFlags(
-          helperReachable: true,
-          telemetryStale: false
-        ),
-        nextOperation: .succeed
-      ),
-      xpcFault: fault
+      hardware: controlledHardware,
+      service: controlledService
     )
   }
 }

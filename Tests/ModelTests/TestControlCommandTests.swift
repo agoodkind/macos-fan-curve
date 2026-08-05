@@ -222,6 +222,11 @@ final class TestControlCommandTests: XCTestCase {
     expect(FileManager.default.fileExists(atPath: agentEventsURL.path)) == true
   }
 
+}
+
+// MARK: - Config generation
+
+extension TestControlCommandTests {
   func testGeneratedAgentEnvironmentIncludesOnlyExplicitDebugControlPath() throws {
     let root = try makeTemporaryDirectory()
     let templatesURL = testRepositoryURL.appendingPathComponent(
@@ -242,6 +247,11 @@ final class TestControlCommandTests: XCTestCase {
     expect(
       try self.generatedAgentEnvironment(in: root)["FANCURVE_TEST_CONTROL_PATH"]
     ) == controlPath
+    let generatedURL = root.appendingPathComponent(
+      "Generated/FanCurve/Config.generated.swift"
+    )
+    let generated = try String(contentsOf: generatedURL, encoding: .utf8)
+    expect(generated).to(contain(#"let generatedDevelopmentTeam = "H3BMXM4W7H""#))
 
     try runConfigGenerator(
       root: root,

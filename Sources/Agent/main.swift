@@ -19,6 +19,17 @@ private enum FanCurveAgentMainConstants {
   static let shutdownResetDeadlineSeconds: TimeInterval = 3.0
 }
 
+private func bundledSystemHelperExecutableURL() -> URL {
+  guard let agentExecutableURL = Bundle.main.executableURL else {
+    log.error(
+      "agent.system_helper.bundle_path.failed reason=agent-executable-unavailable recovery=terminate"
+    )
+    exit(1)
+  }
+  return agentExecutableURL.deletingLastPathComponent()
+    .appendingPathComponent(generatedHelperBundleID)
+}
+
 nonisolated(unsafe) private var signalSources: [DispatchSourceSignal] = []
 
 private func installSignalHandler(_ sig: Int32, controller: AgentController) {
@@ -82,16 +93,38 @@ log.notice(
   let helperService = AgentTestControlAdapters.helperService(mode: runtimeMode) {
     HelperServiceManagementAdapter()
   }
-  let controller = AgentController(fanHardware: fanHardware)
-  let appXPCService = FanCurveAgentXPCService(
-    controller: controller,
-    helperService: helperService,
-    faultController: TestControlAgentXPCFaultController(mode: runtimeMode)
-  )
+  let artifactValidator = AgentTestControlAdapters.artifactValidator(
+    mode: runtimeMode
+  ) {
+    SystemHelperArtifactValidator()
+  }
+  let faultController: any FanCurveAgentXPCFaultControlling =
+    TestControlAgentXPCFaultController(mode: runtimeMode)
 #else
-  let controller = AgentController()
-  let appXPCService = FanCurveAgentXPCService(controller: controller)
+  let fanHardware: any FanHardware = XPCClient(clientName: generatedAgentBundleID)
+  let helperService: any HelperServiceManaging = HelperServiceManagementAdapter()
+  let artifactValidator: any SystemHelperArtifactValidating =
+    SystemHelperArtifactValidator()
+  let faultController: any FanCurveAgentXPCFaultControlling =
+    ProductionAgentXPCFaultControl()
 #endif
+
+let controller = AgentController(fanHardware: fanHardware)
+let reconciler = SystemHelperLifecycleReconciler(
+  fanHardware: fanHardware,
+  service: helperService,
+  lifecycleGate: controller,
+  bundledExecutableURL: bundledSystemHelperExecutableURL(),
+  artifactValidator: artifactValidator
+) { state in
+  controller.updateSystemHelperRuntimeState(state)
+}
+let appXPCService = FanCurveAgentXPCService(
+  controller: controller,
+  helperService: helperService,
+  reconciler: reconciler,
+  faultController: faultController
+)
 
 installSignalHandler(SIGTERM, controller: controller)
 installSignalHandler(SIGINT, controller: controller)
@@ -102,5 +135,7 @@ atexit {
 }
 
 appXPCService.start()
-controller.start()
+Task {
+  await appXPCService.reconcileSystemHelper(trigger: .startup)
+}
 RunLoop.main.run()

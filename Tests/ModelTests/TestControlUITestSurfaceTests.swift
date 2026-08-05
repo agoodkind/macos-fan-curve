@@ -67,8 +67,10 @@ final class TestControlUITestSurfaceTests: XCTestCase {
     for expectedState in [
       "Enable Background Control",
       "Allow Fan Curve in Background",
-      "Install the System Helper",
-      "Allow the System Helper",
+      "Registration Needs Repair",
+      "Approval Required",
+      "Repair Failed",
+      "Updating",
     ] {
       expect(setup).to(contain(expectedState))
     }

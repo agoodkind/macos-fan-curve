@@ -1,0 +1,315 @@
+//
+//  SystemHelperLifecycleReconciler+Replacement.swift
+//  FanCurveAgent
+//
+//  Created by Codex <noreply@openai.com> on 2026-08-05.
+//  Copyright © 2026, all rights reserved.
+//
+
+import Foundation
+
+// MARK: - SystemHelperLifecycleReconciler
+
+extension SystemHelperLifecycleReconciler {
+  func replaceHelper(
+    context: SystemHelperFailureContext,
+    bundledIdentity: SystemHelperIdentity
+  ) async -> SystemHelperReconcileResult {
+    systemHelperLifecycleLog.notice(
+      "system_helper.replace.started operation=\(context.operation.rawValue, privacy: .public)"
+    )
+    if Task.isCancelled {
+      return cancelled(context: context, stage: .fanReset)
+    }
+    if let resetFailure = await resetFans(context: context) {
+      return result(resetFailure)
+    }
+    if Task.isCancelled {
+      return cancelled(context: context, stage: .unregister)
+    }
+    let inactiveContext = SystemHelperFailureContext(
+      operation: context.operation,
+      activeIdentity: nil,
+      bundledIdentity: bundledIdentity
+    )
+    let recovery = Task { () -> SystemHelperReconcileResult? in
+      if let unregisterFailure = await unregisterHelper(context: context) {
+        return result(unregisterFailure)
+      }
+      return await registerService(
+        context: inactiveContext,
+        bundledIdentity: bundledIdentity,
+        recoveringAfterUnregister: true
+      )
+    }
+    if let recoveryFailure = await recovery.value {
+      return recoveryFailure
+    }
+    return await finishRegistration(
+      context: inactiveContext,
+      bundledIdentity: bundledIdentity
+    )
+  }
+
+  func registerMissingHelper(
+    context: SystemHelperFailureContext,
+    bundledIdentity: SystemHelperIdentity
+  ) async -> SystemHelperReconcileResult {
+    systemHelperLifecycleLog.notice(
+      "system_helper.install.started operation=\(context.operation.rawValue, privacy: .public)"
+    )
+    if Task.isCancelled {
+      return cancelled(context: context, stage: .register)
+    }
+    fanHardware.shutdown()
+    return await registerHelper(
+      context: context,
+      bundledIdentity: bundledIdentity,
+      recoveringAfterUnregister: false
+    )
+  }
+
+  func resetFans(
+    context: SystemHelperFailureContext
+  ) async -> SystemHelperRuntimeState? {
+    let resetOutcome = await SystemHelperFanResetSequencer.resetWithinDeadline(
+      deadline: fanResetDeadline
+    ) { [fanHardware] in
+      try await fanHardware.resetAllDiscoveredFansToAuto()
+    }
+    switch resetOutcome {
+    case .cancelled:
+      return fail(
+        context: context,
+        stage: .fanReset,
+        reason: "Fan reset was cancelled",
+        recovery: "Retry System Helper repair"
+      )
+    case .completed:
+      return nil
+    case .failed(let reason):
+      return fail(
+        context: context,
+        stage: .fanReset,
+        reason: reason,
+        recovery: "Retry after fan communication recovers"
+      )
+    case .timedOut:
+      return fail(
+        context: context,
+        stage: .fanReset,
+        reason: "Fan reset timed out",
+        recovery: "Retry after fan communication recovers"
+      )
+    }
+  }
+
+  private func unregisterHelper(
+    context: SystemHelperFailureContext
+  ) async -> SystemHelperRuntimeState? {
+    systemHelperLifecycleLog.notice(
+      "system_helper.unregister.started operation=\(context.operation.rawValue, privacy: .public)"
+    )
+    fanHardware.shutdown()
+    do {
+      try await service.unregister()
+      systemHelperLifecycleLog.notice(
+        "system_helper.unregister.finished operation=\(context.operation.rawValue, privacy: .public)"
+      )
+      return nil
+    } catch {
+      return fail(
+        context: context,
+        stage: .unregister,
+        reason: error.localizedDescription,
+        recovery: "Retry System Helper repair"
+      )
+    }
+  }
+
+  private func registerHelper(
+    context: SystemHelperFailureContext,
+    bundledIdentity: SystemHelperIdentity,
+    recoveringAfterUnregister: Bool
+  ) async -> SystemHelperReconcileResult {
+    if let registrationFailure = await registerService(
+      context: context,
+      bundledIdentity: bundledIdentity,
+      recoveringAfterUnregister: recoveringAfterUnregister
+    ) {
+      return registrationFailure
+    }
+    return await finishRegistration(
+      context: context,
+      bundledIdentity: bundledIdentity
+    )
+  }
+
+  private func registerService(
+    context: SystemHelperFailureContext,
+    bundledIdentity: SystemHelperIdentity,
+    recoveringAfterUnregister: Bool
+  ) async -> SystemHelperReconcileResult? {
+    systemHelperLifecycleLog.notice(
+      "system_helper.register.started operation=\(context.operation.rawValue, privacy: .public) recovery_after_unregister=\(recoveringAfterUnregister, privacy: .public)"
+    )
+    if let artifactFailure = revalidateRegistrationArtifact(
+      context: context,
+      bundledIdentity: bundledIdentity,
+      registrationMutated: recoveringAfterUnregister
+    ) {
+      return artifactFailure
+    }
+    do {
+      try await service.register()
+      systemHelperLifecycleLog.notice(
+        "system_helper.register.finished operation=\(context.operation.rawValue, privacy: .public)"
+      )
+    } catch {
+      return result(
+        fail(
+          context: context,
+          stage: .register,
+          reason: error.localizedDescription,
+          recovery: "Retry System Helper repair"
+        ),
+        registrationMutated: recoveringAfterUnregister
+      )
+    }
+    return nil
+  }
+
+  private func revalidateRegistrationArtifact(
+    context: SystemHelperFailureContext,
+    bundledIdentity: SystemHelperIdentity,
+    registrationMutated: Bool
+  ) -> SystemHelperReconcileResult? {
+    let currentIdentity: SystemHelperIdentity
+    do {
+      currentIdentity = try validateBundledArtifact()
+    } catch {
+      return result(
+        fail(
+          context: context,
+          stage: .register,
+          reason:
+            "Bundled System Helper failed validation immediately before registration: \(error.localizedDescription)",
+          recovery: "Reinstall Fan Curve and retry"
+        ),
+        registrationMutated: registrationMutated
+      )
+    }
+    guard currentIdentity == bundledIdentity else {
+      return result(
+        fail(
+          context: context,
+          stage: .register,
+          reason: "Bundled System Helper changed after preflight",
+          recovery: "Reinstall Fan Curve and retry"
+        ),
+        registrationMutated: registrationMutated
+      )
+    }
+    return nil
+  }
+
+  private func finishRegistration(
+    context: SystemHelperFailureContext,
+    bundledIdentity: SystemHelperIdentity
+  ) async -> SystemHelperReconcileResult {
+    if service.status == .requiresApproval {
+      publish(.approvalRequired)
+      return result(.approvalRequired, registrationMutated: true)
+    }
+    guard service.status == .enabled else {
+      return result(
+        fail(
+          context: context,
+          stage: .register,
+          reason: "System Helper registration did not become enabled",
+          recovery: "Approve the System Helper or retry repair"
+        ),
+        registrationMutated: true
+      )
+    }
+    let state = await verifyReplacement(
+      context: context,
+      bundledIdentity: bundledIdentity
+    )
+    return result(state, registrationMutated: true)
+  }
+
+  private func verifyReplacement(
+    context: SystemHelperFailureContext,
+    bundledIdentity: SystemHelperIdentity
+  ) async -> SystemHelperRuntimeState {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: verificationTimeout)
+    while clock.now < deadline {
+      if Task.isCancelled {
+        return verificationCancelled(context: context)
+      }
+      do {
+        let activeIdentity = try await fanHardware.getHelperIdentity()
+        return verifyIdentity(
+          activeIdentity,
+          context: context,
+          bundledIdentity: bundledIdentity
+        )
+      } catch {
+        if Task.isCancelled {
+          return verificationCancelled(context: context)
+        }
+        systemHelperLifecycleLog.notice(
+          "system_helper.reconnect.waiting error=\(error.localizedDescription, privacy: .public) recovery=retry"
+        )
+      }
+      guard await waitForVerificationPoll() else {
+        return verificationCancelled(context: context)
+      }
+    }
+    return fail(
+      context: context,
+      stage: .reconnect,
+      reason: "System Helper did not reconnect before the deadline",
+      recovery: "Retry System Helper repair"
+    )
+  }
+
+  private func verifyIdentity(
+    _ activeIdentity: SystemHelperIdentity,
+    context: SystemHelperFailureContext,
+    bundledIdentity: SystemHelperIdentity
+  ) -> SystemHelperRuntimeState {
+    guard activeIdentity.executableHash == bundledIdentity.executableHash else {
+      return fail(
+        context: SystemHelperFailureContext(
+          operation: context.operation,
+          activeIdentity: activeIdentity,
+          bundledIdentity: bundledIdentity
+        ),
+        stage: .identityVerification,
+        reason: "Registered System Helper does not match the bundled executable",
+        recovery: "Retry System Helper repair"
+      )
+    }
+    let state = SystemHelperRuntimeState.running(active: activeIdentity)
+    lifecycleGate.resume()
+    publish(state)
+    systemHelperLifecycleLog.notice(
+      "system_helper.reconcile.finished operation=\(context.operation.rawValue, privacy: .public) state=running hash=\(BuildFingerprint.presented(activeIdentity.executableHash), privacy: .public)"
+    )
+    return state
+  }
+
+  private func verificationCancelled(
+    context: SystemHelperFailureContext
+  ) -> SystemHelperRuntimeState {
+    fail(
+      context: context,
+      stage: .reconnect,
+      reason: "System Helper verification was cancelled",
+      recovery: "Retry System Helper repair"
+    )
+  }
+}

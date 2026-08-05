@@ -116,6 +116,7 @@ struct FanCurveApp: App {
 
     Window("About Fan Curve", id: "about") {
       AboutContentView()
+        .environmentObject(agentClient)
         .environmentObject(appUpdater)
         .frame(
           minWidth: WindowConstants.aboutWindowMinWidth,

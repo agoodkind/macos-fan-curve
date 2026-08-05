@@ -20,8 +20,18 @@ private enum FanCurveUITestFixtureConstants {
 // MARK: - FanCurveUITestState
 
 struct FanCurveUITestState {
+  static let bundledHelperIdentity = TestHelperLifecycleState.bundledIdentity
+  static let outdatedHelperIdentity = TestSystemHelperIdentity(
+    version: "0.3.0",
+    build: "3",
+    commit: "outdated-helper-commit",
+    executableHash: "outdated-helper-full-hash",
+    protocolVersion: 1
+  )
+
   let services: TestServiceState
   let hardware: TestHardwareState
+  let helperLifecycle: TestHelperLifecycleState
   let xpcFault: TestXPCFault
 
   static func make(
@@ -32,6 +42,8 @@ struct FanCurveUITestState {
     telemetryStale: Bool = false,
     ownershipPreempted: Bool = false,
     hardwareOperation: TestOperationDirective = .succeed,
+    activeHelper: TestHelperIdentityResult? = nil,
+    helperVerificationBlocked: Bool = false,
     sensorTemperatures: [TestSensorTemperature] = [
       TestSensorTemperature(
         name: "TC0P",
@@ -58,7 +70,12 @@ struct FanCurveUITestState {
     ],
     xpcFault: TestXPCFault = .noFault
   ) -> FanCurveUITestState {
-    FanCurveUITestState(
+    let resolvedActiveHelper =
+      activeHelper
+      ?? defaultActiveHelper(
+        helperReachable: helperReachable
+      )
+    return FanCurveUITestState(
       services: TestServiceState(
         backgroundAgentStatus: backgroundAgent,
         helperStatus: helper,
@@ -77,7 +94,21 @@ struct FanCurveUITestState {
         ),
         nextOperation: hardwareOperation
       ),
+      helperLifecycle: TestHelperLifecycleState(
+        active: resolvedActiveHelper,
+        bundled: bundledHelperIdentity,
+        verificationBlocked: helperVerificationBlocked
+      ),
       xpcFault: xpcFault
     )
+  }
+
+  private static func defaultActiveHelper(
+    helperReachable: Bool
+  ) -> TestHelperIdentityResult {
+    guard helperReachable else {
+      return .unreachable(message: "System Helper is unreachable")
+    }
+    return .identity(bundledHelperIdentity)
   }
 }

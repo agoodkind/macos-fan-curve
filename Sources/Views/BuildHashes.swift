@@ -9,4 +9,8 @@
 enum BuildHashes {
   static let appHash: String = BuildFingerprint.runningExecutableHash
   static let agentHash: String = BuildFingerprint.bundledAgentHash
+
+  static func systemHelperHash(from state: SystemHelperRuntimeState) -> String {
+    SystemHelperPresentation.activeHash(for: state)
+  }
 }

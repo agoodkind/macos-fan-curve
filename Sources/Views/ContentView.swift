@@ -191,7 +191,7 @@ struct ContentView: View {
     case .checking, .agentMissing, .agentAwaitingApproval, .helperAwaitingApproval:
       return false
     case .helperMissing:
-      return installState.helperNeedsRepair
+      return installState.helperReachable
     case .ready:
       return true
     }

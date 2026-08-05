@@ -88,6 +88,40 @@
     let nextOperation: TestOperationDirective
   }
 
+  struct TestSystemHelperIdentity: Codable, Equatable, Sendable {
+    let version: String
+    let build: String
+    let commit: String
+    let executableHash: String
+    let protocolVersion: UInt
+  }
+
+  enum TestHelperIdentityResult: Codable, Equatable, Sendable {
+    case identity(TestSystemHelperIdentity)
+    case legacy
+    case unreachable(message: String)
+  }
+
+  struct TestHelperLifecycleState: Codable, Equatable, Sendable {
+    let active: TestHelperIdentityResult
+    let bundled: TestSystemHelperIdentity
+    let verificationBlocked: Bool
+
+    static let bundledIdentity = TestSystemHelperIdentity(
+      version: "0.4.2",
+      build: "42",
+      commit: "bundled-helper-commit",
+      executableHash: "bundled-helper-full-hash",
+      protocolVersion: 1
+    )
+
+    static let defaultState = TestHelperLifecycleState(
+      active: .identity(bundledIdentity),
+      bundled: bundledIdentity,
+      verificationBlocked: false
+    )
+  }
+
   struct TestSensorTemperature: Codable, Equatable, Sendable {
     let name: String
     let temperatureC: Double
@@ -167,6 +201,7 @@
     let revision: TestControlRevision
     let services: TestServiceState
     let hardware: TestHardwareState
+    let helperLifecycle: TestHelperLifecycleState
     let xpcFault: TestXPCFault
 
     init(
@@ -174,14 +209,34 @@
       revision: UInt64,
       services: TestServiceState,
       hardware: TestHardwareState,
-      xpcFault: TestXPCFault
+      xpcFault: TestXPCFault,
+      helperLifecycle: TestHelperLifecycleState = .defaultState
     ) {
       self.schemaVersion = .current
       self.sessionID = sessionID
       self.revision = TestControlRevision(revision)
       self.services = services
       self.hardware = hardware
+      self.helperLifecycle = helperLifecycle
       self.xpcFault = xpcFault
+    }
+
+    init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      schemaVersion = try container.decode(
+        TestControlSchemaVersion.self,
+        forKey: .schemaVersion
+      )
+      sessionID = try container.decode(UUID.self, forKey: .sessionID)
+      revision = try container.decode(TestControlRevision.self, forKey: .revision)
+      services = try container.decode(TestServiceState.self, forKey: .services)
+      hardware = try container.decode(TestHardwareState.self, forKey: .hardware)
+      helperLifecycle =
+        try container.decodeIfPresent(
+          TestHelperLifecycleState.self,
+          forKey: .helperLifecycle
+        ) ?? .defaultState
+      xpcFault = try container.decode(TestXPCFault.self, forKey: .xpcFault)
     }
 
     static func initial(sessionID: UUID = UUID()) -> TestControlState {

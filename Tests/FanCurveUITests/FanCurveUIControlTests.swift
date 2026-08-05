@@ -25,6 +25,30 @@ final class FanCurveUIControlTests: XCTestCase {
     let applyInBackground: Bool
   }
 
+  func testAboutReportsUnavailableWithoutActiveHelperIdentity() throws {
+    try FanCurveUIScenario.run(in: self) { driver in
+      try driver.prime(
+        .make(
+          helperReachable: false,
+          activeHelper: .unreachable(message: "Helper unavailable")
+        )
+      )
+      try driver.launch()
+      try driver.tapApplicationMenuCommand(
+        AppAccessibilityIdentifier.Application.aboutCommand
+      )
+      _ = try driver.waitForElement(AppAccessibilityIdentifier.Application.aboutWindow)
+      try driver.waitForLabel(
+        AppAccessibilityIdentifier.Application.aboutSystemHelperVersion,
+        equals: "Unavailable"
+      )
+      try driver.waitForLabel(
+        AppAccessibilityIdentifier.Application.aboutSystemHelperHash,
+        equals: "Unavailable"
+      )
+    }
+  }
+
   func testCurveControlSettingsOwnershipManualFanAndLifecycle() throws {
     try FanCurveUIScenario.run(in: self) { driver in
       try driver.prime(.make())
@@ -195,6 +219,14 @@ final class FanCurveUIControlTests: XCTestCase {
       AppAccessibilityIdentifier.Application.aboutCommand
     )
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Application.aboutWindow)
+    try driver.waitForLabel(
+      AppAccessibilityIdentifier.Application.aboutSystemHelperVersion,
+      equals: "0.4.2 (build 42)"
+    )
+    try driver.waitForLabel(
+      AppAccessibilityIdentifier.Application.aboutSystemHelperHash,
+      equals: "bundled-helper-full-hash"
+    )
     try driver.tapApplicationMenuCommand(
       AppAccessibilityIdentifier.Application.quitCommand
     )

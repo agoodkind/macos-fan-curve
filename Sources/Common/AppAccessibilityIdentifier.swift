@@ -16,6 +16,8 @@ enum AppAccessibilityIdentifier {
     static let settingsWindow = "app.settings-window"
     static let aboutWindow = "app.about-window"
     static let aboutContent = "app.about-content"
+    static let aboutSystemHelperVersion = "app.about.system-helper.version"
+    static let aboutSystemHelperHash = "app.about.system-helper.hash"
   }
 
   enum Setup {
@@ -64,7 +66,9 @@ enum AppAccessibilityIdentifier {
     static let backgroundAgentAction = "settings.background-agent.action"
     static let helperRow = "settings.helper.row"
     static let helperStatus = "settings.helper.status"
+    static let helperDetail = "settings.helper.detail"
     static let helperAction = "settings.helper.action"
+    static let helperProgress = "settings.helper.progress"
     static let ownershipDisclosure = "settings.ownership.disclosure"
     static let ownershipStatus = "settings.ownership.status"
     static let learnAction = "settings.learn.action"

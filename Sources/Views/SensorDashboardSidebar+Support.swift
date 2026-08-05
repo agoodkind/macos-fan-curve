@@ -169,13 +169,17 @@ extension SensorDashboardSidebar {
 
   var fanControlStateLabel: String {
     if presentation.chartState == .degraded {
-      if installState.helperNeedsRepair { return "Helper Needs Repair" }
-      if presentation.installationStep == .helperMissing { return "System Helper Required" }
+      let helperNeedsSetup =
+        presentation.installationStep == .helperMissing
+        || presentation.installationStep == .helperAwaitingApproval
+      if helperNeedsSetup {
+        return SystemHelperPresentation.resolve(
+          state: installState.systemHelperState,
+          repairInFlight: installState.isRegisteringHelper
+        ).status
+      }
       if presentation.installationStep == .agentMissing {
         return "Background Control Required"
-      }
-      if presentation.installationStep == .helperAwaitingApproval {
-        return "Approval Required"
       }
       if presentation.installationStep == .agentAwaitingApproval {
         return "Approval Required"

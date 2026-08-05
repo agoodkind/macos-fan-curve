@@ -13,7 +13,14 @@
   private let controlledHardwareLog = AppLog.make(category: "ControlledFanHardware")
 
   final class ControlledFanHardware: FanHardware, @unchecked Sendable {
+    private static let verificationPollMilliseconds: Int64 = 50
+    private static let verificationPollInterval = Duration.milliseconds(
+      verificationPollMilliseconds
+    )
+
+    private let identityLock = NSLock()
     private let runtime: TestControlRuntime
+    private var identityRequestCount = 0
 
     init(runtime: TestControlRuntime) {
       self.runtime = runtime
@@ -21,6 +28,78 @@
 
     func shutdown() {
       controlledHardwareLog.info("test_control.hardware.shutdown")
+    }
+
+    func getHelperIdentity() async throws -> SystemHelperIdentity {
+      var state = try runtime.refresh()
+      let isVerification = identityLock.withLock {
+        identityRequestCount += 1
+        return identityRequestCount > 1
+      }
+      let verificationWasBlocked =
+        isVerification && state.helperLifecycle.verificationBlocked
+      if verificationWasBlocked {
+        controlledHardwareLog.debug(
+          "test_control.helper.verification_blocked revision=\(state.revision.value, privacy: .public) recovery=wait-for-control-revision"
+        )
+      }
+      while isVerification, state.helperLifecycle.verificationBlocked {
+        try await ContinuousClock().sleep(for: Self.verificationPollInterval)
+        state = try runtime.refresh()
+      }
+      if verificationWasBlocked {
+        controlledHardwareLog.debug(
+          "test_control.helper.verification_resumed revision=\(state.revision.value, privacy: .public)"
+        )
+      }
+      switch state.helperLifecycle.active {
+      case .identity(let identity):
+        controlledHardwareLog.debug(
+          "test_control.helper.identity_returned version=\(identity.version, privacy: .public) build=\(identity.build, privacy: .public) revision=\(state.revision.value, privacy: .public)"
+        )
+        return SystemHelperIdentity(identity)
+      case .legacy:
+        throw TestControlOperationError(
+          code: "legacy-helper",
+          message: "System Helper does not support identity"
+        )
+      case .unreachable(let message):
+        throw TestControlOperationError(
+          code: "helper-unreachable",
+          message: message
+        )
+      }
+    }
+
+    func probeLegacyHelperReachability() async throws {
+      await Task.yield()
+      let state = try runtime.refresh()
+      guard case .legacy = state.helperLifecycle.active else {
+        throw TestControlOperationError(
+          code: "legacy-helper-unreachable",
+          message: "Legacy System Helper is unreachable"
+        )
+      }
+      controlledHardwareLog.debug(
+        "test_control.helper.legacy_probe_completed revision=\(state.revision.value, privacy: .public)"
+      )
+    }
+
+    func resetAllDiscoveredFansToAuto() async throws {
+      await Task.yield()
+      let state = try runtime.refresh()
+      try requireSuccess(state.hardware.nextOperation)
+      let fanIndices = Set(
+        state.hardware.fanReadings.compactMap { reading in
+          reading.fanIndex >= 0 ? reading.fanIndex : nil
+        }
+      )
+      for fanIndex in fanIndices.sorted() {
+        try runtime.record(.fanAutoReset(fanIndex: fanIndex), state: state)
+      }
+      controlledHardwareLog.info(
+        "test_control.helper.fan_reset_completed count=\(fanIndices.count, privacy: .public) revision=\(state.revision.value, privacy: .public)"
+      )
     }
 
     func readAndApply(

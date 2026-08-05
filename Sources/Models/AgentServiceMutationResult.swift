@@ -8,4 +8,9 @@
 
 import Foundation
 
-typealias AgentServiceMutationResult = ManagedServiceMutationResult
+struct AgentServiceMutationResult: Sendable, Equatable {
+  let statusBefore: ManagedServiceStatus
+  let statusAfterUnregister: ManagedServiceStatus?
+  let statusAfterRegister: ManagedServiceStatus?
+  let errorDescription: String?
+}

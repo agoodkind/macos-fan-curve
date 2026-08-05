@@ -32,7 +32,7 @@ final class InstallationState: ObservableObject {
   @Published var step: Step = .checking
   @Published var lastError: String?
   @Published var helperReachable: Bool = false
-  @Published var helperStatus: ManagedServiceStatus = .notFound
+  @Published var systemHelperState: SystemHelperRuntimeState = .checking
   @Published var agentStatus: ManagedServiceStatus = .notFound
   /// Timestamp of the Agent's last successful tick, read from the shared
   /// UserDefaults suite on each refresh. 0 when unset.
@@ -72,18 +72,6 @@ final class InstallationState: ObservableObject {
   /// Convenience computed helpers for the Settings UI.
   var agentEnabled: Bool {
     agentStatus == .enabled
-  }
-
-  var helperEnabled: Bool {
-    helperStatus == .enabled
-  }
-
-  var helperNeedsRepair: Bool {
-    step == .helperMissing && helperReachable
-  }
-
-  var helperApprovalPending: Bool {
-    step == .helperAwaitingApproval
   }
 
   /// One reading of every signal that speaks to the Agent answering.
@@ -223,7 +211,6 @@ final class InstallationState: ObservableObject {
         return
       }
 
-      lastError = nil
       log.notice("helper.install.done owner=agent-xpc")
       refresh(agentClient: agentClient)
     }
@@ -284,7 +271,8 @@ final class InstallationState: ObservableObject {
     let currentAgentServiceStatus = currentAgentStatus()
     let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
     let helperOK = agentClient.helperReachable
-    let runtimeSetup = agentClient.runtimeState.setup
+    let runtimeState = agentClient.runtimeState
+    let runtimeSetup = runtimeState.setup
     let connectedNow = agentClient.connectionState == .connected
     let appBundlePath = Bundle.main.bundleURL.path
     let storedAgentFingerprint = suite.string(
@@ -292,7 +280,7 @@ final class InstallationState: ObservableObject {
     )
 
     helperReachable = helperOK
-    helperStatus = Self.helperStatus(from: runtimeSetup, helperReachable: helperOK)
+    adoptSystemHelperState(runtimeState.systemHelper)
 
     let previousEvidence = agentLivenessEvidence
     let previousPresence = agentPresence
@@ -367,6 +355,13 @@ final class InstallationState: ObservableObject {
       storedFingerprint: storedFingerprint
     )
   }
+
+  private func adoptSystemHelperState(_ state: SystemHelperRuntimeState) {
+    systemHelperState = state
+    if case .running = state {
+      lastError = nil
+    }
+  }
 }
 
 extension InstallationState {
@@ -380,7 +375,7 @@ extension InstallationState {
     }
     do {
       try backgroundAgentService.register()
-      return ManagedServiceMutationResult(
+      return AgentServiceMutationResult(
         statusBefore: statusBefore,
         statusAfterUnregister: nil,
         statusAfterRegister: backgroundAgentService.status,
@@ -390,7 +385,7 @@ extension InstallationState {
       log.error(
         "agent.register.service.failed status=\(statusBefore.description, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-ui"
       )
-      return ManagedServiceMutationResult(
+      return AgentServiceMutationResult(
         statusBefore: statusBefore,
         statusAfterUnregister: nil,
         statusAfterRegister: nil,
@@ -403,7 +398,7 @@ extension InstallationState {
     let statusBefore = backgroundAgentService.status
     do {
       try backgroundAgentService.unregister()
-      return ManagedServiceMutationResult(
+      return AgentServiceMutationResult(
         statusBefore: statusBefore,
         statusAfterUnregister: backgroundAgentService.status,
         statusAfterRegister: nil,
@@ -413,7 +408,7 @@ extension InstallationState {
       log.error(
         "agent.unregister.service.failed status=\(statusBefore.description, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-ui"
       )
-      return ManagedServiceMutationResult(
+      return AgentServiceMutationResult(
         statusBefore: statusBefore,
         statusAfterUnregister: nil,
         statusAfterRegister: nil,
@@ -428,7 +423,7 @@ extension InstallationState {
       try backgroundAgentService.unregister()
       let statusAfterUnregister = backgroundAgentService.status
       try backgroundAgentService.register()
-      return ManagedServiceMutationResult(
+      return AgentServiceMutationResult(
         statusBefore: statusBefore,
         statusAfterUnregister: statusAfterUnregister,
         statusAfterRegister: backgroundAgentService.status,
@@ -438,7 +433,7 @@ extension InstallationState {
       log.error(
         "agent.refresh.service.failed status=\(statusBefore.description, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-refresh-loop"
       )
-      return ManagedServiceMutationResult(
+      return AgentServiceMutationResult(
         statusBefore: statusBefore,
         statusAfterUnregister: nil,
         statusAfterRegister: nil,
@@ -459,24 +454,6 @@ extension InstallationState {
       return .helperMissing
     case .ready:
       return .ready
-    }
-  }
-
-  nonisolated private static func helperStatus(
-    from setup: SetupState,
-    helperReachable: Bool
-  ) -> ManagedServiceStatus {
-    switch setup {
-    case .helperApproval:
-      return .requiresApproval
-    case .helperRequired:
-      return helperReachable
-        ? .enabled
-        : .notRegistered
-    case .ready:
-      return .enabled
-    case .backgroundAgentApproval, .backgroundAgentRequired:
-      return .notFound
     }
   }
 

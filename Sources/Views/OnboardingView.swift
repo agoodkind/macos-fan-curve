@@ -77,8 +77,8 @@ private struct SetupStepContent {
           + "speed commands. macOS requires your approval before an app can install this "
           + "kind of helper."
       ),
-      primaryActionTitle: L10n.tr("Install System Helper"),
-      pendingActionTitle: L10n.tr("Installing System Helper"),
+      primaryActionTitle: nil,
+      pendingActionTitle: nil,
       approvalSteps: []
     )
   }
@@ -91,8 +91,8 @@ private struct SetupStepContent {
         "System Settings is waiting for you to allow the Fan Curve helper. Open Login "
           + "Items & Extensions, turn on Fan Curve, then return here."
       ),
-      primaryActionTitle: L10n.tr("Open System Settings"),
-      pendingActionTitle: L10n.tr("Opening System Settings"),
+      primaryActionTitle: nil,
+      pendingActionTitle: nil,
       approvalSteps: [
         L10n.tr("Click Open System Settings."),
         L10n.tr("In Login Items & Extensions, turn on Fan Curve."),
@@ -193,7 +193,7 @@ struct OnboardingView: View {
 
   @ViewBuilder
   private var title: some View {
-    Text(content.title)
+    Text(displayTitle)
       .font(.system(.title, design: .rounded, weight: .semibold))
       .multilineTextAlignment(.center)
       .accessibilityIdentifier(AppAccessibilityIdentifier.Setup.title)
@@ -201,7 +201,7 @@ struct OnboardingView: View {
 
   @ViewBuilder
   private var message: some View {
-    Text(content.message)
+    Text(displayMessage)
       .font(.body)
       .foregroundColor(.secondary)
       .multilineTextAlignment(.center)
@@ -253,7 +253,7 @@ struct OnboardingView: View {
     if let (label, handler) = primaryAction {
       Button(action: handler) {
         HStack(spacing: OnboardingConstants.buttonLabelSpacing) {
-          if state.isRegisteringAgent || state.isRegisteringHelper {
+          if isRegistering {
             ProgressView()
               .controlSize(.small)
           }
@@ -287,8 +287,9 @@ struct OnboardingView: View {
 
   private var primaryAction: (String, () -> Void)? {
     switch state.step {
-    case .helperMissing:
-      return (content.primaryActionTitle ?? L10n.tr("Install System Helper"), { registerHelper() })
+    case .helperMissing, .helperAwaitingApproval:
+      guard let actionTitle = helperPresentation.actionTitle else { return nil }
+      return (actionTitle, { performSystemHelperAction(helperPresentation.action) })
     case .agentMissing:
       return (
         content.primaryActionTitle ?? L10n.tr("Enable Background Control"),
@@ -299,41 +300,64 @@ struct OnboardingView: View {
         content.primaryActionTitle ?? L10n.tr("Open System Settings"),
         { state.openAgentLoginItemsSettings() }
       )
-    case .helperAwaitingApproval:
-      return (
-        content.primaryActionTitle ?? L10n.tr("Open System Settings"),
-        { openHelperLoginItems() }
-      )
     case .ready, .checking:
       return nil
     }
   }
 
-  private func registerHelper() {
-    onboardingViewLog.notice("onboarding.helper_register.tapped owner=agent-xpc")
-    state.installOrRepairHelper(agentClient: agentClient)
-  }
-
-  private func openHelperLoginItems() {
-    Task {
-      do {
-        try await agentClient.openSystemSettings()
-      } catch {
-        onboardingViewLog.notice(
-          "onboarding.login_items_settings.agent_command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-agent-command-error"
-        )
-        await MainActor.run {
-          state.lastError = error.localizedDescription
+  private func performSystemHelperAction(_ action: SystemHelperPresentation.Action?) {
+    switch action {
+    case .repair:
+      onboardingViewLog.notice("onboarding.helper_register.tapped owner=agent-xpc")
+      state.installOrRepairHelper(agentClient: agentClient)
+    case .openSystemSettings:
+      Task {
+        do {
+          try await agentClient.openSystemSettings()
+        } catch {
+          onboardingViewLog.notice(
+            "onboarding.login_items_settings.agent_command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-agent-command-error"
+          )
+          await MainActor.run {
+            state.lastError = error.localizedDescription
+          }
         }
       }
+    case nil:
+      return
     }
   }
 
   private var isRegistering: Bool {
-    state.isRegisteringAgent || state.isRegisteringHelper
+    state.isRegisteringAgent || helperPresentation.isBusy
   }
 
   private var installingLabel: String {
-    content.pendingActionTitle ?? L10n.tr("Working")
+    if isHelperStep {
+      return helperPresentation.actionTitle ?? L10n.tr("Working")
+    }
+    return content.pendingActionTitle ?? L10n.tr("Working")
+  }
+
+  private var displayTitle: String {
+    isHelperStep ? helperPresentation.status : content.title
+  }
+
+  private var displayMessage: String {
+    if isHelperStep, let detail = helperPresentation.detail {
+      return detail
+    }
+    return content.message
+  }
+
+  private var isHelperStep: Bool {
+    state.step == .helperMissing || state.step == .helperAwaitingApproval
+  }
+
+  private var helperPresentation: SystemHelperPresentation {
+    SystemHelperPresentation.resolve(
+      state: state.systemHelperState,
+      repairInFlight: state.isRegisteringHelper
+    )
   }
 }
