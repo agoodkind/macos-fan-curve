@@ -11,7 +11,6 @@ import Foundation
 struct AgentSnapshot: Codable, Sendable, Equatable {
   static let currentSchemaVersion = 6
 
-  // periphery:ignore - serialized schema-version stamp, read back via SnapshotHeader on decode
   let schemaVersion: Int
   let timestampEpoch: Double
   let helperReachable: Bool
