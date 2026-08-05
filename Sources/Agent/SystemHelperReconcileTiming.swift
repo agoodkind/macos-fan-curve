@@ -11,6 +11,8 @@ import Foundation
 // MARK: - SystemHelperReconcileTiming
 
 enum SystemHelperReconcileTiming {
+  static let registerRetryAttempts: Int = 3
+  static let registerRetryDelay = Duration.seconds(1)
   static let verificationPollMilliseconds: Int64 = 250
   static let verificationTimeoutSeconds: Int64 = 10
   static let verificationPollInterval = Duration.milliseconds(

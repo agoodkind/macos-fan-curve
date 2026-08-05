@@ -31,6 +31,7 @@ enum SharedConfigKeys {
   static let loadFloorThreshold = "loadFloorThreshold"
   static let overdriveEnabled = "overdriveEnabled"
   static let overdriveTargetRPMMeasured = "overdriveTargetRPMMeasured"
+  static let systemHelperReplacementPending = "systemHelperReplacementPending"
   static let underdriveEnabled = "underdriveEnabled"
   static let userBoostPriority = "userBoostPriority"
 }

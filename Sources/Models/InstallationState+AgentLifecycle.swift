@@ -193,6 +193,12 @@ extension InstallationState {
     appBundlePath: String,
     bundledHash: String
   ) -> Bool {
+    if context.agentConnected {
+      installationStateAgentLifecycleLog.notice(
+        "agent.refresh.deferred appPath=\(appBundlePath, privacy: .public) reason=connected-awaiting-heartbeat bundledHash=\(bundledHash, privacy: .public) recovery=wait-for-agent-snapshot"
+      )
+      return false
+    }
     if agentStartupGracePeriodIsActive() {
       installationStateAgentLifecycleLog.notice(
         "agent.refresh.deferred appPath=\(appBundlePath, privacy: .public) reason=running-hash-unavailable bundledHash=\(bundledHash, privacy: .public) schemaMismatch=\(context.snapshotSchemaMismatch, privacy: .public) recovery=wait-for-agent-snapshot"

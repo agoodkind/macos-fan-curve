@@ -22,6 +22,8 @@ actor SystemHelperLifecycleReconciler {
   let fanResetDeadline: TimeInterval
   let lifecycleGate: any SystemHelperControllerLifecycleGating
   private let publishState: @Sendable (SystemHelperRuntimeState) -> Void
+  let registerRetryDelay: Duration
+  let replacementJournal: any SystemHelperReplacementJournaling
   let service: any HelperServiceManaging
   let verificationPollInterval: Duration
   let verificationTimeout: Duration
@@ -40,6 +42,10 @@ actor SystemHelperLifecycleReconciler {
       SystemHelperReconcileTiming.verificationTimeout,
     verificationPollInterval: Duration =
       SystemHelperReconcileTiming.verificationPollInterval,
+    registerRetryDelay: Duration =
+      SystemHelperReconcileTiming.registerRetryDelay,
+    replacementJournal: any SystemHelperReplacementJournaling =
+      SharedDefaultsSystemHelperReplacementJournal(),
     publishState: @escaping @Sendable (SystemHelperRuntimeState) -> Void
   ) {
     self.fanHardware = fanHardware
@@ -50,6 +56,8 @@ actor SystemHelperLifecycleReconciler {
     self.fanResetDeadline = fanResetDeadline
     self.verificationTimeout = verificationTimeout
     self.verificationPollInterval = verificationPollInterval
+    self.registerRetryDelay = registerRetryDelay
+    self.replacementJournal = replacementJournal
     self.publishState = publishState
   }
 }
@@ -142,7 +150,7 @@ extension SystemHelperLifecycleReconciler {
     if let inactiveState = SystemHelperClassifier.classifyInactive(
       serviceStatus: serviceStatus
     ),
-      trigger != .forcedRepair || serviceStatus != .notRegistered
+      !shouldResumeRegistration(trigger: trigger, serviceStatus: serviceStatus)
     {
       publish(inactiveState)
       return result(inactiveState)
@@ -182,6 +190,17 @@ extension SystemHelperLifecycleReconciler {
       serviceStatus: serviceStatus,
       bundledIdentity: bundledIdentity
     )
+  }
+
+  /// An unregistered helper normally requires an explicit user repair, but a
+  /// pending replacement journal entry means this reconciler removed the old
+  /// helper itself and still owes the machine a registered replacement.
+  func shouldResumeRegistration(
+    trigger: SystemHelperReconcileTrigger,
+    serviceStatus: ManagedServiceStatus
+  ) -> Bool {
+    guard serviceStatus == .notRegistered else { return false }
+    return trigger == .forcedRepair || replacementJournal.hasPendingReplacement
   }
 
   func publish(_ state: SystemHelperRuntimeState) {

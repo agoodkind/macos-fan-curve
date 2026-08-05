@@ -39,11 +39,15 @@ extension SystemHelperLifecycleReconciler {
       observation: .unreachable(reason: "Identity was not requested"),
       bundled: bundledIdentity
     )
-    guard trigger == .forcedRepair,
-      serviceStatus == .notRegistered
+    guard shouldResumeRegistration(trigger: trigger, serviceStatus: serviceStatus)
     else {
       publish(state)
       return result(state)
+    }
+    if trigger != .forcedRepair {
+      systemHelperLifecycleLog.notice(
+        "system_helper.replace.resumed operation=\(trigger.operation.rawValue, privacy: .public) reason=pending-replacement recovery=register-bundled-helper"
+      )
     }
     return await repairMissingHelper(
       trigger: trigger,
@@ -137,6 +141,7 @@ extension SystemHelperLifecycleReconciler {
     if trigger != .forcedRepair {
       switch classifiedState {
       case .running:
+        replacementJournal.clearPendingReplacement()
         lifecycleGate.resume()
         publish(classifiedState)
         return result(classifiedState)
