@@ -90,8 +90,9 @@ enum ConnectionState: Sendable {
 
 /// Thin wrapper around `SMCFanXPCClient` that preserves the `@Published`
 /// connection state used by the GUI. The upstream client handles routine
-/// reconnects and reply safety. Lifecycle probes invalidate it when a caller
-/// cancels or a deadline expires. The privileged helper arbitrates priority.
+/// reconnects and reply safety. Lifecycle operations use isolated request
+/// scopes so cancellation preserves normal fan control. The privileged helper
+/// arbitrates priority.
 final class XPCClient: ObservableObject, FanHardware, @unchecked Sendable {
   private let client: SMCFanXPCClient?
   private let initializationError: String?
@@ -202,9 +203,8 @@ extension XPCClient {
             seconds: legacyProbeTimeoutSeconds
           )
           if completion.finish(with: .failure(timeoutError)) {
-            xpcClient.shutdown()
             log.notice(
-              "xpc.legacy_probe.failed error=timeout timeoutSeconds=\(legacyProbeTimeoutSeconds, privacy: .public) recovery=invalidate-connection"
+              "xpc.legacy_probe.failed error=timeout timeoutSeconds=\(legacyProbeTimeoutSeconds, privacy: .public) recovery=cancel-operation-task"
             )
           }
         }
@@ -215,9 +215,8 @@ extension XPCClient {
       }
     } onCancel: {
       if completion.finish(with: .failure(CancellationError())) {
-        xpcClient.shutdown()
         log.notice(
-          "xpc.legacy_probe.cancelled recovery=invalidate-connection"
+          "xpc.legacy_probe.cancelled recovery=cancel-operation-task"
         )
       }
     }
@@ -519,11 +518,12 @@ extension XPCClient {
   }
 
   private static func requestLegacyProbe(
-    _ client: SMCFanXPCClient
+    _ client: SMCFanXPCClient,
+    scope: SMCFanXPCRequestScope
   ) async -> Result<Void, Error> {
     do {
       try Task.checkCancellation()
-      _ = try await client.getFanCount()
+      _ = try await client.getFanCount(scope: scope)
       return .success(())
     } catch {
       log.notice(
@@ -539,7 +539,8 @@ extension XPCClient {
     await lifecycleRequestDispatchGate()
     do {
       try Task.checkCancellation()
-      return await Self.requestLegacyProbe(client)
+      let scope = client.makeRequestScope()
+      return await Self.requestLegacyProbe(client, scope: scope)
     } catch {
       log.notice(
         "xpc.legacy_probe.request_cancelled recovery=skip-request"

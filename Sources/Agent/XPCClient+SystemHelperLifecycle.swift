@@ -24,7 +24,8 @@ extension XPCClient {
           do {
             await lifecycleRequestDispatchGate()
             try Task.checkCancellation()
-            let fanCount = try await xpcClient.getFanCount()
+            let requestScope = xpcClient.makeRequestScope()
+            let fanCount = try await xpcClient.getFanCount(scope: requestScope)
             xpcClientLifecycleLog.notice(
               "xpc.strict_auto_reset.started fanCount=\(fanCount, privacy: .public)"
             )
@@ -32,7 +33,7 @@ extension XPCClient {
               await lifecycleRequestDispatchGate()
               try Task.checkCancellation()
               do {
-                try await xpcClient.setFanAuto(fanIndex)
+                try await xpcClient.setFanAuto(fanIndex, scope: requestScope)
               } catch {
                 xpcClientLifecycleLog.error(
                   "xpc.strict_auto_reset.failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=abort-helper-replacement"
@@ -55,9 +56,8 @@ extension XPCClient {
       }
     } onCancel: {
       if completion.finish(with: .failure(CancellationError())) {
-        xpcClient.shutdown()
         xpcClientLifecycleLog.notice(
-          "xpc.strict_auto_reset.cancelled recovery=invalidate-connection"
+          "xpc.strict_auto_reset.cancelled recovery=cancel-operation-task"
         )
       }
     }

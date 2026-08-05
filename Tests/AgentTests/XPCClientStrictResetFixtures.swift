@@ -184,7 +184,7 @@ final class ConflictingFanResetHelper:
   private let fanCountRequestObservation = BoundedRequestObservation()
   private let fanAutoRequests: AsyncStream<Void>
   private let fanAutoRequestContinuation: AsyncStream<Void>.Continuation
-  private let fanCountReply: FanCountReply
+  private var fanCountReply: FanCountReply
   private let connectionInvalidated: XCTestExpectation?
   private let additionalFanAutoRequest: XCTestExpectation?
   private let additionalFanCountRequest: XCTestExpectation?
@@ -231,6 +231,10 @@ final class ConflictingFanResetHelper:
     for await _ in fanAutoRequests {
       return
     }
+  }
+
+  func setFanCountReply(_ reply: FanCountReply) {
+    lock.withLock { fanCountReply = reply }
   }
 
   func recordConnectionInvalidation() {
@@ -282,7 +286,8 @@ final class ConflictingFanResetHelper:
     }
     fanCountRequestObservation.record()
     fanCountRequestContinuation.yield()
-    switch fanCountReply {
+    let selectedReply = lock.withLock { fanCountReply }
+    switch selectedReply {
     case .succeed:
       reply(true, 1, nil)
     case .withhold:
