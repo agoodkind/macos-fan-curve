@@ -55,15 +55,10 @@ final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
     self.processTerminator = processTerminator
     super.init()
     self.listener.delegate = self
-    self.controller.runtimeSetupProvider = { [weak self] snapshot in
-      guard let self else {
-        return RuntimeSetupInputs(backgroundAgent: .satisfied, helper: .required)
-      }
-      return Self.currentRuntimeSetupInputs(
-        helperStatus: self.helperService.status,
-        snapshot: snapshot
-      )
+    self.controller.runtimeSetupProvider = { _ in
+      RuntimeSetupInputs(backgroundAgent: .satisfied)
     }
+    self.controller.systemHelperStateProvider = { .checking }
     self.controller.runtimeStateDidChange = { [weak self] runtimeState in
       self?.publishRuntimeState(runtimeState)
     }
@@ -376,30 +371,6 @@ extension FanCurveAgentXPCService {
     controller.sharedConfig.defaults.set(enabled, forKey: SharedConfigKeys.curveActive)
     publishConfigChange()
     return AgentCommandResponse(accepted: true, message: nil)
-  }
-
-  static func currentRuntimeSetupInputs(
-    helperStatus: ManagedServiceStatus,
-    snapshot: AgentSnapshot?
-  ) -> RuntimeSetupInputs {
-    RuntimeSetupInputs(
-      backgroundAgent: .satisfied,
-      helper: currentHelperRequirement(helperStatus: helperStatus, snapshot: snapshot)
-    )
-  }
-
-  static func currentHelperRequirement(
-    helperStatus: ManagedServiceStatus,
-    snapshot: AgentSnapshot?
-  ) -> RuntimeServiceRequirement {
-    switch helperStatus {
-    case .requiresApproval:
-      return .approvalRequired
-    case .enabled:
-      return snapshot?.helperReachable == true ? .satisfied : .required
-    case .notFound, .notRegistered, .unknown:
-      return .required
-    }
   }
 
   func publishRuntimeState(_ runtimeState: RuntimeState) {
