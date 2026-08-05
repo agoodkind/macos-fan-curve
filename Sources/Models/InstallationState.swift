@@ -61,12 +61,15 @@ final class InstallationState: ObservableObject {
   var lastAgentServiceRegisterDate: Date?
   let agentStartupGraceInterval: TimeInterval = 5
   let backgroundAgentService: any BackgroundAgentServiceManaging
+  let bundledAgentHash: () -> String
 
   init(
     backgroundAgentService: any BackgroundAgentServiceManaging =
-      ServiceManagementAdapters.backgroundAgent()
+      ServiceManagementAdapters.backgroundAgent(),
+    bundledAgentHash: @escaping () -> String = { BuildFingerprint.bundledAgentHash }
   ) {
     self.backgroundAgentService = backgroundAgentService
+    self.bundledAgentHash = bundledAgentHash
   }
 
   /// Convenience computed helpers for the Settings UI.

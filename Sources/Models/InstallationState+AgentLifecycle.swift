@@ -113,7 +113,7 @@ extension InstallationState {
   func refreshAgentIfNeeded(_ context: AgentRefreshContext) {
     let appBundlePath = Bundle.main.bundleURL.path
     let developerManaged = isDeveloperManagedBuild
-    let bundledHash = BuildFingerprint.bundledAgentHash
+    let bundledHash = bundledAgentHash()
     guard bundledAgentHashIsAvailable(bundledHash) else { return }
     logRefreshContextIfNeeded(appBundlePath: appBundlePath, developerManaged: developerManaged)
     guard
@@ -131,13 +131,15 @@ extension InstallationState {
       return
     }
     guard
-      shouldRefreshDisconnectedAgent(
-        context: context,
+      shouldRefreshAgent(
         appBundlePath: appBundlePath,
         bundledHash: bundledHash
       )
     else { return }
 
+    installationStateAgentLifecycleLog.notice(
+      "agent.refresh.started appPath=\(appBundlePath, privacy: .public) connected=\(context.agentConnected, privacy: .public) runningHash=\(context.runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public)"
+    )
     let result = refreshRegisteredAgent()
     finishAgentRefresh(
       result: result,
@@ -221,17 +223,10 @@ extension InstallationState {
     return true
   }
 
-  func shouldRefreshDisconnectedAgent(
-    context: AgentRefreshContext,
+  func shouldRefreshAgent(
     appBundlePath: String,
     bundledHash: String
   ) -> Bool {
-    guard !context.agentConnected else {
-      installationStateAgentLifecycleLog.notice(
-        "agent.refresh.deferred appPath=\(appBundlePath, privacy: .public) reason=agent-xpc-connected runningHash=\(context.runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public) schemaMismatch=\(context.snapshotSchemaMismatch, privacy: .public) recovery=avoid-live-agent-restart"
-      )
-      return false
-    }
     let now = Date()
     guard shouldRetryRefresh(for: bundledHash, now: now) else {
       installationStateAgentLifecycleLog.notice(
@@ -271,7 +266,6 @@ extension InstallationState {
     if let statusAfterRegister = result.statusAfterRegister {
       lastError = nil
       lastAgentServiceRegisterDate = Date()
-      clearRefreshAttempt()
       installationStateAgentLifecycleLog.notice(
         "agent.refresh.done appPath=\(appBundlePath, privacy: .public) bundledHash=\(bundledHash, privacy: .public) registrationMismatch=\(context.registrationMismatch, privacy: .public) status=\(statusAfterRegister.description, privacy: .public)"
       )
