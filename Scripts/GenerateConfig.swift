@@ -103,6 +103,8 @@ do {
         "@@SHARED_SUITE_ID@@": try requiredEnv("SHARED_SUITE_ID"),
         "@@DEVELOPMENT_TEAM@@": try requiredEnv("DEVELOPMENT_TEAM"),
         "@@BUNDLE_ID_PREFIX@@": try requiredEnv("BUNDLE_ID_PREFIX"),
+        "@@MARKETING_VERSION@@": try requiredEnv("MARKETING_VERSION"),
+        "@@BUILD_NUMBER@@": try requiredEnv("CURRENT_PROJECT_VERSION"),
         "@@GIT_COMMIT@@": run("/usr/bin/git", ["-C", srcRoot, "rev-parse", "--short", "HEAD"]) ?? "unknown",
         "@@GIT_VERSION@@": run("/usr/bin/git", ["-C", srcRoot, "describe", "--tags", "--always", "--dirty"]) ?? "dev",
         "@@GIT_DIRTY@@": run("/usr/bin/git", ["-C", srcRoot, "diff", "--quiet"]) == nil ? "true" : "false",

@@ -4,6 +4,9 @@ import ProjectDescriptionHelpers
 let appName = "FanCurve"
 let appDisplayName = "Fan Curve"
 let helperDisplayName = "Fan Curve Hardware Helper"
+let helperExecutableName = Environment.helperExecutableName.getString(
+  default: "io.goodkind.smcfanhelper"
+)
 let projectName = "FanCurveApp"
 let agentExecutableName = "FanCurveAgent"
 let agentDisplayName = "Fan Curve Background Control"
@@ -231,11 +234,13 @@ let project = Project(
       name: "SMCFanHelper",
       destinations: [.mac],
       product: .commandLineTool,
+      productName: helperExecutableName,
       bundleId: "$(HELPER_BUNDLE_ID)",
       deploymentTargets: macOSDeploymentTarget,
       infoPlist: .default,
       sources: [
-        "Sources/SMCFanHelper/**"
+        "Sources/SMCFanHelper/**",
+        .generated("Generated/SMCFanHelper/Config.generated.swift"),
       ],
       scripts: [
         generatedConfigScript
@@ -248,7 +253,6 @@ let project = Project(
       ],
       settings: .settings(
         base: signingSettings.merging([
-          "PRODUCT_NAME": "io.goodkind.smcfanhelper",
           "PRODUCT_BUNDLE_IDENTIFIER": .string("$(HELPER_BUNDLE_ID)"),
           "ENABLE_HARDENED_RUNTIME": "YES",
           "SKIP_INSTALL": "YES",

@@ -11,5 +11,9 @@ import SMCFanHelperCore
 
 // The daemon logic lives in SMCFanHelperCore; the __info_plist and
 // __launchd_plist sections are linked via -sectcreate in the target settings.
+BuildInfo.version = generatedMarketingVersion
+BuildInfo.build = generatedBuildNumber
+BuildInfo.commit = generatedGitCommit
+BuildInfo.dirty = generatedGitDirty
 AppLog.bootstrap(subsystem: "io.goodkind.fan")
-SMCFanHelper(machServiceName: "io.goodkind.smcfanhelper").start()
+SMCFanHelper(machServiceName: generatedHelperBundleID).start()
