@@ -241,13 +241,13 @@ enum TelemetryState: Codable, Sendable, Equatable {
 
 struct RuntimeSetupInputs: Codable, Sendable, Equatable {
   let backgroundAgent: RuntimeServiceRequirement
-  let helper: RuntimeServiceRequirement
 
-  static let ready = RuntimeSetupInputs(backgroundAgent: .satisfied, helper: .satisfied)
+  static let ready = RuntimeSetupInputs(backgroundAgent: .satisfied)
 }
 
 struct RuntimeStateInputs: Codable, Sendable, Equatable {
   let setup: RuntimeSetupInputs
+  let systemHelper: SystemHelperRuntimeState
   let snapshot: AgentSnapshot?
   let now: Date
   let freshnessInterval: TimeInterval
@@ -256,6 +256,7 @@ struct RuntimeStateInputs: Codable, Sendable, Equatable {
 
   init(
     setup: RuntimeSetupInputs,
+    systemHelper: SystemHelperRuntimeState,
     snapshot: AgentSnapshot?,
     now: Date = Date(),
     freshnessInterval: TimeInterval = 5,
@@ -263,6 +264,7 @@ struct RuntimeStateInputs: Codable, Sendable, Equatable {
     ownershipPreempted: Bool = false
   ) {
     self.setup = setup
+    self.systemHelper = systemHelper
     self.snapshot = snapshot
     self.now = now
     self.freshnessInterval = freshnessInterval
@@ -282,6 +284,7 @@ private struct RuntimeHealthInputs: Codable, Sendable, Equatable {
 
 struct RuntimeState: Codable, Sendable, Equatable {
   let setup: SetupState
+  let systemHelper: SystemHelperRuntimeState
   let control: ControlState
   let telemetry: TelemetryState
   let health: RuntimeHealth
@@ -293,7 +296,7 @@ struct RuntimeState: Codable, Sendable, Equatable {
   static func resolve(_ inputs: RuntimeStateInputs) -> RuntimeState {
     let setupState = SetupState.resolve(
       backgroundAgent: inputs.setup.backgroundAgent,
-      helper: inputs.setup.helper
+      helper: inputs.systemHelper.setupRequirement
     )
     let agentSnapshot = inputs.snapshot
     let runtimeTelemetry = agentSnapshot.map(RuntimeTelemetry.init(snapshot:))
@@ -319,6 +322,7 @@ struct RuntimeState: Codable, Sendable, Equatable {
     )
     return RuntimeState(
       setup: setupState,
+      systemHelper: inputs.systemHelper,
       control: controlState,
       telemetry: telemetryState,
       health: runtimeHealth
@@ -328,6 +332,7 @@ struct RuntimeState: Codable, Sendable, Equatable {
   static func fromSharedDefaultsSnapshot(
     _ snapshot: AgentSnapshot?,
     setup: RuntimeSetupInputs = .ready,
+    systemHelper: SystemHelperRuntimeState = .checking,
     now: Date = Date(),
     agentReportedFailure: Bool = false,
     ownershipPreempted: Bool = false
@@ -335,6 +340,7 @@ struct RuntimeState: Codable, Sendable, Equatable {
     resolve(
       RuntimeStateInputs(
         setup: setup,
+        systemHelper: systemHelper,
         snapshot: snapshot,
         now: now,
         agentReportedFailure: agentReportedFailure,

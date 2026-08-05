@@ -58,6 +58,7 @@ final class AgentController: @unchecked Sendable {
   var conditionedDemandTemperatureVelocityC: Double = 0
   var lastDemandConditioningTime: Date?
   var runtimeSetupProvider: (@Sendable (AgentSnapshot?) -> RuntimeSetupInputs)?
+  var systemHelperStateProvider: @Sendable () -> SystemHelperRuntimeState = { .checking }
   var runtimeHealthOverrideProvider: (@Sendable (Date?) -> AgentRuntimeHealthOverride?)?
   var runtimeStateDidChange: (@Sendable (RuntimeState) -> Void)?
   let acousticRampGovernor = AcousticRampGovernor()
@@ -216,6 +217,7 @@ final class AgentController: @unchecked Sendable {
     return RuntimeState.fromSharedDefaultsSnapshot(
       lastPublishedSnapshot,
       setup: runtimeSetupProvider?(lastPublishedSnapshot) ?? .ready,
+      systemHelper: systemHelperStateProvider(),
       now: healthOverride?.now ?? Date(),
       ownershipPreempted: healthOverride?.ownershipPreempted ?? false
     )
