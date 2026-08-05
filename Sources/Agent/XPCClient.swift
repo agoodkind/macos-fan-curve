@@ -522,6 +522,11 @@ extension XPCClient {
       try Task.checkCancellation()
       _ = try await client.getFanCount(scope: scope)
       return .success(())
+    } catch let error as SMCXPCError {
+      log.notice(
+        "xpc.legacy_probe.application_reply error=\(error.localizedDescription, privacy: .public) recovery=accept-reachable"
+      )
+      return .success(())
     } catch {
       log.notice(
         "xpc.legacy_probe.request_failed error=\(error.localizedDescription, privacy: .public) recovery=resolve-race"

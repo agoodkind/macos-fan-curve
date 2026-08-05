@@ -53,6 +53,12 @@ final class InstallationState: ObservableObject {
   @Published private(set) var isRegisteringHelper = false
 
   private var timer: Timer?
+  /// When the refresh loop first observed the registered Agent without an open
+  /// XPC connection. Cleared the moment the Agent answers again.
+  var agentDisconnectedSince: Date?
+  /// How long a registered Agent may stay unconnected before the refresh loop
+  /// treats it as unresponsive and refreshes its registration.
+  let agentUnresponsiveRefreshInterval: TimeInterval = 10
   var lastAutoRefreshAttemptedHash: String?
   var lastAutoRefreshAttemptDate: Date?
   let agentRefreshRetryInterval: TimeInterval = 30
@@ -277,6 +283,7 @@ final class InstallationState: ObservableObject {
     let runtimeState = agentClient.runtimeState
     let runtimeSetup = runtimeState.setup
     let connectedNow = agentClient.connectionState == .connected
+    trackAgentConnection(connectedNow)
     let appBundlePath = Bundle.main.bundleURL.path
     let storedAgentFingerprint = suite.string(
       forKey: SharedConfigKeys.agentRegistrationFingerprint
@@ -308,6 +315,7 @@ final class InstallationState: ObservableObject {
       refreshAgentIfNeeded(
         AgentRefreshContext(
           agentConnected: agentConnected,
+          agentUnresponsive: agentUnresponsiveNow,
           runningHash: agentExecutableHash,
           snapshotSchemaVersion: agentSnapshotSchemaVersion,
           storedFingerprint: storedAgentFingerprint,
@@ -341,6 +349,24 @@ final class InstallationState: ObservableObject {
     }
 
     step = Self.installationStep(from: runtimeSetup)
+  }
+
+  /// Stamps when the Agent connection dropped and clears the stamp on
+  /// reconnect, so the unresponsive window measures one continuous outage.
+  private func trackAgentConnection(_ connectedNow: Bool) {
+    if connectedNow {
+      agentDisconnectedSince = nil
+    } else if agentDisconnectedSince == nil {
+      agentDisconnectedSince = Date()
+    }
+  }
+
+  /// True when the registered Agent has been unconnected for the whole
+  /// unresponsive grace window. A brief disconnect during app or Agent startup
+  /// stays inside the window, so healthy launches never trigger a refresh.
+  private var agentUnresponsiveNow: Bool {
+    guard !agentConnected, let agentDisconnectedSince else { return false }
+    return Date().timeIntervalSince(agentDisconnectedSince) >= agentUnresponsiveRefreshInterval
   }
 
   private func resolveAgentStatus(

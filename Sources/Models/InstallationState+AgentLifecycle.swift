@@ -17,6 +17,12 @@ struct ServiceRegistrationFingerprints {
 
 struct AgentRefreshContext {
   let agentConnected: Bool
+  /// True when the registered Agent has not answered XPC for longer than the
+  /// unresponsive grace window. An Agent from before the process-identity fix
+  /// rehashes its replaced executable, so after a Sparkle upgrade its heartbeat
+  /// mirrors the new bundled hash while its XPC replies stay undecodable; the
+  /// hash match alone must not keep that Agent alive.
+  let agentUnresponsive: Bool
   let runningHash: String
   let snapshotSchemaVersion: Int?
   let storedFingerprint: String?
@@ -187,6 +193,12 @@ extension InstallationState {
     appBundlePath: String,
     bundledHash: String
   ) -> Bool {
+    if context.agentConnected {
+      installationStateAgentLifecycleLog.notice(
+        "agent.refresh.deferred appPath=\(appBundlePath, privacy: .public) reason=connected-awaiting-heartbeat bundledHash=\(bundledHash, privacy: .public) recovery=wait-for-agent-snapshot"
+      )
+      return false
+    }
     if agentStartupGracePeriodIsActive() {
       installationStateAgentLifecycleLog.notice(
         "agent.refresh.deferred appPath=\(appBundlePath, privacy: .public) reason=running-hash-unavailable bundledHash=\(bundledHash, privacy: .public) schemaMismatch=\(context.snapshotSchemaMismatch, privacy: .public) recovery=wait-for-agent-snapshot"
@@ -209,6 +221,12 @@ extension InstallationState {
     appBundlePath: String,
     bundledHash: String
   ) -> Bool {
+    if context.agentUnresponsive {
+      installationStateAgentLifecycleLog.notice(
+        "agent.refresh.unresponsive appPath=\(appBundlePath, privacy: .public) runningHash=\(context.runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public) recovery=refresh-stale-agent-registration"
+      )
+      return false
+    }
     guard context.runningHash == bundledHash, !context.snapshotSchemaMismatch else {
       return false
     }
