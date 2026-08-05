@@ -16,7 +16,7 @@ private let xpcClientLifecycleLog = AppLog.make(category: "XPCClient")
 extension XPCClient {
   func resetAllDiscoveredFansToAuto() async throws {
     let xpcClient = try requireClient()
-    let completion = XPCVoidOperationCompletion()
+    let completion = XPCOperationCompletion()
     try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in
         completion.install(continuation)
@@ -52,7 +52,7 @@ extension XPCClient {
             completion.finish(with: .failure(error))
           }
         }
-        completion.install(operationTask: operationTask)
+        completion.install(tasks: [operationTask])
       }
     } onCancel: {
       if completion.finish(with: .failure(CancellationError())) {

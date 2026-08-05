@@ -314,15 +314,4 @@ final class XPCClientStrictResetTests: XCTestCase {
     expect(helper.autoResetCallCount) == autoResetCallCount
     expect(connectionFactory.connectionCount) == 1
   }
-
-  private func captureError(
-    operation: () async throws -> Void
-  ) async -> Error? {
-    do {
-      try await operation()
-      return nil
-    } catch {
-      return error
-    }
-  }
 }

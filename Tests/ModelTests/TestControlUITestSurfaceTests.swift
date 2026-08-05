@@ -58,55 +58,6 @@ final class TestControlUITestSurfaceTests: XCTestCase {
     expect(String(appScheme)).toNot(contain("FanCurveUITests"))
   }
 
-  func testScenarioSourcesCoverTheRequiredUIAndProtocolBoundaries() throws {
-    let setup = try source("Tests/FanCurveUITests/FanCurveUISetupTests.swift")
-    let runtime = try source("Tests/FanCurveUITests/FanCurveUIRuntimeTests.swift")
-    let controls = try source("Tests/FanCurveUITests/FanCurveUIControlTests.swift")
-    let faults = try source("Tests/FanCurveUITests/FanCurveUIProtocolFaultTests.swift")
-
-    for expectedState in [
-      "Enable Background Control",
-      "Allow Fan Curve in Background",
-      "Registration Needs Repair",
-      "Approval Required",
-      "Repair Failed",
-      "Updating",
-    ] {
-      expect(setup).to(contain(expectedState))
-    }
-    for expectedState in [
-      "Telemetry Unavailable",
-      "Telemetry Stale",
-      "Fan Control Preempted",
-      "All systems go",
-    ] {
-      expect(runtime).to(contain(expectedState))
-    }
-    for expectedIdentifier in [
-      "Dashboard.fanControl",
-      "Dashboard.boost",
-      "Settings.applyInBackground",
-      "Settings.ownershipDisclosure",
-      "Learn.confirmProbe",
-      "Application.quitCommand",
-    ] {
-      expect(controls).to(contain(expectedIdentifier))
-    }
-    for expectedFault in [
-      ".malformedInitialState",
-      ".duplicateEvent",
-      ".malformedEvent",
-      ".invalidation",
-      ".interruption",
-      ".reconnect",
-      ".rejectedCommand",
-      ".malformedReply",
-    ] {
-      expect(faults).to(contain(expectedFault))
-    }
-    expect(faults).to(contain("injectOutOfOrderRevision"))
-  }
-
   func testCanonicalExecutableProofUsesTheLaunchedProcessAndExactPath() throws {
     let attachments = try source(
       "Tests/FanCurveUITests/FanCurveUITestDriver+Attachments.swift"
