@@ -283,11 +283,7 @@ final class InstallationState: ObservableObject {
     let runtimeState = agentClient.runtimeState
     let runtimeSetup = runtimeState.setup
     let connectedNow = agentClient.connectionState == .connected
-    if connectedNow {
-      agentDisconnectedSince = nil
-    } else if agentDisconnectedSince == nil {
-      agentDisconnectedSince = Date()
-    }
+    trackAgentConnection(connectedNow)
     let appBundlePath = Bundle.main.bundleURL.path
     let storedAgentFingerprint = suite.string(
       forKey: SharedConfigKeys.agentRegistrationFingerprint
@@ -353,6 +349,16 @@ final class InstallationState: ObservableObject {
     }
 
     step = Self.installationStep(from: runtimeSetup)
+  }
+
+  /// Stamps when the Agent connection dropped and clears the stamp on
+  /// reconnect, so the unresponsive window measures one continuous outage.
+  private func trackAgentConnection(_ connectedNow: Bool) {
+    if connectedNow {
+      agentDisconnectedSince = nil
+    } else if agentDisconnectedSince == nil {
+      agentDisconnectedSince = Date()
+    }
   }
 
   /// True when the registered Agent has been unconnected for the whole
