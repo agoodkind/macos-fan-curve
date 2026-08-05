@@ -171,6 +171,7 @@ final class ConflictingFanResetHelper:
   private static let firstAdditionalRequestCount = 2
 
   enum FanCountReply {
+    case fail(String)
     case succeed
     case withhold
   }
@@ -288,6 +289,8 @@ final class ConflictingFanResetHelper:
     fanCountRequestContinuation.yield()
     let selectedReply = lock.withLock { fanCountReply }
     switch selectedReply {
+    case .fail(let message):
+      reply(false, 0, message)
     case .succeed:
       reply(true, 1, nil)
     case .withhold:
