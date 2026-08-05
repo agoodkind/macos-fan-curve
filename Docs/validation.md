@@ -372,10 +372,10 @@ fi
 test "$CANDIDATE_DMG_HASH" = "$(shasum -a 256 \
   "$FEED_DIRECTORY/FanCurve-26.8.5.dmg" | awk '{print $1}')" || exit 1
 APPCAST_SHORT_VERSION="$(xmllint --xpath \
-  'string(//*[local-name()="enclosure"]/@*[local-name()="shortVersionString"])' \
+  'string(//*[local-name()="shortVersionString"])' \
   "$FEED_DIRECTORY/appcast.xml")"
 APPCAST_BUILD="$(xmllint --xpath \
-  'string(//*[local-name()="enclosure"]/@*[local-name()="version"])' \
+  'string(//*[local-name()="version"])' \
   "$FEED_DIRECTORY/appcast.xml")"
 APPCAST_LENGTH="$(xmllint --xpath \
   'string(//*[local-name()="enclosure"]/@length)' \
