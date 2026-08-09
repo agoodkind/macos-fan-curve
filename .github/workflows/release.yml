@@ -68,8 +68,8 @@ jobs:
       candidate-asset-pattern: "FanCurve-*.dmg"
       source-sha: ${{ inputs.source_sha || '' }}
       allow-source-sha: ${{ inputs.allow_source_sha || false }}
-      signing-identity-name: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
-      apple-team-id: H3BMXM4W7H
+      signing-identity-name: ${{ vars.APPLE_DEVELOPER_ID_IDENTITY }}
+      apple-team-id: ${{ vars.APPLE_TEAM_ID }}
       notarize-pattern: "*.dmg"
       sbom-subject-path: "Products/Fan Curve.app"
     secrets: inherit
