@@ -58,7 +58,17 @@ if [[ ! -s "${selection_file}" ]]; then
     exit 1
 fi
 
-if ! awk -F '\t' -v expected="${published_release_tag}" \
+# A real release must appear in its own appcast, so its absence means the publish
+# step did not produce the release this run is generating for, and continuing would
+# ship a feed that omits it. A release dry run has published nothing by design, so
+# its tag can never appear; it stages the existing history instead and still
+# exercises download, generation, signing, staging, and the worker bundle build.
+# What a dry run cannot check is the new build's own entry, because no release
+# exists to download it from.
+if [[ "${DRY_RUN:-false}" == "true" ]]; then
+    printf 'prepare-appcast-history: dry run, staging published history without %s\n' \
+        "${published_release_tag}"
+elif ! awk -F '\t' -v expected="${published_release_tag}" \
     '$1 == expected { found = 1 } END { exit(found ? 0 : 1) }' \
     "${selection_file}"; then
     printf 'prepare-appcast-history: %s is not a selected %s release\n' \
