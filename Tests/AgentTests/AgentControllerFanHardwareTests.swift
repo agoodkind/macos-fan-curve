@@ -187,7 +187,7 @@ final class AgentControllerFanHardwareTests: XCTestCase {
 
 // MARK: - RecordingFanHardware
 
-private final class RecordingFanHardware: FanHardware, @unchecked Sendable {
+final class RecordingFanHardware: FanHardware, @unchecked Sendable {
   struct ReadRequest {
     let fanCount: UInt
     let tempKeys: [String]

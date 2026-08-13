@@ -148,7 +148,7 @@ extension AgentController {
     rampStateByFan.removeAll()
     rampSnapRequested = false
     lastCurveShape = nil
-    lastBoostObservation = .unobserved
+    resetUserControlObservations()
     lastCommandLogPercentByFan.removeAll()
     conditionedDemandPercent = nil
     conditionedDemandPercentVelocity = 0
