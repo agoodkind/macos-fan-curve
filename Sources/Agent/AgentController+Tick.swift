@@ -75,8 +75,8 @@ extension AgentController {
       fanCount: cachedFanCount,
       tempKeys: tempKeys
     )
-    if !result.fans.isEmpty {
-      cachedFanCount = UInt(result.fans.count)
+    if result.expectedFanCount > 0 {
+      cachedFanCount = result.expectedFanCount
     }
 
     // Liveness is reported by `heartbeatScheduler` on its own cadence, not
@@ -109,11 +109,11 @@ extension AgentController {
     guard telemetry.active else {
       resetInactiveControllerState()
       publishSnapshotIfNeeded(inactiveSnapshot(from: telemetry))
-      if telemetry.transitioned, !telemetry.result.fans.isEmpty {
+      if telemetry.transitioned, !telemetry.result.indexedFans.isEmpty {
         _ = await fanHardware.readAndApply(
           fanCount: 0,
           tempKeys: [],
-          autoFans: Array(0..<UInt(telemetry.result.fans.count))
+          autoFans: telemetry.result.indexedFans.map(\.index)
         )
         agentControllerTickLog.notice("agent.curve.deactivated fans=auto")
       }
@@ -169,14 +169,14 @@ extension AgentController {
       holdRemainingSeconds: 0,
       assistFloorPercent: nil,
       activeAssistKinds: [],
-      fans: telemetry.result.fans.enumerated().map { index, fan in
+      fans: telemetry.result.indexedFans.map { reading in
         AgentFanSnapshot(
-          index: index,
-          actualRPM: fan.actualRPM,
-          targetRPM: fan.targetRPM,
-          minRPM: fan.minRPM,
-          maxRPM: fan.maxRPM,
-          manualMode: fan.manualMode
+          index: Int(reading.index),
+          actualRPM: reading.info.actualRPM,
+          targetRPM: reading.info.targetRPM,
+          minRPM: reading.info.minRPM,
+          maxRPM: reading.info.maxRPM,
+          manualMode: reading.info.manualMode
         )
       }
     )
@@ -209,14 +209,14 @@ extension AgentController {
       holdRemainingSeconds: 0,
       assistFloorPercent: nil,
       activeAssistKinds: [],
-      fans: telemetry.result.fans.enumerated().map { index, fan in
+      fans: telemetry.result.indexedFans.map { reading in
         AgentFanSnapshot(
-          index: index,
-          actualRPM: fan.actualRPM,
-          targetRPM: fan.targetRPM,
-          minRPM: fan.minRPM,
-          maxRPM: fan.maxRPM,
-          manualMode: fan.manualMode
+          index: Int(reading.index),
+          actualRPM: reading.info.actualRPM,
+          targetRPM: reading.info.targetRPM,
+          minRPM: reading.info.minRPM,
+          maxRPM: reading.info.maxRPM,
+          manualMode: reading.info.manualMode
         )
       }
     )
@@ -311,7 +311,9 @@ extension AgentController {
 
     var setFans: [(index: UInt, rpm: Float)] = []
     var autoFans: [UInt] = []
-    for (fanIndex, fan) in context.telemetry.result.fans.enumerated() {
+    for reading in context.telemetry.result.indexedFans {
+      let fanIndex = reading.index
+      let fan = reading.info
       let command = context.expandedRangeState.command(
         percent: runtimeState.committedPercent,
         minRPM: fan.minRPM,
@@ -321,7 +323,7 @@ extension AgentController {
       let smoothedCommand = rampGovernedCommand(
         input: RampCommandInput(
           command: command,
-          index: UInt(fanIndex),
+          index: fanIndex,
           currentFan: fan,
           currentTemperatureC: context.telemetry.maxCPUTemp,
           fastTrendCPerTick: context.fastTrend,
@@ -334,15 +336,17 @@ extension AgentController {
       switch command {
       case .setRPM:
         if case .setRPM(let rpm) = smoothedCommand {
-          setFans.append((index: UInt(fanIndex), rpm: rpm))
+          setFans.append((index: fanIndex, rpm: rpm))
         }
       case .auto:
-        rampStateByFan.removeValue(forKey: UInt(fanIndex))
-        autoFans.append(UInt(fanIndex))
+        rampStateByFan.removeValue(forKey: fanIndex)
+        autoFans.append(fanIndex)
       }
     }
-    if !context.telemetry.result.fans.isEmpty {
-      // Every available fan has now had its chance to snap, so the request is spent.
+    let observedFanIndices = Set(context.telemetry.result.indexedFans.map(\.index))
+    let expectedFanIndices = Set(0..<context.telemetry.result.expectedFanCount)
+    if !expectedFanIndices.isEmpty, observedFanIndices == expectedFanIndices {
+      // Every expected fan has now had its chance to snap, so the request is spent.
       rampSnapRequested = false
     }
 
@@ -382,7 +386,7 @@ extension AgentController {
     from context: AgentControllerTickTypes.ActiveTickContext,
     runtimeState: AgentControllerDemandTypes.RuntimeBandState
   ) -> AgentSnapshot {
-    let fans = context.telemetry.result.fans
+    let fans = context.telemetry.result.indexedFans
     return AgentSnapshot(
       timestamp: context.now,
       helperReachable: helperReachable(from: context.telemetry),
@@ -407,14 +411,14 @@ extension AgentController {
       holdRemainingSeconds: runtimeState.holdRemainingSeconds,
       assistFloorPercent: context.assistFloorPercent,
       activeAssistKinds: context.assistAppliedKinds,
-      fans: fans.enumerated().map { index, fan in
+      fans: fans.map { reading in
         AgentFanSnapshot(
-          index: index,
-          actualRPM: fan.actualRPM,
-          targetRPM: fan.targetRPM,
-          minRPM: fan.minRPM,
-          maxRPM: fan.maxRPM,
-          manualMode: fan.manualMode
+          index: Int(reading.index),
+          actualRPM: reading.info.actualRPM,
+          targetRPM: reading.info.targetRPM,
+          minRPM: reading.info.minRPM,
+          maxRPM: reading.info.maxRPM,
+          manualMode: reading.info.manualMode
         )
       }
     )

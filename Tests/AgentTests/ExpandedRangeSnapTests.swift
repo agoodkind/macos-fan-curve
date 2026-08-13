@@ -162,6 +162,28 @@ final class ExpandedRangeSnapTests: XCTestCase {
     expect(fixture.hardware.latestAppliedRPMs) == overdriveCurveRPMs
   }
 
+  func testTransitionWithPartialFanTelemetryPreservesIndicesAndPendingSnap() async throws {
+    let fixture = try makeFixture(state: standardState, boostEnabled: false)
+    await fixture.controller.tick()
+    set(overdriveState, in: fixture.defaults)
+    fixture.hardware.readResult = partialTelemetry(fan: fixture.fans[1], index: 1)
+
+    await fixture.controller.tick()
+
+    expect(fixture.hardware.latestAppliedFanIndices) == [1]
+    expect(fixture.hardware.latestAppliedRPMs) == [overdriveCurveRPMs[1]]
+
+    fixture.hardware.readResult = telemetry(fans: fixture.fans, temperature: testTemperature)
+    fixture.controller.rampStateByFan = rampStates(
+      fanCount: fixture.fanCount,
+      rpm: dampedStartingRPM
+    )
+    await fixture.controller.tick()
+
+    expect(fixture.hardware.latestAppliedFanIndices) == [0, 1]
+    expect(fixture.hardware.latestAppliedRPMs) == overdriveCurveRPMs
+  }
+
   private var firstMappedStandardRPM: Float {
     firstFanMinimumRPM
       + Float(curvePercent) * (firstFanMaximumRPM - firstFanMinimumRPM)
@@ -259,6 +281,14 @@ final class ExpandedRangeSnapTests: XCTestCase {
   ) -> FanHardwareBatchRead {
     let temperatures = temperature.map { ["TC0P": Float($0)] } ?? [:]
     return FanHardwareBatchRead(fans: fans, temps: temperatures)
+  }
+
+  private func partialTelemetry(fan: FanInfo, index: UInt) -> FanHardwareBatchRead {
+    FanHardwareBatchRead(
+      indexedFans: [FanHardwareFanReading(index: index, info: fan)],
+      expectedFanCount: UInt(testFans().count),
+      temps: ["TC0P": Float(testTemperature)]
+    )
   }
 
   private func rampStates(fanCount: Int, rpm: Float) -> [UInt: RampCommandState] {

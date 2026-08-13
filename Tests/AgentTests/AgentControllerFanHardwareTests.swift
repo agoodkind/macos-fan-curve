@@ -323,6 +323,12 @@ final class RecordingFanHardware: FanHardware, @unchecked Sendable {
     }
   }
 
+  var latestAppliedFanIndices: [UInt] {
+    lock.withLock {
+      readRequests.last { !$0.setFans.isEmpty }?.setFans.map(\.index) ?? []
+    }
+  }
+
   func clearRequests() {
     lock.withLock { readRequests.removeAll() }
   }

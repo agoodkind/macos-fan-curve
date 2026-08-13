@@ -8,9 +8,37 @@
 
 import Foundation
 
+struct FanHardwareFanReading: Sendable {
+  let index: UInt
+  let info: FanInfo
+}
+
+// MARK: - FanHardwareBatchRead
+
 struct FanHardwareBatchRead: Sendable {
-  let fans: [FanInfo]
+  let indexedFans: [FanHardwareFanReading]
+  let expectedFanCount: UInt
   let temps: [String: Float]
+
+  var fans: [FanInfo] { indexedFans.map(\.info) }
+
+  init(fans: [FanInfo], temps: [String: Float]) {
+    self.indexedFans = fans.enumerated().map { index, info in
+      FanHardwareFanReading(index: UInt(index), info: info)
+    }
+    self.expectedFanCount = UInt(fans.count)
+    self.temps = temps
+  }
+
+  init(
+    indexedFans: [FanHardwareFanReading],
+    expectedFanCount: UInt,
+    temps: [String: Float]
+  ) {
+    self.indexedFans = indexedFans
+    self.expectedFanCount = expectedFanCount
+    self.temps = temps
+  }
 }
 
 // MARK: - SystemHelperIdentityRequestError

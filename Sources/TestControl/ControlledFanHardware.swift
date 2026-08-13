@@ -292,16 +292,19 @@
       fanCount: UInt,
       tempKeys: [String]
     ) -> FanHardwareBatchRead {
-      let fans = state.fanReadings
+      let indexedFans = state.fanReadings
         .filter { $0.fanIndex >= 0 && UInt($0.fanIndex) < fanCount }
         .sorted { $0.fanIndex < $1.fanIndex }
         .map { fan in
-          FanInfo(
-            actualRPM: fan.actualRPM,
-            targetRPM: fan.targetRPM,
-            minRPM: fan.minimumRPM,
-            maxRPM: fan.maximumRPM,
-            manualMode: !fan.isAutomatic
+          FanHardwareFanReading(
+            index: UInt(fan.fanIndex),
+            info: FanInfo(
+              actualRPM: fan.actualRPM,
+              targetRPM: fan.targetRPM,
+              minRPM: fan.minimumRPM,
+              maxRPM: fan.maximumRPM,
+              manualMode: !fan.isAutomatic
+            )
           )
         }
       let requestedKeys = Set(tempKeys)
@@ -309,7 +312,11 @@
       for sensor in state.sensorTemperatures where requestedKeys.contains(sensor.name) {
         temperatures[sensor.name] = Float(sensor.temperatureC)
       }
-      return FanHardwareBatchRead(fans: fans, temps: temperatures)
+      return FanHardwareBatchRead(
+        indexedFans: indexedFans,
+        expectedFanCount: fanCount,
+        temps: temperatures
+      )
     }
   }
 #endif
