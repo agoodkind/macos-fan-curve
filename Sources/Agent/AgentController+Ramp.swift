@@ -46,6 +46,7 @@ extension AgentController {
   /// percent long after the fans could have arrived.
   func beginRampSnap(resettingDemand: Bool) {
     rampSnapRequested = true
+    rampSnappedFanIndices.removeAll()
     guard resettingDemand else { return }
     conditionedDemandPercent = nil
     conditionedDemandPercentVelocity = 0
@@ -60,7 +61,8 @@ extension AgentController {
       rampStateByFan.removeValue(forKey: input.index)
       return .auto
     case .setRPM(let requestedRPM):
-      if rampSnapRequested {
+      if rampSnapRequested, !rampSnappedFanIndices.contains(input.index) {
+        rampSnappedFanIndices.insert(input.index)
         rampStateByFan[input.index] = RampCommandState(
           rpm: requestedRPM, timestamp: input.now)
         logCommandChangeIfNeeded(

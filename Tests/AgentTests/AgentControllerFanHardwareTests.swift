@@ -329,6 +329,12 @@ final class RecordingFanHardware: FanHardware, @unchecked Sendable {
     }
   }
 
+  var latestAutomaticFanIndices: [UInt] {
+    lock.withLock {
+      readRequests.last { !$0.autoFans.isEmpty }?.autoFans ?? []
+    }
+  }
+
   func clearRequests() {
     lock.withLock { readRequests.removeAll() }
   }

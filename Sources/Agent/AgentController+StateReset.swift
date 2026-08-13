@@ -14,6 +14,7 @@ extension AgentController {
   func resetInactiveControllerState() {
     resetThermalControllerState()
     rampSnapRequested = false
+    rampSnappedFanIndices.removeAll()
     lastCurveShape = nil
     resetUserControlObservations()
   }

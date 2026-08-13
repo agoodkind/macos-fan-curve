@@ -109,11 +109,11 @@ extension AgentController {
     guard telemetry.active else {
       resetInactiveControllerState()
       publishSnapshotIfNeeded(inactiveSnapshot(from: telemetry))
-      if telemetry.transitioned, !telemetry.result.indexedFans.isEmpty {
+      if telemetry.transitioned, telemetry.result.expectedFanCount > 0 {
         _ = await fanHardware.readAndApply(
           fanCount: 0,
           tempKeys: [],
-          autoFans: telemetry.result.indexedFans.map(\.index)
+          autoFans: Array(0..<telemetry.result.expectedFanCount)
         )
         agentControllerTickLog.notice("agent.curve.deactivated fans=auto")
       }
@@ -343,11 +343,11 @@ extension AgentController {
         autoFans.append(fanIndex)
       }
     }
-    let observedFanIndices = Set(context.telemetry.result.indexedFans.map(\.index))
     let expectedFanIndices = Set(0..<context.telemetry.result.expectedFanCount)
-    if !expectedFanIndices.isEmpty, observedFanIndices == expectedFanIndices {
+    if !expectedFanIndices.isEmpty, expectedFanIndices.isSubset(of: rampSnappedFanIndices) {
       // Every expected fan has now had its chance to snap, so the request is spent.
       rampSnapRequested = false
+      rampSnappedFanIndices.removeAll()
     }
 
     let tickPriority =

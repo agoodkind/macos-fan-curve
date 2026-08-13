@@ -174,14 +174,27 @@ final class ExpandedRangeSnapTests: XCTestCase {
     expect(fixture.hardware.latestAppliedRPMs) == [overdriveCurveRPMs[1]]
 
     fixture.hardware.readResult = telemetry(fans: fixture.fans, temperature: testTemperature)
-    fixture.controller.rampStateByFan = rampStates(
-      fanCount: fixture.fanCount,
-      rpm: dampedStartingRPM
+    fixture.controller.rampStateByFan[1] = RampCommandState(
+      rpm: dampedStartingRPM,
+      timestamp: Date()
     )
     await fixture.controller.tick()
 
     expect(fixture.hardware.latestAppliedFanIndices) == [0, 1]
-    expect(fixture.hardware.latestAppliedRPMs) == overdriveCurveRPMs
+    expect(fixture.hardware.latestAppliedRPMs.first) == overdriveCurveRPMs[0]
+    expect(fixture.hardware.latestAppliedRPMs.last) < overdriveCurveRPMs[1]
+  }
+
+  func testDeactivationResetsEveryExpectedFanWhenTelemetryIsPartial() async throws {
+    let fixture = try makeFixture(state: standardState, boostEnabled: false)
+    await fixture.controller.tick()
+    fixture.hardware.clearRequests()
+    fixture.defaults.set(false, forKey: SharedConfigKeys.curveActive)
+    fixture.hardware.readResult = partialTelemetry(fan: fixture.fans[1], index: 1)
+
+    await fixture.controller.tick()
+
+    expect(fixture.hardware.latestAutomaticFanIndices) == [0, 1]
   }
 
   private var firstMappedStandardRPM: Float {
