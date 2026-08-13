@@ -183,6 +183,21 @@ final class SystemHelperLifecycleReconcilerTests: XCTestCase {
     expect(harness.hardware.resetCount) == 0
   }
 
+  func testForcedRepairSurvivesConnectionInvalidatedSentinel() async throws {
+    let harness = try ReconcilerHarness(
+      testCase: self,
+      active: .connectionInvalidated,
+      serviceStatus: .notRegistered
+    )
+
+    let state = await harness.reconcile(.forcedRepair)
+
+    expect(state) == .running(active: harness.bundledIdentity)
+    expect(harness.service.registrationGeneration) == 1
+    expect(harness.service.unregisterCount) == 0
+    expect(harness.hardware.resetCount) == 0
+  }
+
   func testForcedRepairResetsReachableUnregisteredHelperBeforeRegistering() async throws {
     let harness = try ReconcilerHarness(
       testCase: self,

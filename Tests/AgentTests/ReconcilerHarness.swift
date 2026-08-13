@@ -18,6 +18,7 @@ final class ReconcilerHarness: @unchecked Sendable {
 
   enum ActiveFixture {
     case bundled
+    case connectionInvalidated
     case legacy
     case outdated
     case unreachable
@@ -140,6 +141,8 @@ final class ReconcilerHarness: @unchecked Sendable {
     switch fixture {
     case .bundled:
       return .identity(bundled)
+    case .connectionInvalidated:
+      return .connectionInvalidated
     case .legacy:
       return .legacy
     case .outdated:

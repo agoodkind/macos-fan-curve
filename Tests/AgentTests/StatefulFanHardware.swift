@@ -49,6 +49,7 @@ final class StatefulFanHardware: FanHardware, @unchecked Sendable {
   private static let firstAdditionalVerificationRequestCount = 3
 
   enum IdentityBehavior: Sendable {
+    case connectionInvalidated
     case identity(SystemHelperIdentity)
     case legacy
     case unreachable
@@ -137,6 +138,10 @@ final class StatefulFanHardware: FanHardware, @unchecked Sendable {
     switch observation.behavior {
     case .identity(let identity):
       return identity
+    case .connectionInvalidated:
+      // Mirrors SMCFanXPCClient reporting an invalidated helper connection
+      // as CancellationError while the reconciliation task is not cancelled.
+      throw CancellationError()
     case .legacy, .unreachable:
       throw TestFailure.unreachable
     }
@@ -147,6 +152,8 @@ final class StatefulFanHardware: FanHardware, @unchecked Sendable {
     switch currentIdentity {
     case .legacy:
       break
+    case .connectionInvalidated:
+      throw CancellationError()
     case .identity, .unreachable:
       throw TestFailure.unreachable
     }
