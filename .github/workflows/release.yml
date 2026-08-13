@@ -4,11 +4,10 @@ on:
   push:
     branches:
       - main
-  # A pull request runs the whole signed pipeline and stops before publishing, so
-  # a change that breaks signing, notarization, packaging, or the appcast fails
-  # here instead of on main. Without it the first thing to exercise the release
-  # path is the merge itself, and a broken release is found only once it cannot be
-  # undone.
+  # The signed release dry run moved into CI's Verify job, which runs it on the
+  # same machine as the verify build. A pull request still triggers this workflow
+  # for the appcast dry run only: the release job skips, and the appcast job
+  # generates, signs, stages, and validates the worker bundle without publishing.
   pull_request:
   workflow_dispatch:
     inputs:
@@ -49,15 +48,9 @@ permissions:
 
 jobs:
   release:
-    # A fork pull request cannot read this repository's signing secrets, so the
-    # signed run would fail for a reason the contributor cannot fix. Dependabot
-    # branches live in this repository and pass that check, but a Dependabot pull
-    # request reads its own secret store rather than the Actions one, so the shared
-    # workflow's signed dry run would exit on missing credentials every time.
-    if: >-
-      ${{ github.event_name != 'pull_request'
-      || (github.event.pull_request.head.repo.full_name == github.repository
-      && github.actor != 'dependabot[bot]') }}
+    # A pull request's signed dry run lives in CI's Verify job now, so the
+    # release pipeline itself runs only on a merge or a manual dispatch.
+    if: ${{ github.event_name != 'pull_request' }}
     uses: agoodkind/swift-makefile/.github/workflows/_release.yml@main
     with:
       runner: macos-26
@@ -76,10 +69,25 @@ jobs:
 
   appcast:
     needs: release
+    # On a pull request the release job is skipped, so `!cancelled()` lets this
+    # job still run its dry run while a failed or cancelled real release still
+    # blocks it. A fork pull request cannot read the Sparkle and Cloudflare
+    # secrets, and a Dependabot pull request reads its own secret store, so both
+    # skip.
+    if: >-
+      ${{ !cancelled() && needs.release.result != 'failure'
+      && needs.release.result != 'cancelled'
+      && (github.event_name != 'pull_request'
+      || (github.event.pull_request.head.repo.full_name == github.repository
+      && github.actor != 'dependabot[bot]')) }}
     uses: ./.github/workflows/appcast.yml
     with:
-      release_tag: ${{ needs.release.outputs['release-tag'] }}
-      release_track: ${{ needs.release.outputs['release-track'] }}
+      # The skipped release job produces no outputs on a pull request. The dry
+      # run only logs the tag (its own tag can never be in the published
+      # history), and the track picks which history to stage, so the fallbacks
+      # keep the history script's required-input guards satisfied.
+      release_tag: ${{ needs.release.outputs['release-tag'] || 'dry-run' }}
+      release_track: ${{ needs.release.outputs['release-track'] || 'stable' }}
       # The dry run generates, signs, and stages the appcast exactly as a real
       # release does, and only the worker publish is held back. Skipping the whole
       # job instead would leave appcast generation unexercised until a merge, which
