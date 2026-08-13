@@ -69,19 +69,19 @@ SWIFT_MK_MODULES := swift-build.mk swift-release.mk
 # swift-build.mk module skips its generic `run` when this is set, avoiding a Make
 # "overriding commands" warning. Takes effect once the guard is synced into .make/.
 SWIFT_MK_OWN_RUN := 1
-SWIFT_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 app-local
+SWIFT_BUILD_CMD := $(MAKE) app-local
 # Release artifacts for the shared _release.yml pipeline: the signed DMG into
 # dist/. MARKETING_VERSION/CURRENT_PROJECT_VERSION/RELEASE_TAG arrive as env
 # from the workflow's release-meta job.
-SWIFT_MK_RELEASE_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 release-assets && cp "$(RELEASE_DMG_PATH)" dist/
+SWIFT_MK_RELEASE_BUILD_CMD := $(MAKE) release-assets && cp "$(RELEASE_DMG_PATH)" dist/
 # The project-build recipe writes its index store under BUILD_DIR, so the
 # dead-code gate reads from there. A clean build before the scan keeps the index
 # free of stale units from earlier incremental builds.
 SWIFT_MK_DERIVED_DATA := $(BUILD_DIR)
-SWIFT_TEST_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 test-local
-SWIFT_GENERATE_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 generate-project
+SWIFT_TEST_CMD := $(MAKE) test-local
+SWIFT_GENERATE_CMD := $(MAKE) generate-project
 SWIFT_CLEAN_CMD := rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) FanCurveApp.xcworkspace FanCurveApp.xcodeproj
-SWIFT_ANALYZE_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 xcode-analyze swiftlint-analyze
+SWIFT_ANALYZE_CMD := $(MAKE) xcode-analyze swiftlint-analyze
 SWIFT_FORMAT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTLINT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTCHECK_EXTRA_TARGETS := $(SWIFT_FORMAT_FILES)
@@ -235,7 +235,7 @@ appcast:
 	gh release download "$(RELEASE_TAG)" --pattern "$(APP_NAME)-*.dmg" --dir $(PRODUCTS_DIR) --clobber
 	@dmg="$$(ls $(PRODUCTS_DIR)/$(APP_NAME)-*.dmg | sed -n 1p)"; \
 	artifact_version="$$(basename "$$dmg" .dmg | sed 's/^$(APP_NAME)-//')"; \
-	$(MAKE) SWIFT_MK_SKIP_FETCH=1 prepare-sparkle-updates \
+	$(MAKE) prepare-sparkle-updates \
 		ARTIFACT_VERSION="$$artifact_version" \
 		RELEASE_TAG="$(RELEASE_TAG)"
 

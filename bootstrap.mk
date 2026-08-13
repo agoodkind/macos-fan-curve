@@ -1,72 +1,35 @@
-# bootstrap.mk fetches swift.mk into .make/ and includes it. swift.mk fetches its
-# own helper scripts, the shared lint/format/periphery/osv configs, and the
-# selected modules, so this stub is the only file a consumer commits and it
-# rarely changes. Consumer Makefiles set their project commands and
-# SWIFT_MK_MODULES, then include this file.
-#
-# Embedded shell runs under bash (not make's default $(shell) sh) so the body can
-# follow the repo shell rules: set -euo pipefail, [[ ]], and full if/then/fi.
-
 SWIFT_MK_DEV_DIR ?=
 SWIFT_MK := .make/swift.mk
 SWIFT_MK_BASE_URL ?= https://raw.githubusercontent.com/agoodkind/swift-makefile/main
 SWIFT_MK_API_REPO ?= agoodkind/swift-makefile
 SWIFT_MK_API_REF ?= main
+SWIFT_MK_CODELOAD_BASE ?= https://codeload.github.com
 
-# Fetch one file from the local swift-makefile checkout (SWIFT_MK_DEV_DIR) or from
-# GitHub. Used only to obtain swift.mk; swift.mk fetches everything else itself.
-# Expanded into an outer bash -c so quoting stays make-variable substitution plus
-# shell $$ escapes. Each failed source logs once, then the next source runs.
-# Success must fall through (no exit 0): the caller is `bash -c '... && $(call) &&
-# printf ok'`, so an early exit would skip the ok token make checks for.
-define _swift_mk_fetch
+SWIFT_MK_BOOTSTRAP := .make/scripts/swift-mk-bootstrap.sh
+
+define _swift_mk_get_bootstrap
 	set -euo pipefail; \
-	tmp_file=$$(mktemp "$(2).tmp.XXXXXX"); \
-	trap "rm -f \"$$tmp_file\"" EXIT; \
-	fetched=0; \
-	if [[ -n "$(SWIFT_MK_DEV_DIR)" && -f "$(SWIFT_MK_DEV_DIR)/$(1)" ]]; then \
-		cp "$(SWIFT_MK_DEV_DIR)/$(1)" "$$tmp_file"; \
-		if [[ ! -s "$$tmp_file" ]]; then \
-			printf "%s\n" "error: $(SWIFT_MK_DEV_DIR)/$(1) is empty after copy" >&2; \
+	if [[ -n "$(SWIFT_MK_DEV_DIR)" && -f "$(SWIFT_MK_DEV_DIR)/scripts/swift-mk-bootstrap.sh" ]]; then \
+		mkdir -p .make/scripts; \
+		cp "$(SWIFT_MK_DEV_DIR)/scripts/swift-mk-bootstrap.sh" "$(SWIFT_MK_BOOTSTRAP)"; \
+	elif [[ -s "$(SWIFT_MK_BOOTSTRAP)" ]]; then \
+		: ; \
+	else \
+		mkdir -p .make/scripts; \
+		tmp_dir=$$(mktemp -d ".make/scripts/.bootstrap-fetch.XXXXXX"); \
+		trap "rm -rf \"$$tmp_dir\"" EXIT; \
+		if curl -fsSL --connect-timeout 5 --max-time 15 "$(SWIFT_MK_CODELOAD_BASE)/$(SWIFT_MK_API_REPO)/tar.gz/$(SWIFT_MK_API_REF)" -o "$$tmp_dir/snapshot.tar.gz" \
+			&& tar -xzf "$$tmp_dir/snapshot.tar.gz" -C "$$tmp_dir" --strip-components 1 \
+			&& [[ -s "$$tmp_dir/scripts/swift-mk-bootstrap.sh" ]]; then \
+			mv "$$tmp_dir/scripts/swift-mk-bootstrap.sh" "$(SWIFT_MK_BOOTSTRAP)"; \
+		else \
+			printf "%s\n" "error: could not obtain $(SWIFT_MK_BOOTSTRAP); check network access to $(SWIFT_MK_CODELOAD_BASE)" >&2; \
 			exit 1; \
 		fi; \
-		mv "$$tmp_file" "$(2)"; \
-		fetched=1; \
 	fi; \
-	if [[ "$$fetched" -eq 0 ]] && command -v gh >/dev/null 2>&1; then \
-		if gh api "repos/$(SWIFT_MK_API_REPO)/contents/$(1)?ref=$(SWIFT_MK_API_REF)" \
-			-H "Accept: application/vnd.github.raw" >"$$tmp_file" \
-			&& [[ -s "$$tmp_file" ]]; then \
-			mv "$$tmp_file" "$(2)"; \
-			fetched=1; \
-		else \
-			printf "%s\n" "bootstrap.mk: gh api fetch of $(1) failed; trying curl" >&2; \
-		fi; \
-	elif [[ "$$fetched" -eq 0 ]]; then \
-		printf "%s\n" "bootstrap.mk: gh not on PATH; trying curl" >&2; \
-	fi; \
-	if [[ "$$fetched" -eq 0 ]]; then \
-		if curl -fsSL --connect-timeout 5 --max-time 10 "$(SWIFT_MK_BASE_URL)/$(1)" \
-			-o "$$tmp_file" && [[ -s "$$tmp_file" ]]; then \
-			mv "$$tmp_file" "$(2)"; \
-			fetched=1; \
-		fi; \
-	fi; \
-	if [[ "$$fetched" -eq 0 ]]; then \
-		printf "%s\n" "error: could not fetch $(1) (tried SWIFT_MK_DEV_DIR, gh api, then $(SWIFT_MK_BASE_URL)); check your network connection, and if gh is installed run: gh auth status" >&2; \
-		exit 1; \
-	fi
+	chmod +x "$(SWIFT_MK_BOOTSTRAP)"
 endef
 
-# Print the trace header before any other work. This is a minimal self-contained
-# core: adopt an inherited TRACEPARENT (any well-formed one, normalized to flags
-# 01), then the canonical TRACE_ID/SPAN_ID pair, then the SWIFT_MK_TRACE_ID/
-# SWIFT_MK_SPAN_ID aliases, or mint a fresh id, so the consumer bootstrap needs no
-# fetch and works offline. The full trace logic (same precedence plus stricter
-# W3C validation) lives once in scripts/swift-mk-trace.sh, which swift.mk runs for
-# the engine build. Wrapped in a define so make treats the shell body literally,
-# not as make comments/parens. The log directory is absolutized so the header is
-# usable from any cwd.
 define swift_mk_trace_min
 $(shell /usr/bin/env bash -c 'set -euo pipefail; \
 	log_dir=".make/logs"; \
@@ -149,10 +112,19 @@ SWIFT_MK_SPAN_ID := $(SPAN_ID)
 export TRACEPARENT TRACE_ID SPAN_ID SWIFT_MK_TRACE_ID SWIFT_MK_SPAN_ID
 endif
 
-ifeq ($(strip $(SWIFT_MK_SKIP_FETCH)),1)
-$(if $(wildcard $(SWIFT_MK)),,$(error swift-makefile expected $(SWIFT_MK); rerun without SWIFT_MK_SKIP_FETCH))
+ifeq ($(strip $(_SWIFT_MK_PROVISIONED)),1)
+$(if $(wildcard $(SWIFT_MK_BOOTSTRAP)),,$(error swift-makefile expected $(SWIFT_MK_BOOTSTRAP); the engine snapshot is incomplete))
 else
-$(if $(filter ok,$(shell /usr/bin/env bash -c 'mkdir -p .make && $(call _swift_mk_fetch,swift.mk,$(SWIFT_MK)) && printf ok')),,$(error swift-makefile failed to fetch swift.mk))
+$(if $(filter ok,$(shell /usr/bin/env bash -c 'mkdir -p .make && $(call _swift_mk_get_bootstrap) && printf ok')),,$(error swift-makefile failed to obtain $(SWIFT_MK_BOOTSTRAP)))
+endif
+
+ifneq ($(strip $(SWIFT_MK_DEV_DIR)),)
+$(if $(filter ok,$(shell mkdir -p .make && cp "$(SWIFT_MK_DEV_DIR)/swift.mk" "$(SWIFT_MK)" && printf ok)),,$(error swift-makefile failed to copy swift.mk from $(SWIFT_MK_DEV_DIR)))
+endif
+
+$(if $(filter ok,$(shell SWIFT_MK_API_REPO="$(SWIFT_MK_API_REPO)" SWIFT_MK_API_REF="$(SWIFT_MK_API_REF)" SWIFT_MK_MODULES="$(SWIFT_MK_MODULES)" SWIFT_MK_CODELOAD_BASE="$(SWIFT_MK_CODELOAD_BASE)" SWIFT_MK_DEV_DIR="$(SWIFT_MK_DEV_DIR)" _SWIFT_MK_PROVISIONED="$(_SWIFT_MK_PROVISIONED)" GITHUB_ACTIONS="$(GITHUB_ACTIONS)" GITHUB_RUN_ID="$(GITHUB_RUN_ID)" bash "$(SWIFT_MK_BOOTSTRAP)" >&2 && printf ok)),,$(error swift-makefile failed to provision the engine snapshot))
+ifeq ($(strip $(SWIFT_MK_DEV_DIR)),)
+override _SWIFT_MK_PROVISIONED := 1
 endif
 
 -include $(SWIFT_MK)
