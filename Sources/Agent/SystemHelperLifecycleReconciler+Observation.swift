@@ -15,16 +15,12 @@ extension SystemHelperLifecycleReconciler {
     try Task.checkCancellation()
     do {
       return .identity(try await fanHardware.getHelperIdentity())
-    } catch is CancellationError {
-      throw CancellationError()
     } catch {
       let identityFailure = error.localizedDescription
       try Task.checkCancellation()
       do {
         try await fanHardware.probeLegacyHelperReachability()
         return .legacyReachable
-      } catch is CancellationError {
-        throw CancellationError()
       } catch {
         try Task.checkCancellation()
         let reason =

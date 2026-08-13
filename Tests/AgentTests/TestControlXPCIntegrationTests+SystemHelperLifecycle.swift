@@ -280,6 +280,8 @@ final class ControlledSystemHelperLifecycleFixture: @unchecked Sendable {
     switch active {
     case .bundled:
       return .identity(bundledIdentity)
+    case .connectionInvalidated:
+      return .connectionInvalidated
     case .legacy:
       return .legacy
     case .outdated:
