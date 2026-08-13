@@ -91,6 +91,10 @@ struct SharedConfig {
     )
   }
 
+  func loadOverdriveTargetRPM() -> Float {
+    resolvedOverdriveTargetRPM(defaults: defaults)
+  }
+
   func loadLoadAssistEnabled(_ kind: LoadAssistKind) -> Bool {
     LoadAssistStore.loadEnabled(kind, defaults: defaults)
   }

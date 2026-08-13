@@ -130,7 +130,7 @@ extension AgentController {
       )
     }
     guard telemetry.maxCPUTemp > 0 else {
-      resetInactiveControllerState()
+      resetTemperatureUnavailableControllerState()
       publishSnapshotIfNeeded(activeTemperatureUnavailableSnapshot(from: telemetry))
       agentControllerTickLog.debug(
         "agent.tick.temperature_unavailable fanCount=\(telemetry.result.fans.count, privacy: .public) recovery=publish-holding-snapshot"
@@ -138,25 +138,6 @@ extension AgentController {
       return false
     }
     return true
-  }
-
-  func resetInactiveControllerState() {
-    filteredTemperatureFast = nil
-    filteredTemperatureSlow = nil
-    previousFastTemperature = nil
-    previousSlowTemperature = nil
-    rampStateByFan.removeAll()
-    rampSnapRequested = false
-    lastCurveShape = nil
-    resetUserControlObservations()
-    lastCommandLogPercentByFan.removeAll()
-    conditionedDemandPercent = nil
-    conditionedDemandPercentVelocity = 0
-    conditionedDemandTemperatureC = nil
-    conditionedDemandTemperatureVelocityC = 0
-    lastDemandConditioningTime = nil
-    controllerMode = .holding
-    thermalDebt = 0
   }
 
   func helperReachable(from telemetry: AgentControllerTickTypes.TickTelemetry) -> Bool {
@@ -331,10 +312,11 @@ extension AgentController {
     var setFans: [(index: UInt, rpm: Float)] = []
     var autoFans: [UInt] = []
     for (fanIndex, fan) in context.telemetry.result.fans.enumerated() {
-      let command = fanCommandFor(
+      let command = context.expandedRangeState.command(
         percent: runtimeState.committedPercent,
         minRPM: fan.minRPM,
-        maxRPM: fan.maxRPM
+        maxRPM: fan.maxRPM,
+        overdriveTargetRPM: context.overdriveTargetRPM
       )
       let smoothedCommand = rampGovernedCommand(
         input: RampCommandInput(
@@ -359,8 +341,10 @@ extension AgentController {
         autoFans.append(UInt(fanIndex))
       }
     }
-    // Every fan has now had its chance to snap, so the request is spent.
-    rampSnapRequested = false
+    if !context.telemetry.result.fans.isEmpty {
+      // Every available fan has now had its chance to snap, so the request is spent.
+      rampSnapRequested = false
+    }
 
     let tickPriority =
       context.boost

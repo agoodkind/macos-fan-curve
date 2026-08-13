@@ -208,7 +208,7 @@ final class RecordingFanHardware: FanHardware, @unchecked Sendable {
   }
 
   private let lock = NSLock()
-  private let readResult: FanHardwareBatchRead
+  private var storedReadResult: FanHardwareBatchRead
   private let ownership: [AgentOwnershipEntry]
   private let discoveredKeys: [String]
   private var readRequests: [ReadRequest] = []
@@ -221,7 +221,7 @@ final class RecordingFanHardware: FanHardware, @unchecked Sendable {
     ownership: [AgentOwnershipEntry] = [],
     discoveredKeys: [String] = []
   ) {
-    self.readResult = readResult
+    self.storedReadResult = readResult
     self.ownership = ownership
     self.discoveredKeys = discoveredKeys
   }
@@ -257,7 +257,7 @@ final class RecordingFanHardware: FanHardware, @unchecked Sendable {
         )
       )
     }
-    return readResult
+    return lock.withLock { storedReadResult }
   }
 
   func getOwnership() async throws -> [AgentOwnershipEntry] {
@@ -310,5 +310,20 @@ final class RecordingFanHardware: FanHardware, @unchecked Sendable {
     lock.lock()
     defer { lock.unlock() }
     return ownershipReads
+  }
+
+  var readResult: FanHardwareBatchRead {
+    get { lock.withLock { storedReadResult } }
+    set { lock.withLock { storedReadResult = newValue } }
+  }
+
+  var latestAppliedRPMs: [Float] {
+    lock.withLock {
+      readRequests.last { !$0.setFans.isEmpty }?.setFans.map(\.rpm) ?? []
+    }
+  }
+
+  func clearRequests() {
+    lock.withLock { readRequests.removeAll() }
   }
 }

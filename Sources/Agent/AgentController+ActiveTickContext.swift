@@ -57,6 +57,19 @@ enum BoostObservation: Equatable {
 struct ExpandedRangeState: Equatable {
   let overdriveEnabled: Bool
   let underdriveEnabled: Bool
+
+  func command(
+    percent: Double,
+    minRPM: Float,
+    maxRPM: Float,
+    overdriveTargetRPM: Float
+  ) -> FanCommand {
+    FanCommandMapping(
+      overdriveEnabled: overdriveEnabled,
+      underdriveEnabled: underdriveEnabled,
+      overdriveTargetRPM: overdriveTargetRPM
+    ).command(percent: percent, minRPM: minRPM, maxRPM: maxRPM)
+  }
 }
 
 // MARK: - ExpandedRangeObservation
@@ -68,6 +81,8 @@ enum ExpandedRangeObservation: Equatable {
 
 private struct ActiveTickCurveState {
   let boost: Bool
+  let expandedRangeState: ExpandedRangeState
+  let overdriveTargetRPM: Float
   let baseCurvePercent: Double
   let fanResponseMultiplier: FanResponseMultiplier
   let fanResponseInferred: Bool
@@ -107,6 +122,8 @@ extension AgentController {
       fastTrend: temperatureState.fastTrend,
       slowTrend: temperatureState.slowTrend,
       boost: curveState.boost,
+      expandedRangeState: curveState.expandedRangeState,
+      overdriveTargetRPM: curveState.overdriveTargetRPM,
       pressureTemperature: temperatureState.pressureTemperature,
       baseCurvePercent: curveState.baseCurvePercent,
       fanResponseMultiplier: curveState.fanResponseMultiplier,
@@ -200,8 +217,10 @@ extension AgentController {
     -> ActiveTickCurveState
   {
     let boost = sharedConfig.loadBoostEnabled()
+    let expandedRangeState = sharedConfig.loadExpandedRangeState()
+    let overdriveTargetRPM = sharedConfig.loadOverdriveTargetRPM()
     snapIfBoostChanged(to: boost)
-    snapIfExpandedRangeChanged(to: sharedConfig.loadExpandedRangeState())
+    snapIfExpandedRangeChanged(to: expandedRangeState)
     let points = sharedConfig.loadCurve()
     let mode = sharedConfig.loadInterpolationMode()
     snapIfCurveChanged(to: CurveShape(points: points, interpolationMode: mode))
@@ -224,6 +243,8 @@ extension AgentController {
 
     return ActiveTickCurveState(
       boost: boost,
+      expandedRangeState: expandedRangeState,
+      overdriveTargetRPM: overdriveTargetRPM,
       baseCurvePercent: baseCurvePercent,
       fanResponseMultiplier: fanResponseMultiplier,
       fanResponseInferred: fanResponseInferred,

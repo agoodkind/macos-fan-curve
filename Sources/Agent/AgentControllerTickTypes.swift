@@ -33,6 +33,8 @@ enum AgentControllerTickTypes {
     let fastTrend: Double
     let slowTrend: Double
     let boost: Bool
+    let expandedRangeState: ExpandedRangeState
+    let overdriveTargetRPM: Float
     let pressureTemperature: Double
     let baseCurvePercent: Double
     let fanResponseMultiplier: FanResponseMultiplier

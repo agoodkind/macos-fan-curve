@@ -23,31 +23,12 @@ private let overdriveTargetRPMDefault: Float = 10_000
 /// When Overdrive is on, 100% on the curve maps to this value. Prefers
 /// the measured value from a Learn probe, falling back to the default.
 var overdriveTargetRPM: Float {
-  let measured = Float(
-    sharedDefaults().double(forKey: SharedConfigKeys.overdriveTargetRPMMeasured))
-  return measured > 0 ? measured : overdriveTargetRPMDefault
+  resolvedOverdriveTargetRPM(defaults: sharedDefaults())
 }
 
-/// Map a curve percent (0...1) to a command for a fan given its reported
-/// min/max RPM. Honors the Overdrive and Underdrive settings read from the
-/// shared UserDefaults suite so the GUI and the Agent agree.
-///
-/// Semantics:
-/// - percent <= 0 with underdrive off: fan is held at the reported minimum RPM.
-/// - percent <= 0 with underdrive on: fan is forced to 0 RPM in manual mode.
-/// - percent > 0 with overdrive off: interpolate between minRPM and maxRPM.
-/// - percent > 0 with overdrive on: interpolate between minRPM and overdriveTargetRPM.
-/// - Underdrive also lowers the floor from minRPM to 0 for above-zero targets.
-func fanCommandFor(percent: Double, minRPM: Float, maxRPM: Float) -> FanCommand {
-  let defaults = sharedDefaults()
-  let overdrive = defaults.bool(forKey: SharedConfigKeys.overdriveEnabled)
-  let underdrive = defaults.bool(forKey: SharedConfigKeys.underdriveEnabled)
-
-  return FanCommandMapping(
-    overdriveEnabled: overdrive,
-    underdriveEnabled: underdrive,
-    overdriveTargetRPM: overdriveTargetRPM
-  ).command(percent: percent, minRPM: minRPM, maxRPM: maxRPM)
+func resolvedOverdriveTargetRPM(defaults: UserDefaults) -> Float {
+  let measured = Float(defaults.double(forKey: SharedConfigKeys.overdriveTargetRPMMeasured))
+  return measured > 0 ? measured : overdriveTargetRPMDefault
 }
 
 /// Access the shared UserDefaults suite used by GUI + Agent.
