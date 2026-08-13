@@ -174,6 +174,45 @@ final class AgentControllerFanHardwareTests: XCTestCase {
     expect(request.priority) == nil
   }
 
+  func testExpandedRangeTransitionsRequestRampSnapDuringBoost() throws {
+    let defaults = try XCTUnwrap(isolatedDefaults)
+    defaults.set(true, forKey: SharedConfigKeys.boostEnabled)
+    defaults.set(false, forKey: SharedConfigKeys.overdriveEnabled)
+    defaults.set(false, forKey: SharedConfigKeys.underdriveEnabled)
+    let controller = try makeController(fanHardware: RecordingFanHardware())
+    let telemetry = AgentControllerTickTypes.TickTelemetry(
+      active: true,
+      result: FanHardwareBatchRead(fans: [], temps: [:]),
+      transitioned: false,
+      maxCPUTemp: 70,
+      cpuLoad: 0,
+      gpuLoad: 0
+    )
+
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == false
+
+    defaults.set(true, forKey: SharedConfigKeys.overdriveEnabled)
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == true
+
+    controller.rampSnapRequested = false
+    defaults.set(false, forKey: SharedConfigKeys.overdriveEnabled)
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == true
+
+    controller.rampSnapRequested = false
+    defaults.set(true, forKey: SharedConfigKeys.underdriveEnabled)
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == true
+
+    controller.rampSnapRequested = false
+    defaults.set(false, forKey: SharedConfigKeys.underdriveEnabled)
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == true
+
+  }
+
   private func makeController(
     fanHardware: any FanHardware
   ) throws -> AgentController {
@@ -187,7 +226,7 @@ final class AgentControllerFanHardwareTests: XCTestCase {
 
 // MARK: - RecordingFanHardware
 
-final class RecordingFanHardware: FanHardware, @unchecked Sendable {
+private final class RecordingFanHardware: FanHardware, @unchecked Sendable {
   struct ReadRequest {
     let fanCount: UInt
     let tempKeys: [String]
@@ -208,7 +247,7 @@ final class RecordingFanHardware: FanHardware, @unchecked Sendable {
   }
 
   private let lock = NSLock()
-  private var storedReadResult: FanHardwareBatchRead
+  private let readResult: FanHardwareBatchRead
   private let ownership: [AgentOwnershipEntry]
   private let discoveredKeys: [String]
   private var readRequests: [ReadRequest] = []
@@ -221,7 +260,7 @@ final class RecordingFanHardware: FanHardware, @unchecked Sendable {
     ownership: [AgentOwnershipEntry] = [],
     discoveredKeys: [String] = []
   ) {
-    self.storedReadResult = readResult
+    self.readResult = readResult
     self.ownership = ownership
     self.discoveredKeys = discoveredKeys
   }
@@ -257,7 +296,7 @@ final class RecordingFanHardware: FanHardware, @unchecked Sendable {
         )
       )
     }
-    return lock.withLock { storedReadResult }
+    return readResult
   }
 
   func getOwnership() async throws -> [AgentOwnershipEntry] {
@@ -310,32 +349,5 @@ final class RecordingFanHardware: FanHardware, @unchecked Sendable {
     lock.lock()
     defer { lock.unlock() }
     return ownershipReads
-  }
-
-  var readResult: FanHardwareBatchRead {
-    get { lock.withLock { storedReadResult } }
-    set { lock.withLock { storedReadResult = newValue } }
-  }
-
-  var latestAppliedRPMs: [Float] {
-    lock.withLock {
-      readRequests.last { !$0.setFans.isEmpty }?.setFans.map(\.rpm) ?? []
-    }
-  }
-
-  var latestAppliedFanIndices: [UInt] {
-    lock.withLock {
-      readRequests.last { !$0.setFans.isEmpty }?.setFans.map(\.index) ?? []
-    }
-  }
-
-  var latestAutomaticFanIndices: [UInt] {
-    lock.withLock {
-      readRequests.last { !$0.autoFans.isEmpty }?.autoFans ?? []
-    }
-  }
-
-  func clearRequests() {
-    lock.withLock { readRequests.removeAll() }
   }
 }

@@ -403,7 +403,7 @@ extension XPCClient {
   /// Falls back to per-key reads when the round trip itself fails, rather
   /// than returning nothing and letting the tick drive the curve from a zero
   /// temperature.
-  func readTemperatures(_ tempKeys: [String]) async -> [String: Float] {
+  private func readTemperatures(_ tempKeys: [String]) async -> [String: Float] {
     guard !tempKeys.isEmpty else { return [:] }
 
     do {
@@ -453,6 +453,51 @@ extension XPCClient {
   /// cannot be a real temperature, so it must not reach the curve.
   private static func isPlausibleTemperature(_ value: Float) -> Bool {
     value > 0 && value < XPCClientConstants.maxPlausibleTemperatureC
+  }
+
+  func readAndApply(
+    fanCount: UInt,
+    tempKeys: [String],
+    setFans: [(index: UInt, rpm: Float)] = [],
+    autoFans: [UInt] = [],
+    priority: Int? = nil
+  ) async -> FanHardwareBatchRead {
+    var fans: [FanInfo] = []
+    if fanCount > 0 {
+      for fanIndex in 0..<fanCount {
+        do {
+          let info = try await self.getFanInfo(fanIndex)
+          fans.append(info)
+        } catch {
+          log.notice(
+            "xpc.batch.fan_read_failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=skip-fan"
+          )
+        }
+      }
+    }
+
+    let temps = await readTemperatures(tempKeys)
+
+    for fanTarget in setFans {
+      do {
+        try await self.setFanRPM(fanTarget.index, rpm: fanTarget.rpm, priority: priority)
+      } catch {
+        log.notice(
+          "xpc.batch.fan_write_failed fan=\(fanTarget.index, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=continue-batch"
+        )
+      }
+    }
+    for fanIndex in autoFans {
+      do {
+        try await self.setFanAuto(fanIndex, priority: priority)
+      } catch {
+        log.notice(
+          "xpc.batch.auto_write_failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=continue-batch"
+        )
+      }
+    }
+
+    return FanHardwareBatchRead(fans: fans, temps: temps)
   }
 
   // MARK: - State transitions
@@ -506,7 +551,7 @@ extension XPCClient {
     }
   }
 
-  func markConnected() {
+  private func markConnected() {
     self.stateLock.lock()
     let wasConnected: Bool
     if case .connected = self.state { wasConnected = true } else { wasConnected = false }

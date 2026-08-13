@@ -75,8 +75,8 @@ extension AgentController {
       fanCount: cachedFanCount,
       tempKeys: tempKeys
     )
-    if result.expectedFanCount > 0 {
-      cachedFanCount = result.expectedFanCount
+    if !result.fans.isEmpty {
+      cachedFanCount = UInt(result.fans.count)
     }
 
     // Liveness is reported by `heartbeatScheduler` on its own cadence, not
@@ -109,11 +109,11 @@ extension AgentController {
     guard telemetry.active else {
       resetInactiveControllerState()
       publishSnapshotIfNeeded(inactiveSnapshot(from: telemetry))
-      if telemetry.transitioned, telemetry.result.expectedFanCount > 0 {
+      if telemetry.transitioned, !telemetry.result.fans.isEmpty {
         _ = await fanHardware.readAndApply(
           fanCount: 0,
           tempKeys: [],
-          autoFans: Array(0..<telemetry.result.expectedFanCount)
+          autoFans: Array(0..<UInt(telemetry.result.fans.count))
         )
         agentControllerTickLog.notice("agent.curve.deactivated fans=auto")
       }
@@ -130,7 +130,7 @@ extension AgentController {
       )
     }
     guard telemetry.maxCPUTemp > 0 else {
-      resetTemperatureUnavailableControllerState()
+      resetInactiveControllerState()
       publishSnapshotIfNeeded(activeTemperatureUnavailableSnapshot(from: telemetry))
       agentControllerTickLog.debug(
         "agent.tick.temperature_unavailable fanCount=\(telemetry.result.fans.count, privacy: .public) recovery=publish-holding-snapshot"
@@ -138,6 +138,25 @@ extension AgentController {
       return false
     }
     return true
+  }
+
+  func resetInactiveControllerState() {
+    filteredTemperatureFast = nil
+    filteredTemperatureSlow = nil
+    previousFastTemperature = nil
+    previousSlowTemperature = nil
+    rampStateByFan.removeAll()
+    rampSnapRequested = false
+    lastCurveShape = nil
+    lastBoostObservation = .unobserved
+    lastCommandLogPercentByFan.removeAll()
+    conditionedDemandPercent = nil
+    conditionedDemandPercentVelocity = 0
+    conditionedDemandTemperatureC = nil
+    conditionedDemandTemperatureVelocityC = 0
+    lastDemandConditioningTime = nil
+    controllerMode = .holding
+    thermalDebt = 0
   }
 
   func helperReachable(from telemetry: AgentControllerTickTypes.TickTelemetry) -> Bool {
@@ -169,14 +188,14 @@ extension AgentController {
       holdRemainingSeconds: 0,
       assistFloorPercent: nil,
       activeAssistKinds: [],
-      fans: telemetry.result.indexedFans.map { reading in
+      fans: telemetry.result.fans.enumerated().map { index, fan in
         AgentFanSnapshot(
-          index: Int(reading.index),
-          actualRPM: reading.info.actualRPM,
-          targetRPM: reading.info.targetRPM,
-          minRPM: reading.info.minRPM,
-          maxRPM: reading.info.maxRPM,
-          manualMode: reading.info.manualMode
+          index: index,
+          actualRPM: fan.actualRPM,
+          targetRPM: fan.targetRPM,
+          minRPM: fan.minRPM,
+          maxRPM: fan.maxRPM,
+          manualMode: fan.manualMode
         )
       }
     )
@@ -209,14 +228,14 @@ extension AgentController {
       holdRemainingSeconds: 0,
       assistFloorPercent: nil,
       activeAssistKinds: [],
-      fans: telemetry.result.indexedFans.map { reading in
+      fans: telemetry.result.fans.enumerated().map { index, fan in
         AgentFanSnapshot(
-          index: Int(reading.index),
-          actualRPM: reading.info.actualRPM,
-          targetRPM: reading.info.targetRPM,
-          minRPM: reading.info.minRPM,
-          maxRPM: reading.info.maxRPM,
-          manualMode: reading.info.manualMode
+          index: index,
+          actualRPM: fan.actualRPM,
+          targetRPM: fan.targetRPM,
+          minRPM: fan.minRPM,
+          maxRPM: fan.maxRPM,
+          manualMode: fan.manualMode
         )
       }
     )
@@ -311,19 +330,16 @@ extension AgentController {
 
     var setFans: [(index: UInt, rpm: Float)] = []
     var autoFans: [UInt] = []
-    for reading in context.telemetry.result.indexedFans {
-      let fanIndex = reading.index
-      let fan = reading.info
-      let command = context.expandedRangeState.command(
+    for (fanIndex, fan) in context.telemetry.result.fans.enumerated() {
+      let command = fanCommandFor(
         percent: runtimeState.committedPercent,
         minRPM: fan.minRPM,
-        maxRPM: fan.maxRPM,
-        overdriveTargetRPM: context.overdriveTargetRPM
+        maxRPM: fan.maxRPM
       )
       let smoothedCommand = rampGovernedCommand(
         input: RampCommandInput(
           command: command,
-          index: fanIndex,
+          index: UInt(fanIndex),
           currentFan: fan,
           currentTemperatureC: context.telemetry.maxCPUTemp,
           fastTrendCPerTick: context.fastTrend,
@@ -336,19 +352,15 @@ extension AgentController {
       switch command {
       case .setRPM:
         if case .setRPM(let rpm) = smoothedCommand {
-          setFans.append((index: fanIndex, rpm: rpm))
+          setFans.append((index: UInt(fanIndex), rpm: rpm))
         }
       case .auto:
-        rampStateByFan.removeValue(forKey: fanIndex)
-        autoFans.append(fanIndex)
+        rampStateByFan.removeValue(forKey: UInt(fanIndex))
+        autoFans.append(UInt(fanIndex))
       }
     }
-    let expectedFanIndices = Set(0..<context.telemetry.result.expectedFanCount)
-    if !expectedFanIndices.isEmpty, expectedFanIndices.isSubset(of: rampSnappedFanIndices) {
-      // Every expected fan has now had its chance to snap, so the request is spent.
-      rampSnapRequested = false
-      rampSnappedFanIndices.removeAll()
-    }
+    // Every fan has now had its chance to snap, so the request is spent.
+    rampSnapRequested = false
 
     let tickPriority =
       context.boost
@@ -386,7 +398,7 @@ extension AgentController {
     from context: AgentControllerTickTypes.ActiveTickContext,
     runtimeState: AgentControllerDemandTypes.RuntimeBandState
   ) -> AgentSnapshot {
-    let fans = context.telemetry.result.indexedFans
+    let fans = context.telemetry.result.fans
     return AgentSnapshot(
       timestamp: context.now,
       helperReachable: helperReachable(from: context.telemetry),
@@ -411,14 +423,14 @@ extension AgentController {
       holdRemainingSeconds: runtimeState.holdRemainingSeconds,
       assistFloorPercent: context.assistFloorPercent,
       activeAssistKinds: context.assistAppliedKinds,
-      fans: fans.map { reading in
+      fans: fans.enumerated().map { index, fan in
         AgentFanSnapshot(
-          index: Int(reading.index),
-          actualRPM: reading.info.actualRPM,
-          targetRPM: reading.info.targetRPM,
-          minRPM: reading.info.minRPM,
-          maxRPM: reading.info.maxRPM,
-          manualMode: reading.info.manualMode
+          index: index,
+          actualRPM: fan.actualRPM,
+          targetRPM: fan.targetRPM,
+          minRPM: fan.minRPM,
+          maxRPM: fan.maxRPM,
+          manualMode: fan.manualMode
         )
       }
     )
