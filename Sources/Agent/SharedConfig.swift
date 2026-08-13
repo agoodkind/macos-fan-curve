@@ -84,6 +84,13 @@ struct SharedConfig {
     defaults.bool(forKey: SharedConfigKeys.boostEnabled)
   }
 
+  func loadExpandedRangeState() -> ExpandedRangeState {
+    ExpandedRangeState(
+      overdriveEnabled: defaults.bool(forKey: SharedConfigKeys.overdriveEnabled),
+      underdriveEnabled: defaults.bool(forKey: SharedConfigKeys.underdriveEnabled)
+    )
+  }
+
   func loadLoadAssistEnabled(_ kind: LoadAssistKind) -> Bool {
     LoadAssistStore.loadEnabled(kind, defaults: defaults)
   }

@@ -174,6 +174,45 @@ final class AgentControllerFanHardwareTests: XCTestCase {
     expect(request.priority) == nil
   }
 
+  func testExpandedRangeTransitionsRequestRampSnapDuringBoost() throws {
+    let defaults = try XCTUnwrap(isolatedDefaults)
+    defaults.set(true, forKey: SharedConfigKeys.boostEnabled)
+    defaults.set(false, forKey: SharedConfigKeys.overdriveEnabled)
+    defaults.set(false, forKey: SharedConfigKeys.underdriveEnabled)
+    let controller = try makeController(fanHardware: RecordingFanHardware())
+    let telemetry = AgentControllerTickTypes.TickTelemetry(
+      active: true,
+      result: FanHardwareBatchRead(fans: [], temps: [:]),
+      transitioned: false,
+      maxCPUTemp: 70,
+      cpuLoad: 0,
+      gpuLoad: 0
+    )
+
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == false
+
+    defaults.set(true, forKey: SharedConfigKeys.overdriveEnabled)
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == true
+
+    controller.rampSnapRequested = false
+    defaults.set(false, forKey: SharedConfigKeys.overdriveEnabled)
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == true
+
+    controller.rampSnapRequested = false
+    defaults.set(true, forKey: SharedConfigKeys.underdriveEnabled)
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == true
+
+    controller.rampSnapRequested = false
+    defaults.set(false, forKey: SharedConfigKeys.underdriveEnabled)
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == true
+
+  }
+
   private func makeController(
     fanHardware: any FanHardware
   ) throws -> AgentController {

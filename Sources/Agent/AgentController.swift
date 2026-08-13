@@ -50,6 +50,7 @@ final class AgentController: @unchecked Sendable {
   var rampSnapRequested = false
   var lastCurveShape: CurveShape?
   var lastBoostObservation: BoostObservation = .unobserved
+  var lastExpandedRangeState: ExpandedRangeState?
   var lastPublishedSnapshot: AgentSnapshot?
   var controllerMode: AgentControllerMode = .holding
   var thermalDebt: Double = 0

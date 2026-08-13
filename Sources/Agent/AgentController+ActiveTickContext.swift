@@ -52,6 +52,13 @@ enum BoostObservation: Equatable {
   case unobserved
 }
 
+// MARK: - ExpandedRangeState
+
+struct ExpandedRangeState: Equatable {
+  let overdriveEnabled: Bool
+  let underdriveEnabled: Bool
+}
+
 private struct ActiveTickCurveState {
   let boost: Bool
   let baseCurvePercent: Double
@@ -163,11 +170,21 @@ extension AgentController {
     )
   }
 
+  private func snapIfExpandedRangeChanged(to state: ExpandedRangeState) {
+    defer { lastExpandedRangeState = state }
+    guard let lastExpandedRangeState, lastExpandedRangeState != state else { return }
+    beginRampSnap(resettingDemand: false)
+    agentControllerLog.notice(
+      "agent.expanded_range.changed overdrive=\(state.overdriveEnabled, privacy: .public) underdrive=\(state.underdriveEnabled, privacy: .public) fans=snap-to-curve"
+    )
+  }
+
   private func activeTickCurveState(at pressureTemperature: Double)
     -> ActiveTickCurveState
   {
     let boost = sharedConfig.loadBoostEnabled()
     snapIfBoostChanged(to: boost)
+    snapIfExpandedRangeChanged(to: sharedConfig.loadExpandedRangeState())
     let points = sharedConfig.loadCurve()
     let mode = sharedConfig.loadInterpolationMode()
     snapIfCurveChanged(to: CurveShape(points: points, interpolationMode: mode))
