@@ -9,11 +9,11 @@
 import AppLog
 import SwiftUI
 
-private let sensorDashboardSidebarViewLog = AppLog.make(category: "SensorDashboardSidebar")
+let sensorDashboardSidebarViewLog = AppLog.make(category: "SensorDashboardSidebar")
 
 // MARK: - Layout Constants
 
-private enum SensorDashboardSidebarConstants {
+enum SensorDashboardSidebarConstants {
   // Outer layout
   static let outerVStackSpacing: CGFloat = 24
   static let horizontalPadding: CGFloat = 20
@@ -57,12 +57,17 @@ struct SensorDashboardSidebar: View {
   @State private var pendingActionStartDate: Date?
   @State private var displayedHolding: Set<LoadAssistKind> = []
   @State private var holdingReleaseToken: [LoadAssistKind: Int] = [:]
+  @State private var confirmOverdrive = false
+  @State private var confirmUnderdrive = false
   @ObservedObject var runtime: FanCurveAgentClient
   @ObservedObject var curveModel: FanCurveModel
   @ObservedObject var installState: InstallationState
   let renderMode: AppRenderMode
   let unit: TemperatureUnit
   @Binding var boost: Bool
+  let extendedRangeConfigurationAllowed: Bool
+  @Binding var overdrive: Bool
+  @Binding var underdrive: Bool
   let cpuLoadAssistEnabled: Bool
   let gpuLoadAssistEnabled: Bool
   let presentation: DashboardPresentationState
@@ -95,6 +100,28 @@ struct SensorDashboardSidebar: View {
     }
     .onAppear {
       syncDisplayedHolding(animated: false)
+    }
+    .alert("Enable Overdrive?", isPresented: $confirmOverdrive) {
+      Button("Enable", role: .destructive) {
+        sensorDashboardSidebarViewLog.notice("sidebar.overdrive.confirmed enabled=true")
+        overdrive = true
+      }
+      Button("Cancel", role: .cancel) {
+        confirmOverdrive = false
+      }
+    } message: {
+      Text(overdriveWarningText)
+    }
+    .alert("Enable Underdrive?", isPresented: $confirmUnderdrive) {
+      Button("Enable", role: .destructive) {
+        sensorDashboardSidebarViewLog.notice("sidebar.underdrive.confirmed enabled=true")
+        underdrive = true
+      }
+      Button("Cancel", role: .cancel) {
+        confirmUnderdrive = false
+      }
+    } message: {
+      Text(underdriveWarningText)
     }
     .task(id: pendingAction) {
       guard let pendingAction else { return }
@@ -300,6 +327,10 @@ struct SensorDashboardSidebar: View {
               removal: .opacity
             )
           )
+        if extendedRangeConfigurationAllowed {
+          Divider().opacity(SensorDashboardSidebarConstants.dividerOpacity)
+          extendedRangeControls
+        }
       }
     }
   }

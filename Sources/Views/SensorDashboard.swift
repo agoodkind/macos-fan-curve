@@ -25,6 +25,15 @@ struct SensorDashboard: View {
   @AppStorage(SharedConfigKeys.boostEnabled, store: suite)
   private var boost: Bool = false
 
+  @AppStorage(SharedConfigKeys.extendedRangeConfigurationAllowed, store: suite)
+  private var extendedRangeConfigurationAllowed: Bool = false
+
+  @AppStorage(SharedConfigKeys.overdriveEnabled, store: suite)
+  private var overdrive: Bool = false
+
+  @AppStorage(SharedConfigKeys.underdriveEnabled, store: suite)
+  private var underdrive: Bool = false
+
   @AppStorage(SharedConfigKeys.cpuLoadAssistEnabled, store: suite)
   private var cpuLoadAssistEnabled: Bool = false
 
@@ -45,6 +54,9 @@ struct SensorDashboard: View {
           renderMode: renderMode,
           unit: unit,
           boost: $boost,
+          extendedRangeConfigurationAllowed: extendedRangeConfigurationAllowed,
+          overdrive: $overdrive,
+          underdrive: $underdrive,
           cpuLoadAssistEnabled: cpuLoadAssistEnabled,
           gpuLoadAssistEnabled: gpuLoadAssistEnabled,
           presentation: presentation
@@ -60,6 +72,7 @@ struct SensorDashboard: View {
     .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.sidebar)
     .onAppear {
       LoadAssistStore.migrateLegacyIfNeeded(defaults: Self.suite)
+      ExpandedRangeConfigurationStore.migrateIfNeeded(defaults: Self.suite)
       sensorDashboardLog.info(
         "sensor_dashboard.appeared render_mode=\(String(describing: renderMode), privacy: .public) fps=\(renderMode.preferredFramesPerSecond, privacy: .public)"
       )

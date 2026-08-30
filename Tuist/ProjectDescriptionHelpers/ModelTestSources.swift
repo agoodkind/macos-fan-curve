@@ -61,6 +61,7 @@ public func makeModelTestSources(
     "Sources/Models/TickHeartbeatScheduler.swift",
     "Sources/Models/DeadlineBoundedOperation.swift",
     "Sources/Models/AgentShutdownSequencer.swift",
+    "Sources/Models/ExpandedRangeConfigurationStore.swift",
     "Sources/Models/FanResponse.swift",
     "Sources/Models/CurvePresets.swift",
     "Sources/Models/EventArtifactWriter.swift",
