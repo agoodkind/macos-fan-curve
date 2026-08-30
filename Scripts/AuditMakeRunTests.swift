@@ -17,15 +17,18 @@ func fail(_ message: String) throws -> Never {
 
 func fixture(
     runCommand: String,
+    runAppSource: String = "$(BUILD_DIR)/Build/Products/Debug/$(APP_BUNDLE_NAME).app",
+    copySource: String = "$(RUN_APP_SOURCE)",
     terminateAgentLine: String = "\t@Scripts/TerminateAgentInstances.swift \"$(AGENT_LABEL)\""
 ) -> String {
     """
     INSTALL_APP_DEST ?= /Applications/Fan Curve.app
+    RUN_APP_SOURCE = \(runAppSource)
 
     run:
     \(runCommand)
     \t@rm -rf "$(INSTALL_APP_DEST)"
-    \t@cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)"
+    \t@cp -R "\(copySource)" "$(INSTALL_APP_DEST)"
     \(terminateAgentLine)
     \t@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
     \t@open "$(INSTALL_APP_DEST)"
@@ -94,6 +97,12 @@ do {
 
     let scriptPath = URL(fileURLWithPath: arguments[arguments.startIndex]).standardizedFileURL.path
     let gatedBuildError =
+        "make run must clear inherited build and freshness state before the Debug build"
+    let debugBuildCommand =
+        "\tenv -u SWIFT_BUILD_CMD -u SWIFT_MK_FRESH_CONFIG_KEY $(MAKE) CONFIGURATION=Debug build"
+    let debugAppSourceError =
+        "make run must deploy the Debug build artifact directly"
+    let recipeError =
         "make run must preserve the canonical gated build and deployment recipe"
     /// A recipe missing the agent restart reports this rather than the generic
     /// recipe error, because the per-step checks run before the recipe
@@ -102,6 +111,46 @@ do {
         "make run must restart the background agent by launchd label"
     let lineContinuation = "\\"
 
+    try requireRejection(
+        "inherited Release build and freshness state",
+        scriptPath: scriptPath,
+        makefile: fixture(
+            runCommand: "\t$(MAKE) CONFIGURATION=Debug build",
+            copySource: "$(APP_DEST)"
+        ),
+        expectedError: gatedBuildError
+    )
+    try requireRejection(
+        "inherited freshness state",
+        scriptPath: scriptPath,
+        makefile: fixture(
+            runCommand: "\tenv -u SWIFT_BUILD_CMD $(MAKE) CONFIGURATION=Debug build"
+        ),
+        expectedError: gatedBuildError
+    )
+    try requireRejection(
+        "inherited build command",
+        scriptPath: scriptPath,
+        makefile: fixture(
+            runCommand: "\tenv -u SWIFT_MK_FRESH_CONFIG_KEY $(MAKE) CONFIGURATION=Debug build"
+        ),
+        expectedError: gatedBuildError
+    )
+    try requireRejection(
+        "generic Products staging",
+        scriptPath: scriptPath,
+        makefile: fixture(runCommand: debugBuildCommand, copySource: "$(APP_DEST)"),
+        expectedError: debugAppSourceError
+    )
+    try requireRejection(
+        "Release run app source",
+        scriptPath: scriptPath,
+        makefile: fixture(
+            runCommand: debugBuildCommand,
+            runAppSource: "$(BUILD_DIR)/Build/Products/Release/$(APP_BUNDLE_NAME).app"
+        ),
+        expectedError: debugAppSourceError
+    )
     try requireRejection(
         "comment-only gated build",
         scriptPath: scriptPath,
@@ -267,53 +316,61 @@ do {
         expectedError: gatedBuildError
     )
     try requireAcceptance(
-        "gated Debug build",
+        "fresh gated Debug build",
         scriptPath: scriptPath,
-        makefile: fixture(runCommand: "\t$(MAKE) CONFIGURATION=Debug build")
+        makefile: fixture(runCommand: debugBuildCommand)
+    )
+    try requireRejection(
+        "extra run step",
+        scriptPath: scriptPath,
+        makefile: fixture(runCommand: "\(debugBuildCommand)\n\t@true"),
+        expectedError: recipeError
     )
     try requireAcceptance(
-        "gated Debug build with commented app-local text",
+        "fresh gated Debug build with commented app-local text",
         scriptPath: scriptPath,
         makefile: fixture(
-            runCommand: "\t$(MAKE) CONFIGURATION=Debug build # CONFIGURATION=Debug app-local"
+            runCommand: "\(debugBuildCommand) # CONFIGURATION=Debug app-local"
         )
     )
     try requireAcceptance(
-        "quoted gated Debug build",
-        scriptPath: scriptPath,
-        makefile: fixture(runCommand: "\t$(MAKE) CONFIGURATION=\"Debug\" \"build\"")
-    )
-    try requireAcceptance(
-        "continued gated Debug build",
+        "quoted fresh gated Debug build",
         scriptPath: scriptPath,
         makefile: fixture(
-            runCommand: "\t$(MAKE) CONFIGURATION=Debug \(lineContinuation)\n    build"
+            runCommand: "\tenv -u SWIFT_BUILD_CMD -u SWIFT_MK_FRESH_CONFIG_KEY $(MAKE) CONFIGURATION=\"Debug\" \"build\""
         )
     )
     try requireAcceptance(
-        "split-word gated Debug build",
+        "continued fresh gated Debug build",
         scriptPath: scriptPath,
         makefile: fixture(
-            runCommand: "\t$(MAKE) CONFIGURATION=Debug bu\(lineContinuation)\nild"
+            runCommand: "\tenv -u SWIFT_BUILD_CMD -u SWIFT_MK_FRESH_CONFIG_KEY $(MAKE) CONFIGURATION=Debug \(lineContinuation)\n    build"
         )
     )
     try requireAcceptance(
-        "recipe-prefixed split-word gated Debug build",
+        "split-word fresh gated Debug build",
         scriptPath: scriptPath,
         makefile: fixture(
-            runCommand: "\t$(MAKE) CONFIGURATION=Debug bu\(lineContinuation)\n\tild"
+            runCommand: "\tenv -u SWIFT_BUILD_CMD -u SWIFT_MK_FRESH_CONFIG_KEY $(MAKE) CONFIGURATION=Debug bu\(lineContinuation)\nild"
+        )
+    )
+    try requireAcceptance(
+        "recipe-prefixed split-word fresh gated Debug build",
+        scriptPath: scriptPath,
+        makefile: fixture(
+            runCommand: "\tenv -u SWIFT_BUILD_CMD -u SWIFT_MK_FRESH_CONFIG_KEY $(MAKE) CONFIGURATION=Debug bu\(lineContinuation)\n\tild"
         )
     )
     try requireAcceptance(
         "agent restart step present",
         scriptPath: scriptPath,
-        makefile: fixture(runCommand: "\t$(MAKE) CONFIGURATION=Debug build")
+        makefile: fixture(runCommand: debugBuildCommand)
     )
     try requireRejection(
         "missing agent restart step",
         scriptPath: scriptPath,
         makefile: fixture(
-            runCommand: "\t$(MAKE) CONFIGURATION=Debug build",
+            runCommand: debugBuildCommand,
             terminateAgentLine: "\t@true"
         ),
         expectedError: agentRestartError
@@ -322,7 +379,7 @@ do {
         "dropped agent restart step",
         scriptPath: scriptPath,
         makefile: fixture(
-            runCommand: "\t$(MAKE) CONFIGURATION=Debug build",
+            runCommand: debugBuildCommand,
             terminateAgentLine: ""
         ),
         expectedError: agentRestartError
@@ -331,7 +388,7 @@ do {
         "manual launchctl kickstart instead of agent restart step",
         scriptPath: scriptPath,
         makefile: fixture(
-            runCommand: "\t$(MAKE) CONFIGURATION=Debug build",
+            runCommand: debugBuildCommand,
             terminateAgentLine: "\t@launchctl kickstart -k gui/501/$(AGENT_LABEL)"
         ),
         expectedError: "make run must not reference 'launchctl'"

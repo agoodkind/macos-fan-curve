@@ -177,6 +177,15 @@ extension SystemHelperLifecycleReconciler {
         )
         return nil
       } catch {
+        if service.status == .requiresApproval {
+          systemHelperLifecycleLog.notice(
+            "system_helper.register.requires_approval operation=\(context.operation.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=await-user-approval"
+          )
+          return await finishRegistration(
+            context: context,
+            bundledIdentity: bundledIdentity
+          )
+        }
         lastFailureReason = error.localizedDescription
         systemHelperLifecycleLog.notice(
           "system_helper.register.attempt_failed operation=\(context.operation.rawValue, privacy: .public) attempt=\(attempt, privacy: .public) of=\(attempts, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=retry-after-delay"

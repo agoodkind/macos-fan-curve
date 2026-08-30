@@ -183,18 +183,17 @@ final class FanCurveUIProtocolFaultTests: XCTestCase {
 
   private func verifyDashboardPreserved(_ driver: FanCurveUITestDriver) throws {
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.root)
-    try driver.waitForLabel(
-      AppAccessibilityIdentifier.Dashboard.status,
-      equals: "All systems go"
-    )
+    _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.fanControl)
   }
 
   private func recover(_ driver: FanCurveUITestDriver) throws {
     _ = try driver.apply(.make())
-    _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.root)
-    try driver.waitForLabel(
-      AppAccessibilityIdentifier.Dashboard.status,
-      equals: "All systems go"
+    _ = try driver.waitForPayload(
+      participant: .app,
+      payload: .xpcState(.runtimeEventAccepted),
+      revision: driver.revision
     )
+    _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.root)
+    _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.fanControl)
   }
 }
