@@ -28,15 +28,8 @@ private enum SidebarSupportConstants {
   // Prominent action button label
   static let buttonLabelHStackSpacing: CGFloat = 8
 
-  // Usage block layout (connected teal assist element)
+  // Usage block layout
   static let assistReadyTealOpacity: Double = 0.5
-  static let connectorWidth: CGFloat = 2
-  static let connectorFrameHeight: CGFloat = 6
-  static let connectorVisualHeight: CGFloat = 6
-  static let connectorCenterY: CGFloat = 3
-  static let connectorEdgeInset: CGFloat = 14
-  static let connectorHoldingOpacity: Double = 0.7
-  static let connectorReadyOpacity: Double = 0.4
 }
 
 private let sensorDashboardSidebarLog = AppLog.make(category: "SensorDashboardSidebar")
@@ -126,7 +119,6 @@ extension SensorDashboardSidebar {
         tint: barTint
       )
       if let assist {
-        assistConnector(isHolding: assist.isHolding, floorFraction: assist.floorPercent)
         loadAssistCaption(assist)
           .transition(
             .asymmetric(
@@ -136,34 +128,6 @@ extension SensorDashboardSidebar {
           )
       }
     }
-  }
-
-  /// A short vertical teal tick that bridges the load bar to the badge with no gap,
-  /// placed horizontally at the current assist floor along the bar width.
-  private func assistConnector(isHolding: Bool, floorFraction: Double) -> some View {
-    let teal = Color(nsColor: .systemTeal)
-    return GeometryReader { geometry in
-      let inset = SidebarSupportConstants.connectorEdgeInset
-      let rawX = geometry.size.width * CGFloat(floorFraction)
-      let clampedX = min(max(rawX, inset), geometry.size.width - inset)
-      Rectangle()
-        .fill(
-          teal.opacity(
-            isHolding
-              ? SidebarSupportConstants.connectorHoldingOpacity
-              : SidebarSupportConstants.connectorReadyOpacity
-          )
-        )
-        .frame(
-          width: SidebarSupportConstants.connectorWidth,
-          height: SidebarSupportConstants.connectorVisualHeight
-        )
-        .position(
-          x: clampedX,
-          y: SidebarSupportConstants.connectorCenterY
-        )
-    }
-    .frame(height: SidebarSupportConstants.connectorFrameHeight)
   }
 
   var fanControlStateLabel: String {
