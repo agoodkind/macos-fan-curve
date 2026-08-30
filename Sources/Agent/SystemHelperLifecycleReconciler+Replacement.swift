@@ -168,7 +168,8 @@ extension SystemHelperLifecycleReconciler {
       recoveringAfterUnregister
       ? SystemHelperReconcileTiming.registerRetryAttempts
       : 1
-    var lastFailureReason = ""
+    var lastFailureDescription = ""
+    var lastFailureReason = ManagedServiceFailureReason.other
     for attempt in 1...attempts {
       do {
         try await service.register()
@@ -177,38 +178,80 @@ extension SystemHelperLifecycleReconciler {
         )
         return nil
       } catch {
-        if service.status == .requiresApproval {
-          systemHelperLifecycleLog.notice(
-            "system_helper.register.requires_approval operation=\(context.operation.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=await-user-approval"
-          )
-          return await finishRegistration(
-            context: context,
-            bundledIdentity: bundledIdentity
-          )
+        if let approvalResult = await registrationApprovalResult(
+          error: error,
+          context: context,
+          bundledIdentity: bundledIdentity
+        ) {
+          return approvalResult
         }
-        lastFailureReason = error.localizedDescription
+        lastFailureReason = ManagedServiceFailureReason(error: error)
+        lastFailureDescription = error.localizedDescription
         systemHelperLifecycleLog.notice(
-          "system_helper.register.attempt_failed operation=\(context.operation.rawValue, privacy: .public) attempt=\(attempt, privacy: .public) of=\(attempts, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=retry-after-delay"
+          "system_helper.register.attempt_failed operation=\(context.operation.rawValue, privacy: .public) attempt=\(attempt, privacy: .public) of=\(attempts, privacy: .public) error=\(error.localizedDescription, privacy: .public) reason=\(lastFailureReason.rawValue, privacy: .public) recovery=retry-after-delay"
         )
       }
       if attempt < attempts, !Task.isCancelled {
-        do {
-          try await ContinuousClock().sleep(for: registerRetryDelay)
-        } catch {
-          systemHelperLifecycleLog.notice(
-            "system_helper.register.retry_wait_cancelled recovery=stop-retrying"
-          )
-          break
-        }
+        guard await waitForRegistrationRetry() else { break }
       }
+    }
+    if let approvalResult = exhaustedRegistrationApprovalResult(
+      context: context,
+      failureReason: lastFailureReason,
+      recoveringAfterUnregister: recoveringAfterUnregister
+    ) {
+      return approvalResult
     }
     return result(
       fail(
         context: context,
         stage: .register,
-        reason: lastFailureReason,
+        reason: lastFailureDescription,
         recovery: "Retry System Helper repair"
       ),
+      registrationMutated: recoveringAfterUnregister
+    )
+  }
+
+  private func waitForRegistrationRetry() async -> Bool {
+    do {
+      try await ContinuousClock().sleep(for: registerRetryDelay)
+      return true
+    } catch {
+      systemHelperLifecycleLog.notice(
+        "system_helper.register.retry_wait_cancelled recovery=stop-retrying"
+      )
+      return false
+    }
+  }
+
+  private func registrationApprovalResult(
+    error: Error,
+    context: SystemHelperFailureContext,
+    bundledIdentity: SystemHelperIdentity
+  ) async -> SystemHelperReconcileResult? {
+    guard service.status == .requiresApproval else { return nil }
+    systemHelperLifecycleLog.notice(
+      "system_helper.register.requires_approval operation=\(context.operation.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public) recovery=await-user-approval"
+    )
+    return await finishRegistration(
+      context: context,
+      bundledIdentity: bundledIdentity
+    )
+  }
+
+  private func exhaustedRegistrationApprovalResult(
+    context: SystemHelperFailureContext,
+    failureReason: ManagedServiceFailureReason,
+    recoveringAfterUnregister: Bool
+  ) -> SystemHelperReconcileResult? {
+    guard !Task.isCancelled, failureReason == .operationNotPermitted else { return nil }
+    systemHelperLifecycleLog.notice(
+      "system_helper.register.denied_by_login_items operation=\(context.operation.rawValue, privacy: .public) reason=operation-not-permitted-after-retries recovery=open-system-settings"
+    )
+    publish(.approvalRequired)
+    return result(
+      .approvalRequired,
       registrationMutated: recoveringAfterUnregister
     )
   }

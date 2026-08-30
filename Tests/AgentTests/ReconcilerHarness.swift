@@ -26,6 +26,8 @@ final class ReconcilerHarness: @unchecked Sendable {
 
   enum OperationBehavior: Equatable {
     case fail
+    case operationNotPermitted
+    case operationNotPermittedOnce
     case requiresApproval
     case succeed
   }
