@@ -9,6 +9,13 @@
 import Foundation
 
 struct SystemHelperPresentation: Equatable {
+  private static let registrationRepairDetail =
+    "Fan Curve can’t use the System Helper until its registration is repaired. Repair it to read "
+    + "temperatures and control your fans."
+  private static let approvalRequiredDetail =
+    "Allow Fan Curve to run in the background so it can keep applying your fan curve after you close "
+    + "the app."
+
   enum Action: Equatable {
     case openSystemSettings
     case repair
@@ -82,11 +89,11 @@ struct SystemHelperPresentation: Equatable {
         actionTitle: repairTitle(activeIdentity: active, isBusy: false),
         action: .repair
       )
-    case .registrationNeedsRepair(let reason):
+    case .registrationNeedsRepair:
       return value(
         tone: .degraded,
         status: "Registration Needs Repair",
-        detail: reason,
+        detail: registrationRepairDetail,
         actionTitle: "Install System Helper",
         action: .repair
       )
@@ -94,7 +101,7 @@ struct SystemHelperPresentation: Equatable {
       return value(
         tone: .degraded,
         status: "Approval Required",
-        detail: "Allow the System Helper in System Settings.",
+        detail: approvalRequiredDetail,
         actionTitle: "Open System Settings",
         action: .openSystemSettings
       )
