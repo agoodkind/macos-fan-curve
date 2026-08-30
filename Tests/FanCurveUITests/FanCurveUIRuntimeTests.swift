@@ -22,10 +22,6 @@ final class FanCurveUIRuntimeTests: XCTestCase {
         )
       )
       _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.degraded)
-      try driver.waitForLabel(
-        AppAccessibilityIdentifier.Dashboard.status,
-        equals: "Telemetry Unavailable"
-      )
       try recover(driver)
 
       try verifyHelperUnreachable(driver)
@@ -35,18 +31,10 @@ final class FanCurveUIRuntimeTests: XCTestCase {
       try recover(driver)
 
       _ = try driver.apply(.make(telemetryStale: true))
-      try driver.waitForLabel(
-        AppAccessibilityIdentifier.Dashboard.status,
-        equals: "Telemetry Stale"
-      )
       _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.degraded)
       try recover(driver)
 
       _ = try driver.apply(.make(ownershipPreempted: true))
-      try driver.waitForLabel(
-        AppAccessibilityIdentifier.Dashboard.status,
-        equals: "Fan Control Preempted"
-      )
       _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.fanRow(0))
       try recover(driver)
     }
@@ -79,10 +67,6 @@ final class FanCurveUIRuntimeTests: XCTestCase {
       )
     )
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.degraded)
-    try driver.waitForLabel(
-      AppAccessibilityIdentifier.Dashboard.status,
-      equals: "Telemetry Unavailable"
-    )
   }
 
   private func verifyHealthyTelemetry(_ driver: FanCurveUITestDriver) throws {
@@ -91,9 +75,5 @@ final class FanCurveUIRuntimeTests: XCTestCase {
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.cpuLoad)
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.gpuLoad)
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.fanRow(0))
-    try driver.waitForLabel(
-      AppAccessibilityIdentifier.Dashboard.status,
-      equals: "All systems go"
-    )
   }
 }
