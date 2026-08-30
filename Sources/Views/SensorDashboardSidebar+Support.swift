@@ -89,7 +89,6 @@ extension SensorDashboardSidebar {
     let kind: LoadAssistKind
     let isHolding: Bool
     let floorPercent: Double
-    let maxFloorFraction: Double
 
     var id: String { kind.rawValue }
   }
@@ -127,7 +126,7 @@ extension SensorDashboardSidebar {
         tint: barTint
       )
       if let assist {
-        assistConnector(isHolding: assist.isHolding, floorFraction: assist.maxFloorFraction)
+        assistConnector(isHolding: assist.isHolding, floorFraction: assist.floorPercent)
         loadAssistCaption(assist)
           .transition(
             .asymmetric(
@@ -140,7 +139,7 @@ extension SensorDashboardSidebar {
   }
 
   /// A short vertical teal tick that bridges the load bar to the badge with no gap,
-  /// placed horizontally at the assist's max configured floor along the bar width.
+  /// placed horizontally at the current assist floor along the bar width.
   private func assistConnector(isHolding: Bool, floorFraction: Double) -> some View {
     let teal = Color(nsColor: .systemTeal)
     return GeometryReader { geometry in
