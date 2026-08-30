@@ -213,6 +213,49 @@ final class AgentControllerFanHardwareTests: XCTestCase {
 
   }
 
+  func testLoadAssistCurveEditsRequestRampSnap() throws {
+    let defaults = try XCTUnwrap(isolatedDefaults)
+    let controller = try makeController(fanHardware: RecordingFanHardware())
+    let telemetry = AgentControllerTickTypes.TickTelemetry(
+      active: true,
+      result: FanHardwareBatchRead(fans: [], temps: [:]),
+      transitioned: false,
+      maxCPUTemp: 70,
+      cpuLoad: 80,
+      gpuLoad: 80
+    )
+
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == false
+
+    LoadAssistStore.savePoints(
+      [
+        CurvePoint(temperature: 0, fanPercent: 0),
+        CurvePoint(temperature: 55, fanPercent: 0),
+        CurvePoint(temperature: 70, fanPercent: 0.8),
+        CurvePoint(temperature: 100, fanPercent: 0.8),
+      ],
+      kind: .cpu,
+      defaults: defaults
+    )
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == true
+
+    controller.rampSnapRequested = false
+    LoadAssistStore.savePoints(
+      [
+        CurvePoint(temperature: 0, fanPercent: 0),
+        CurvePoint(temperature: 55, fanPercent: 0),
+        CurvePoint(temperature: 70, fanPercent: 0.8),
+        CurvePoint(temperature: 100, fanPercent: 0.8),
+      ],
+      kind: .gpu,
+      defaults: defaults
+    )
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == true
+  }
+
   private func makeController(
     fanHardware: any FanHardware
   ) throws -> AgentController {

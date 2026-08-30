@@ -152,6 +152,27 @@ extension AgentController {
     agentControllerLog.notice("agent.curve.edited fans=snap-to-curve")
   }
 
+  func resetObservedCurveShapes() {
+    lastCurveShape = nil
+    lastLoadAssistCurveShape = nil
+  }
+
+  private func snapIfLoadAssistCurveChanged(to shape: CurveShape) {
+    defer { lastLoadAssistCurveShape = shape }
+    guard let lastLoadAssistCurveShape, lastLoadAssistCurveShape != shape else { return }
+    beginRampSnap(resettingDemand: true)
+    agentControllerLog.notice("agent.load_assist_curve.edited fans=snap-to-curve")
+  }
+
+  private func loadAssistCurveShape() -> CurveShape {
+    let cpuPoints = sharedConfig.loadLoadAssistCurve(.cpu)
+    let gpuPoints = sharedConfig.loadLoadAssistCurve(.gpu)
+    return CurveShape(
+      points: cpuPoints + gpuPoints,
+      interpolationMode: .catmullRom
+    )
+  }
+
   /// Snaps onto the new target when the user presses Boost, in either
   /// direction. Boost is a direct request for a fan speed, so damping it the
   /// way ambient temperature drift is damped would take about a minute to
@@ -188,6 +209,7 @@ extension AgentController {
     let points = sharedConfig.loadCurve()
     let mode = sharedConfig.loadInterpolationMode()
     snapIfCurveChanged(to: CurveShape(points: points, interpolationMode: mode))
+    snapIfLoadAssistCurveChanged(to: loadAssistCurveShape())
     let baseCurvePercent = CurveInterpolation.evaluate(
       at: pressureTemperature,
       points: points,
