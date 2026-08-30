@@ -14,7 +14,7 @@ private let log = AppLog.make(category: "AgentMain")
 
 private enum WindowConstants {
   static let mainWindowWidth: CGFloat = 980
-  static let mainWindowHeight: CGFloat = 540
+  static let mainWindowHeight: CGFloat = 660
 
   static let aboutWindowMinWidth: CGFloat = 560
   static let aboutWindowIdealWidth: CGFloat = 620
