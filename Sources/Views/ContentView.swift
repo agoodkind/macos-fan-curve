@@ -17,7 +17,7 @@ private enum ContentViewConstants {
   // Main window geometry
   static let windowMinWidth: CGFloat = 820
   static let windowIdealWidth: CGFloat = 980
-  static let windowHeight: CGFloat = 660
+  static let windowHeight: CGFloat = 560
 
   // Dashboard transition animation
   static let dashboardTransitionDuration: TimeInterval = 0.18
