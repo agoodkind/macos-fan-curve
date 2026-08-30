@@ -53,7 +53,7 @@ struct AboutContentView: View {
         Image(.aboutHeroIcon)
           .resizable()
           .interpolation(.high)
-          .aspectRatio(contentMode: .fit)
+          .scaledToFit()
           .frame(width: AboutConstants.heroIconSize, height: AboutConstants.heroIconSize)
 
         VStack(alignment: .leading, spacing: AboutConstants.heroTitleStackSpacing) {
