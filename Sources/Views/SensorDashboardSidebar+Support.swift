@@ -30,6 +30,7 @@ private enum SidebarSupportConstants {
 
   // Usage block layout
   static let assistReadyTealOpacity: Double = 0.5
+  static let assistCaptionTopSpacing: CGFloat = 6
 }
 
 private let sensorDashboardSidebarLog = AppLog.make(category: "SensorDashboardSidebar")
@@ -119,6 +120,8 @@ extension SensorDashboardSidebar {
         tint: barTint
       )
       if let assist {
+        Color.clear
+          .frame(height: SidebarSupportConstants.assistCaptionTopSpacing)
         loadAssistCaption(assist)
           .transition(
             .asymmetric(
