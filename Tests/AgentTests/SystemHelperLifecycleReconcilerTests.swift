@@ -104,6 +104,36 @@ final class SystemHelperLifecycleReconcilerTests: XCTestCase {
     expect(harness.gate.isPaused) == true
   }
 
+  func testLoginItemsDenialAfterUnregisterRequiresApprovalAndKeepsJournal() async throws {
+    let harness = try ReconcilerHarness(
+      testCase: self,
+      active: .outdated,
+      registerBehavior: .operationNotPermitted
+    )
+
+    let state = await harness.reconcile(.startup)
+
+    expect(state) == .approvalRequired
+    expect(harness.service.hasRegistration) == false
+    expect(harness.replacementJournal.hasPendingReplacement) == true
+    expect(harness.gate.isPaused) == true
+  }
+
+  func testTransientOperationNotPermittedRetriesAndRuns() async throws {
+    let harness = try ReconcilerHarness(
+      testCase: self,
+      active: .outdated,
+      registerBehavior: .operationNotPermittedOnce
+    )
+
+    let state = await harness.reconcile(.startup)
+
+    expect(state) == .running(active: harness.bundledIdentity)
+    expect(harness.service.registrationGeneration) == 2
+    expect(harness.replacementJournal.hasPendingReplacement) == false
+    expect(harness.gate.isPaused) == false
+  }
+
   func testInvalidBundledSignaturePreservesOldRegistration() async throws {
     let harness = try ReconcilerHarness(
       testCase: self,

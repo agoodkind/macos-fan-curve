@@ -199,10 +199,20 @@ do {
             options: .regularExpression
         ) != nil
     }
+    let requiredDeploymentTokens = [
+        "Scripts/DeployApp.swift",
+        "$(RUN_APP_SOURCE)",
+        "$(INSTALL_APP_DEST)",
+        "$(SWIFT_MK_BIN)",
+        "$(CODE_SIGN_IDENTITY)",
+        "$(DEVELOPMENT_TEAM)",
+    ]
     guard runAppSourceDefinition != nil,
-        body.contains(#"cp -R "$(RUN_APP_SOURCE)" "$(INSTALL_APP_DEST)""#)
+        recipeTokenLists.contains(requiredDeploymentTokens)
     else {
-        try fail("run-audit failed: make run must deploy the Debug build artifact directly")
+        try fail(
+            "run-audit failed: make run must deploy and verify the Debug build artifact atomically"
+        )
     }
 
     guard body.contains(#"Scripts/TerminateAgentInstances.swift "$(AGENT_LABEL)""#) else {
@@ -221,8 +231,7 @@ do {
 
     let requiredRecipeTokenLists = [
         requiredDebugBuildTokens,
-        ["rm", "-rf", "$(INSTALL_APP_DEST)"],
-        ["cp", "-R", "$(RUN_APP_SOURCE)", "$(INSTALL_APP_DEST)"],
+        requiredDeploymentTokens,
         ["Scripts/TerminateAgentInstances.swift", "$(AGENT_LABEL)"],
         ["Scripts/TerminateAppInstances.swift", "$(APP_BUNDLE_ID)"],
         ["open", "$(INSTALL_APP_DEST)"],

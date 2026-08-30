@@ -154,8 +154,12 @@ app: build
 # runs that copy for debugging; the canonical install lives at /Applications.
 run:
 	env -u SWIFT_BUILD_CMD -u SWIFT_MK_FRESH_CONFIG_KEY $(MAKE) CONFIGURATION=Debug build
-	@rm -rf "$(INSTALL_APP_DEST)"
-	@cp -R "$(RUN_APP_SOURCE)" "$(INSTALL_APP_DEST)"
+	@Scripts/DeployApp.swift \
+		"$(RUN_APP_SOURCE)" \
+		"$(INSTALL_APP_DEST)" \
+		"$(SWIFT_MK_BIN)" \
+		"$(CODE_SIGN_IDENTITY)" \
+		"$(DEVELOPMENT_TEAM)"
 	@Scripts/TerminateAgentInstances.swift "$(AGENT_LABEL)"
 	@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
 	@open "$(INSTALL_APP_DEST)"
@@ -375,6 +379,7 @@ launch-agent-audit: app
 	@Scripts/AuditLaunchAgent.swift "$(APP_DEST)" "$(AGENT_PLIST_NAME)" "$(AGENT_BUNDLE_PROGRAM)" "$(AGENT_LABEL)"
 
 run-audit:
+	@Scripts/DeployAppTests.swift Scripts/DeployApp.swift "$(SWIFT_MK_BIN)"
 	@Scripts/AuditMakeRunTests.swift Scripts/AuditMakeRun.swift
 	@Scripts/AuditMakeRun.swift Makefile
 

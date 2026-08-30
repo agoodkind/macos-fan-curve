@@ -220,6 +220,7 @@ final class StatefulHelperService: HelperServiceManaging, @unchecked Sendable {
   private let unregisterFails: Bool
   private let unregisterStarted: XCTestExpectation?
   private var storedGeneration: Int
+  private var storedRegisterAttemptCount = 0
   private var storedOnUnregistered: (@Sendable () throws -> Void)?
   private var storedUnregisterCount = 0
   private var storedOnRegistered: (@Sendable () -> Void)?
@@ -273,20 +274,35 @@ final class StatefulHelperService: HelperServiceManaging, @unchecked Sendable {
 
   func register() async throws {
     try await Task.sleep(for: mutationDelay)
+    let attempt = lock.withLock {
+      storedRegisterAttemptCount += 1
+      return storedRegisterAttemptCount
+    }
     switch registerBehavior {
     case .fail:
       throw TestFailure.register
+    case .operationNotPermitted:
+      throw NSError(domain: "SMAppServiceErrorDomain", code: 1)
+    case .operationNotPermittedOnce:
+      if attempt == 1 {
+        throw NSError(domain: "SMAppServiceErrorDomain", code: 1)
+      }
+      completeRegistration()
     case .requiresApproval:
       lock.withLock { storedStatus = .requiresApproval }
       throw TestFailure.register
     case .succeed:
-      let onRegistered = lock.withLock {
-        storedGeneration += 1
-        storedStatus = .enabled
-        return storedOnRegistered
-      }
-      onRegistered?()
+      completeRegistration()
     }
+  }
+
+  private func completeRegistration() {
+    let onRegistered = lock.withLock {
+      storedGeneration += 1
+      storedStatus = .enabled
+      return storedOnRegistered
+    }
+    onRegistered?()
   }
 
   func openSystemSettings() {

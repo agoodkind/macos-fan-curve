@@ -6,6 +6,7 @@
 //  Copyright © 2026, all rights reserved.
 //
 
+import Darwin
 import Foundation
 
 // MARK: - ManagedServiceStatus
@@ -30,6 +31,28 @@ enum ManagedServiceStatus: Sendable, Equatable, CustomStringConvertible {
     case .unknown(let rawValue):
       return "unknown(\(rawValue))"
     }
+  }
+}
+
+// MARK: - ManagedServiceFailureReason
+
+enum ManagedServiceFailureReason: String, Sendable {
+  case operationNotPermitted
+  case other
+
+  init(error: Error) {
+    let serviceError = error as NSError
+    let isPOSIXDenial =
+      serviceError.domain == NSPOSIXErrorDomain
+      && serviceError.code == Int(EPERM)
+    let isServiceManagementDenial =
+      serviceError.domain == "SMAppServiceErrorDomain"
+      && serviceError.code == 1
+    if isPOSIXDenial || isServiceManagementDenial {
+      self = .operationNotPermitted
+      return
+    }
+    self = .other
   }
 }
 

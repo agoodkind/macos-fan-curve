@@ -50,8 +50,11 @@ final class HelperServiceManagementAdapter: HelperServiceManaging, @unchecked Se
       try service.register()
       helperServiceManagementLog.notice("helper.service.register.finished")
     } catch {
+      let failureReason = ManagedServiceFailureReason(error: error)
+      let serviceError = error as NSError
+      let underlyingError = serviceError.userInfo[NSUnderlyingErrorKey] as? NSError
       helperServiceManagementLog.error(
-        "helper.service.register.failed error=\(error.localizedDescription, privacy: .public) recovery=return-error-to-agent"
+        "helper.service.register.failed error=\(error.localizedDescription, privacy: .public) domain=\(serviceError.domain, privacy: .public) code=\(serviceError.code, privacy: .public) underlyingDomain=\(underlyingError?.domain ?? "none", privacy: .public) underlyingCode=\(underlyingError?.code ?? 0, privacy: .public) reason=\(failureReason.rawValue, privacy: .public) recovery=return-error-to-agent"
       )
       throw error
     }

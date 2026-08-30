@@ -18,17 +18,22 @@ func fail(_ message: String) throws -> Never {
 func fixture(
     runCommand: String,
     runAppSource: String = "$(BUILD_DIR)/Build/Products/Debug/$(APP_BUNDLE_NAME).app",
-    copySource: String = "$(RUN_APP_SOURCE)",
+    deploySource: String = "$(RUN_APP_SOURCE)",
     terminateAgentLine: String = "\t@Scripts/TerminateAgentInstances.swift \"$(AGENT_LABEL)\""
 ) -> String {
-    """
+    let continuation = "\\"
+    return """
     INSTALL_APP_DEST ?= /Applications/Fan Curve.app
     RUN_APP_SOURCE = \(runAppSource)
 
     run:
     \(runCommand)
-    \t@rm -rf "$(INSTALL_APP_DEST)"
-    \t@cp -R "\(copySource)" "$(INSTALL_APP_DEST)"
+    \t@Scripts/DeployApp.swift \(continuation)
+    \t\t"\(deploySource)" \(continuation)
+    \t\t"$(INSTALL_APP_DEST)" \(continuation)
+    \t\t"$(SWIFT_MK_BIN)" \(continuation)
+    \t\t"$(CODE_SIGN_IDENTITY)" \(continuation)
+    \t\t"$(DEVELOPMENT_TEAM)"
     \(terminateAgentLine)
     \t@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
     \t@open "$(INSTALL_APP_DEST)"
@@ -101,7 +106,7 @@ do {
     let debugBuildCommand =
         "\tenv -u SWIFT_BUILD_CMD -u SWIFT_MK_FRESH_CONFIG_KEY $(MAKE) CONFIGURATION=Debug build"
     let debugAppSourceError =
-        "make run must deploy the Debug build artifact directly"
+        "make run must deploy and verify the Debug build artifact atomically"
     let recipeError =
         "make run must preserve the canonical gated build and deployment recipe"
     /// A recipe missing the agent restart reports this rather than the generic
@@ -116,7 +121,7 @@ do {
         scriptPath: scriptPath,
         makefile: fixture(
             runCommand: "\t$(MAKE) CONFIGURATION=Debug build",
-            copySource: "$(APP_DEST)"
+            deploySource: "$(APP_DEST)"
         ),
         expectedError: gatedBuildError
     )
@@ -139,7 +144,7 @@ do {
     try requireRejection(
         "generic Products staging",
         scriptPath: scriptPath,
-        makefile: fixture(runCommand: debugBuildCommand, copySource: "$(APP_DEST)"),
+        makefile: fixture(runCommand: debugBuildCommand, deploySource: "$(APP_DEST)"),
         expectedError: debugAppSourceError
     )
     try requireRejection(
