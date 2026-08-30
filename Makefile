@@ -47,6 +47,7 @@ DMG_STAGING_DIR = $(BUILD_DIR)/dmg
 XCODE_PRODUCTS_DIR = $(BUILD_DIR)/Build/Products/$(CONFIGURATION)
 APP_SOURCE = $(XCODE_PRODUCTS_DIR)/$(APP_BUNDLE_NAME).app
 APP_DEST = $(PRODUCTS_DIR)/$(APP_BUNDLE_NAME).app
+RUN_APP_SOURCE = $(BUILD_DIR)/Build/Products/Debug/$(APP_BUNDLE_NAME).app
 LEGACY_APP_DEST = $(PRODUCTS_DIR)/$(APP_NAME).app
 INSTALL_APP_DEST ?= /Applications/$(APP_BUNDLE_NAME).app
 AGENT_LABEL ?= io.goodkind.fancurveagent
@@ -152,9 +153,9 @@ app: build
 # and login-item agent register from. Xcode builds to DerivedData and the Play button
 # runs that copy for debugging; the canonical install lives at /Applications.
 run:
-	$(MAKE) CONFIGURATION=Debug build
+	env -u SWIFT_BUILD_CMD -u SWIFT_MK_FRESH_CONFIG_KEY $(MAKE) CONFIGURATION=Debug build
 	@rm -rf "$(INSTALL_APP_DEST)"
-	@cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)"
+	@cp -R "$(RUN_APP_SOURCE)" "$(INSTALL_APP_DEST)"
 	@Scripts/TerminateAgentInstances.swift "$(AGENT_LABEL)"
 	@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
 	@open "$(INSTALL_APP_DEST)"
