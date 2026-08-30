@@ -2,7 +2,7 @@
 //  FanCurveUIControlTests+ExtendedRange.swift
 //  FanCurveUITests
 //
-//  Created by Alex Goodkind <alex@goodkind.io> on 2026-08-30.
+//  Created by Alexander Goodkind <alex@goodkind.io> on 2026-08-30.
 //  Copyright © 2026, all rights reserved.
 //
 

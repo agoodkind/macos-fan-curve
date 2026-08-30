@@ -2,7 +2,7 @@
 //  EventArtifactWriter.swift
 //  FanCurveAgent
 //
-//  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-18.
+//  Created by Alexander Goodkind <alex@goodkind.io> on 2026-04-18.
 //  Copyright © 2026, all rights reserved.
 //
 

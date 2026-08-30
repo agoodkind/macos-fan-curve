@@ -2,7 +2,7 @@
 //  SensorDashboard.swift
 //  FanCurve
 //
-//  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-15.
+//  Created by Alexander Goodkind <alex@goodkind.io> on 2026-04-15.
 //  Copyright © 2026, all rights reserved.
 //
 

@@ -2,7 +2,7 @@
 //  SystemHelperLifecycleReconciler.swift
 //  FanCurveAgent
 //
-//  Created by Codex <noreply@openai.com> on 2026-08-04.
+//  Created by Alexander Goodkind <alex@goodkind.io> on 2026-08-04.
 //  Copyright © 2026, all rights reserved.
 //
 
