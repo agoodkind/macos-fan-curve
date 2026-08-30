@@ -197,8 +197,7 @@ extension SensorDashboardSidebar {
         ActiveAssistState(
           kind: kind,
           isHolding: isDisplayedHolding(kind),
-          floorPercent: floorPercent,
-          maxFloorFraction: maxFloor(for: kind)
+          floorPercent: floorPercent
         ))
     }
     return states
