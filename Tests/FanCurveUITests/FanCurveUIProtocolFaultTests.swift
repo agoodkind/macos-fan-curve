@@ -188,6 +188,11 @@ final class FanCurveUIProtocolFaultTests: XCTestCase {
 
   private func recover(_ driver: FanCurveUITestDriver) throws {
     _ = try driver.apply(.make())
+    _ = try driver.waitForPayload(
+      participant: .app,
+      payload: .xpcState(.runtimeEventAccepted),
+      revision: driver.revision
+    )
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.root)
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.fanControl)
   }
