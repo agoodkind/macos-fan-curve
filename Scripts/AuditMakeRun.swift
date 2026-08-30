@@ -174,11 +174,35 @@ do {
         try fail("run-audit failed: make run must not compile through app-local directly")
     }
 
+    let requiredDebugBuildTokens = [
+        "env",
+        "-u",
+        "SWIFT_BUILD_CMD",
+        "-u",
+        "SWIFT_MK_FRESH_CONFIG_KEY",
+        "$(MAKE)",
+        "CONFIGURATION=Debug",
+        "build",
+    ]
+    guard recipeTokenLists.first == requiredDebugBuildTokens else {
+        try fail(
+            "run-audit failed: make run must clear inherited build and freshness state before the Debug build"
+        )
+    }
+
     // Each step gets its own check first, so a missing one reports what that
     // step is for. The recipe comparison below then catches what a per-step
     // check cannot: wrong order, or an extra step nobody asked for.
-    guard body.contains(#"cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)""#) else {
-        try fail(#"run-audit failed: make run must deploy the build to /Applications with cp -R "$(APP_DEST)" "$(INSTALL_APP_DEST)""#)
+    let runAppSourceDefinition = lines.first {
+        $0.range(
+            of: #"^RUN_APP_SOURCE\s*=\s*\$\(BUILD_DIR\)/Build/Products/Debug/\$\(APP_BUNDLE_NAME\)\.app\s*$"#,
+            options: .regularExpression
+        ) != nil
+    }
+    guard runAppSourceDefinition != nil,
+        body.contains(#"cp -R "$(RUN_APP_SOURCE)" "$(INSTALL_APP_DEST)""#)
+    else {
+        try fail("run-audit failed: make run must deploy the Debug build artifact directly")
     }
 
     guard body.contains(#"Scripts/TerminateAgentInstances.swift "$(AGENT_LABEL)""#) else {
@@ -196,9 +220,9 @@ do {
     }
 
     let requiredRecipeTokenLists = [
-        ["$(MAKE)", "CONFIGURATION=Debug", "build"],
+        requiredDebugBuildTokens,
         ["rm", "-rf", "$(INSTALL_APP_DEST)"],
-        ["cp", "-R", "$(APP_DEST)", "$(INSTALL_APP_DEST)"],
+        ["cp", "-R", "$(RUN_APP_SOURCE)", "$(INSTALL_APP_DEST)"],
         ["Scripts/TerminateAgentInstances.swift", "$(AGENT_LABEL)"],
         ["Scripts/TerminateAppInstances.swift", "$(APP_BUNDLE_ID)"],
         ["open", "$(INSTALL_APP_DEST)"],

@@ -213,7 +213,7 @@ final class SystemHelperLifecycleReconcilerTests: XCTestCase {
     expect(harness.service.registrationGeneration) == 1
   }
 
-  func testRegistrationApprovalReturnsWithoutWaitingForReconnectTimeout() async throws {
+  func testRegistrationThrowAfterApprovalRequiredSkipsReconnect() async throws {
     let harness = try ReconcilerHarness(
       testCase: self,
       active: .outdated,
@@ -226,6 +226,8 @@ final class SystemHelperLifecycleReconcilerTests: XCTestCase {
     let state = await harness.reconcile(.startup)
 
     expect(state) == .approvalRequired
+    expect(harness.replacementJournal.hasPendingReplacement) == false
+    expect(harness.hardware.identityRequestCount) == 1
     expect(start.duration(to: clock.now)) < .milliseconds(250)
   }
 
