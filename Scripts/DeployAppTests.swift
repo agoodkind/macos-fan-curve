@@ -12,6 +12,16 @@ struct CommandResult {
     let standardError: String
 }
 
+enum VerifierMode: String {
+    case failCleanup
+    case failRollback
+    case largeStandardError
+}
+
+let verifierModeKey = "DEPLOY_APP_TEST_VERIFIER_MODE"
+let verifierStatePathKey = "DEPLOY_APP_TEST_VERIFIER_STATE_PATH"
+let realSwiftMkPathKey = "DEPLOY_APP_TEST_REAL_SWIFT_MK_PATH"
+
 func fail(_ message: String) throws -> Never {
     throw Failure(description: message)
 }
@@ -31,12 +41,71 @@ func run(
     process.standardOutput = FileHandle.nullDevice
     process.standardError = standardError
     try process.run()
-    process.waitUntilExit()
     let errorData = standardError.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
     return CommandResult(
         status: process.terminationStatus,
         standardError: String(decoding: errorData, as: UTF8.self)
     )
+}
+
+func nextVerifierInvocation(at stateURL: URL) throws -> Int {
+    let previousInvocation: Int
+    if FileManager.default.fileExists(atPath: stateURL.path) {
+        let storedValue = try String(contentsOf: stateURL, encoding: .utf8)
+        previousInvocation = Int(storedValue) ?? 0
+    } else {
+        previousInvocation = 0
+    }
+    let invocation = previousInvocation + 1
+    try Data(String(invocation).utf8).write(to: stateURL, options: .atomic)
+    return invocation
+}
+
+func runVerifierProxyIfRequested() throws {
+    let arguments = Array(CommandLine.arguments.dropFirst())
+    guard arguments.first == "verify-signing" else { return }
+    let environment = ProcessInfo.processInfo.environment
+    guard let modeValue = environment[verifierModeKey],
+        let mode = VerifierMode(rawValue: modeValue),
+        let statePath = environment[verifierStatePathKey],
+        let realSwiftMkPath = environment[realSwiftMkPathKey]
+    else {
+        try fail("DeployAppTests verifier proxy is missing its environment")
+    }
+
+    let verification = try run(realSwiftMkPath, arguments: arguments)
+    guard verification.status == 0 else {
+        FileHandle.standardError.write(Data(verification.standardError.utf8))
+        exit(verification.status)
+    }
+
+    let invocation = try nextVerifierInvocation(
+        at: URL(fileURLWithPath: statePath)
+    )
+    switch mode {
+    case .failCleanup:
+        if invocation == 3, let appPath = arguments.last {
+            let parentURL = URL(fileURLWithPath: appPath).deletingLastPathComponent()
+            guard chmod(parentURL.path, S_IRUSR | S_IXUSR) == 0 else {
+                try fail("DeployAppTests verifier proxy could not restrict cleanup")
+            }
+            FileHandle.standardError.write(Data("reject installed app\n".utf8))
+            exit(1)
+        }
+    case .failRollback:
+        if invocation == 3, let appPath = arguments.last {
+            let appURL = URL(fileURLWithPath: appPath)
+            let rejectedURL = appURL.deletingLastPathComponent()
+                .appendingPathComponent("\(appURL.lastPathComponent).rejected")
+            try FileManager.default.moveItem(at: appURL, to: rejectedURL)
+            FileHandle.standardError.write(Data("reject installed app\n".utf8))
+            exit(1)
+        }
+    case .largeStandardError:
+        FileHandle.standardError.write(Data(repeating: 120, count: 1_000_000))
+    }
+    exit(0)
 }
 
 func requireSuccess(_ result: CommandResult, operation: String) throws {
@@ -95,7 +164,8 @@ func deploy(
     scriptURL: URL,
     sourceURL: URL,
     destinationURL: URL,
-    swiftMkURL: URL
+    swiftMkURL: URL,
+    environment: [String: String] = [:]
 ) throws -> CommandResult {
     try run(
         scriptURL.path,
@@ -105,8 +175,21 @@ func deploy(
             swiftMkURL.path,
             "-",
             "",
-        ]
+        ],
+        environment: environment
     )
+}
+
+func verifierEnvironment(
+    mode: VerifierMode,
+    realSwiftMkURL: URL,
+    stateURL: URL
+) -> [String: String] {
+    [
+        verifierModeKey: mode.rawValue,
+        verifierStatePathKey: stateURL.path,
+        realSwiftMkPathKey: realSwiftMkURL.path,
+    ]
 }
 
 func withTemporaryDirectory(_ body: (URL) throws -> Void) throws {
@@ -209,7 +292,171 @@ func testDeploymentLockPreservesDestination(scriptURL: URL, swiftMkURL: URL) thr
     }
 }
 
+func testDeploymentLockAllowsDestinationGroup(
+    scriptURL: URL,
+    swiftMkURL: URL
+) throws {
+    try withTemporaryDirectory { directory in
+        let sourceURL = directory.appendingPathComponent("Source.app", isDirectory: true)
+        let destinationURL = directory.appendingPathComponent("Fan Curve.app", isDirectory: true)
+        try makeSignedApp(at: sourceURL, marker: "new", swiftMkURL: swiftMkURL)
+
+        try requireSuccess(
+            deploy(
+                scriptURL: scriptURL,
+                sourceURL: sourceURL,
+                destinationURL: destinationURL,
+                swiftMkURL: swiftMkURL
+            ),
+            operation: "create deployment lock"
+        )
+        let lockURL = directory.appendingPathComponent(".Fan Curve.app.deploy.lock")
+        let attributes = try FileManager.default.attributesOfItem(atPath: lockURL.path)
+        guard let permissions = attributes[.posixPermissions] as? NSNumber,
+            mode_t(permissions.uint16Value) & S_IWGRP != 0
+        else {
+            try fail("DeployAppTests failed: destination group cannot open deployment lock")
+        }
+    }
+}
+
+func testLargeVerifierErrorDoesNotDeadlock(
+    scriptURL: URL,
+    realSwiftMkURL: URL,
+    verifierURL: URL
+) throws {
+    try withTemporaryDirectory { directory in
+        let sourceURL = directory.appendingPathComponent("Source.app", isDirectory: true)
+        let destinationURL = directory.appendingPathComponent("Fan Curve.app", isDirectory: true)
+        let stateURL = directory.appendingPathComponent("verifier-state")
+        try makeSignedApp(at: sourceURL, marker: "new", swiftMkURL: realSwiftMkURL)
+
+        try requireSuccess(
+            deploy(
+                scriptURL: scriptURL,
+                sourceURL: sourceURL,
+                destinationURL: destinationURL,
+                swiftMkURL: verifierURL,
+                environment: verifierEnvironment(
+                    mode: .largeStandardError,
+                    realSwiftMkURL: realSwiftMkURL,
+                    stateURL: stateURL
+                )
+            ),
+            operation: "drain verbose verifier error"
+        )
+    }
+}
+
+func testRollbackFailurePreservesPreviousApp(
+    scriptURL: URL,
+    realSwiftMkURL: URL,
+    verifierURL: URL
+) throws {
+    try withTemporaryDirectory { directory in
+        let sourceURL = directory.appendingPathComponent("Source.app", isDirectory: true)
+        let destinationURL = directory.appendingPathComponent("Fan Curve.app", isDirectory: true)
+        let stateURL = directory.appendingPathComponent("verifier-state")
+        try makeSignedApp(at: sourceURL, marker: "new", swiftMkURL: realSwiftMkURL)
+        try makeSignedApp(at: destinationURL, marker: "old", swiftMkURL: realSwiftMkURL)
+
+        let result = try deploy(
+            scriptURL: scriptURL,
+            sourceURL: sourceURL,
+            destinationURL: destinationURL,
+            swiftMkURL: verifierURL,
+            environment: verifierEnvironment(
+                mode: .failRollback,
+                realSwiftMkURL: realSwiftMkURL,
+                stateURL: stateURL
+            )
+        )
+        guard result.status != 0,
+            result.standardError.contains("deploy_app.rollback.failed")
+        else {
+            try fail("DeployAppTests failed: rollback failure was not reported")
+        }
+        let recoveryApps = try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent.hasPrefix(".Fan Curve.app.deploy-") }
+            .map { $0.appendingPathComponent("Fan Curve.app", isDirectory: true) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        guard recoveryApps.count == 1,
+            try marker(in: recoveryApps[0]) == "old"
+        else {
+            try fail("DeployAppTests failed: rollback failure lost the previous app")
+        }
+    }
+}
+
+func testCleanupFailureReportsRejectedInstall(
+    scriptURL: URL,
+    realSwiftMkURL: URL,
+    verifierURL: URL
+) throws {
+    try withTemporaryDirectory { directory in
+        let sourceURL = directory.appendingPathComponent("Source.app", isDirectory: true)
+        let destinationURL = directory.appendingPathComponent("Fan Curve.app", isDirectory: true)
+        let stateURL = directory.appendingPathComponent("verifier-state")
+        try makeSignedApp(at: sourceURL, marker: "new", swiftMkURL: realSwiftMkURL)
+
+        defer { _ = chmod(directory.path, S_IRWXU) }
+        let result = try deploy(
+            scriptURL: scriptURL,
+            sourceURL: sourceURL,
+            destinationURL: destinationURL,
+            swiftMkURL: verifierURL,
+            environment: verifierEnvironment(
+                mode: .failCleanup,
+                realSwiftMkURL: realSwiftMkURL,
+                stateURL: stateURL
+            )
+        )
+        guard chmod(directory.path, S_IRWXU) == 0 else {
+            try fail("DeployAppTests failed: could not restore temporary directory permissions")
+        }
+        guard result.status != 0,
+            result.standardError.contains("deploy_app.cleanup.failed"),
+            FileManager.default.fileExists(atPath: destinationURL.path)
+        else {
+            try fail("DeployAppTests failed: rejected install cleanup failure was hidden")
+        }
+    }
+}
+
+func testSymlinkSourceCreatesIndependentApp(
+    scriptURL: URL,
+    swiftMkURL: URL
+) throws {
+    try withTemporaryDirectory { directory in
+        let targetURL = directory.appendingPathComponent("Target.app", isDirectory: true)
+        let sourceURL = directory.appendingPathComponent("Source.app", isDirectory: true)
+        let destinationURL = directory.appendingPathComponent("Fan Curve.app", isDirectory: true)
+        try makeSignedApp(at: targetURL, marker: "new", swiftMkURL: swiftMkURL)
+        try FileManager.default.createSymbolicLink(
+            at: sourceURL,
+            withDestinationURL: targetURL
+        )
+
+        try requireSuccess(
+            deploy(
+                scriptURL: scriptURL,
+                sourceURL: sourceURL,
+                destinationURL: destinationURL,
+                swiftMkURL: swiftMkURL
+            ),
+            operation: "deploy symlinked source"
+        )
+        try FileManager.default.removeItem(at: targetURL)
+        guard try marker(in: destinationURL) == "new" else {
+            try fail("DeployAppTests failed: installed app depends on symlink target")
+        }
+    }
+}
+
 do {
+    try runVerifierProxyIfRequested()
     let arguments = CommandLine.arguments.dropFirst()
     guard arguments.count == 2 else {
         try fail("usage: DeployAppTests.swift DEPLOY_SCRIPT SWIFT_MK_BIN")
@@ -220,12 +467,36 @@ do {
     let swiftMkURL = URL(
         fileURLWithPath: arguments[arguments.index(after: arguments.startIndex)]
     ).standardizedFileURL
+    let verifierURL = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
     try testValidReplacement(scriptURL: scriptURL, swiftMkURL: swiftMkURL)
     try testInvalidSourcePreservesDestination(
         scriptURL: scriptURL,
         swiftMkURL: swiftMkURL
     )
     try testDeploymentLockPreservesDestination(
+        scriptURL: scriptURL,
+        swiftMkURL: swiftMkURL
+    )
+    try testDeploymentLockAllowsDestinationGroup(
+        scriptURL: scriptURL,
+        swiftMkURL: swiftMkURL
+    )
+    try testLargeVerifierErrorDoesNotDeadlock(
+        scriptURL: scriptURL,
+        realSwiftMkURL: swiftMkURL,
+        verifierURL: verifierURL
+    )
+    try testRollbackFailurePreservesPreviousApp(
+        scriptURL: scriptURL,
+        realSwiftMkURL: swiftMkURL,
+        verifierURL: verifierURL
+    )
+    try testCleanupFailureReportsRejectedInstall(
+        scriptURL: scriptURL,
+        realSwiftMkURL: swiftMkURL,
+        verifierURL: verifierURL
+    )
+    try testSymlinkSourceCreatesIndependentApp(
         scriptURL: scriptURL,
         swiftMkURL: swiftMkURL
     )

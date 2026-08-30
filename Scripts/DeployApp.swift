@@ -6,6 +6,12 @@ import Security
 
 private struct Failure: Error, CustomStringConvertible {
     let description: String
+    let preserveStagingDirectory: Bool
+
+    init(description: String, preserveStagingDirectory: Bool = false) {
+        self.description = description
+        self.preserveStagingDirectory = preserveStagingDirectory
+    }
 }
 
 private func fail(_ message: String) throws -> Never {
@@ -16,14 +22,45 @@ private func writeLog(_ message: String) {
     FileHandle.standardError.write(Data((message + "\n").utf8))
 }
 
+private func ensureSharedLockPermissions(
+    descriptor: Int32,
+    lockURL: URL,
+    sharedPermissions: mode_t
+) throws {
+    var lockStatus = stat()
+    guard fstat(descriptor, &lockStatus) == 0 else {
+        try fail(
+            "deploy_app.lock.status_failed path=\(lockURL.path) reason=\(String(cString: strerror(errno))) recovery=check-destination-permissions"
+        )
+    }
+    guard lockStatus.st_mode & S_IWGRP == 0 else { return }
+    guard fchmod(descriptor, sharedPermissions) == 0 else {
+        try fail(
+            "deploy_app.lock.permissions_failed path=\(lockURL.path) reason=\(String(cString: strerror(errno))) recovery=check-destination-permissions"
+        )
+    }
+}
+
 private func acquireDeploymentLock(for destinationURL: URL) throws -> Int32 {
     let lockURL = destinationURL.deletingLastPathComponent()
         .appendingPathComponent(".\(destinationURL.lastPathComponent).deploy.lock")
-    let descriptor = open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+    let sharedPermissions =
+        S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP
+    let descriptor = open(lockURL.path, O_CREAT | O_RDWR, sharedPermissions)
     guard descriptor >= 0 else {
         try fail(
             "deploy_app.lock.open_failed path=\(lockURL.path) reason=\(String(cString: strerror(errno))) recovery=check-destination-permissions"
         )
+    }
+    do {
+        try ensureSharedLockPermissions(
+            descriptor: descriptor,
+            lockURL: lockURL,
+            sharedPermissions: sharedPermissions
+        )
+    } catch {
+        close(descriptor)
+        throw error
     }
     guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
         close(descriptor)
@@ -97,8 +134,8 @@ private func verifySignature(
     process.standardOutput = FileHandle.nullDevice
     process.standardError = standardError
     try process.run()
-    process.waitUntilExit()
     let errorData = standardError.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
     let errorMessage = String(decoding: errorData, as: UTF8.self)
         .trimmingCharacters(in: .whitespacesAndNewlines)
     guard process.terminationStatus == 0 else {
@@ -154,11 +191,19 @@ private func installStagedApp(
                 signing: signing
             )
         } catch {
-            try swapItems(stagedURL, destinationURL)
-            writeLog(
-                "deploy_app.rollback.finished destination=\(destinationURL.path) recovery=restored-previous-app"
-            )
-            throw error
+            let validationError = error
+            do {
+                try swapItems(stagedURL, destinationURL)
+                writeLog(
+                    "deploy_app.rollback.finished destination=\(destinationURL.path) recovery=restored-previous-app"
+                )
+            } catch {
+                throw Failure(
+                    description: "deploy_app.rollback.failed destination=\(destinationURL.path) recoveryApp=\(stagedURL.path) validationReason=\(validationError) rollbackReason=\(error) recovery=restore-recovery-app",
+                    preserveStagingDirectory: true
+                )
+            }
+            throw validationError
         }
         return
     }
@@ -172,8 +217,18 @@ private func installStagedApp(
             signing: signing
         )
     } catch {
-        try? FileManager.default.removeItem(at: destinationURL)
-        throw error
+        let validationError = error
+        do {
+            try FileManager.default.removeItem(at: destinationURL)
+            writeLog(
+                "deploy_app.cleanup.finished destination=\(destinationURL.path) recovery=removed-rejected-app"
+            )
+        } catch {
+            throw Failure(
+                description: "deploy_app.cleanup.failed destination=\(destinationURL.path) validationReason=\(validationError) cleanupReason=\(error) recovery=remove-rejected-app"
+            )
+        }
+        throw validationError
     }
 }
 
@@ -222,9 +277,20 @@ private func deploy(
         at: stagingDirectory,
         withIntermediateDirectories: false
     )
+    var preserveStagingDirectory = false
     defer {
-        if fileManager.fileExists(atPath: stagingDirectory.path) {
-            try? fileManager.removeItem(at: stagingDirectory)
+        if preserveStagingDirectory {
+            writeLog(
+                "deploy_app.staging.preserved path=\(stagingDirectory.path) recovery=restore-recovery-app"
+            )
+        } else if fileManager.fileExists(atPath: stagingDirectory.path) {
+            do {
+                try fileManager.removeItem(at: stagingDirectory)
+            } catch {
+                writeLog(
+                    "deploy_app.staging.cleanup_failed path=\(stagingDirectory.path) reason=\(error) recovery=remove-staging-directory"
+                )
+            }
         }
     }
 
@@ -234,12 +300,17 @@ private func deploy(
     try verifySignature(at: stagedURL, stage: "staged", signing: signing)
 
     let destinationExists = fileManager.fileExists(atPath: destinationURL.path)
-    try installStagedApp(
-        stagedURL: stagedURL,
-        destinationURL: destinationURL,
-        destinationExists: destinationExists,
-        signing: signing
-    )
+    do {
+        try installStagedApp(
+            stagedURL: stagedURL,
+            destinationURL: destinationURL,
+            destinationExists: destinationExists,
+            signing: signing
+        )
+    } catch let failure as Failure {
+        preserveStagingDirectory = failure.preserveStagingDirectory
+        throw failure
+    }
     writeLog("deploy_app.finished destination=\(destinationURL.path)")
 }
 
@@ -252,7 +323,7 @@ do {
     }
     let sourceURL = URL(
         fileURLWithPath: arguments[arguments.startIndex]
-    ).standardizedFileURL
+    ).standardizedFileURL.resolvingSymlinksInPath()
     let destinationURL = URL(
         fileURLWithPath: arguments[arguments.index(after: arguments.startIndex)]
     ).standardizedFileURL
