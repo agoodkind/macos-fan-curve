@@ -100,7 +100,7 @@ struct AdvancedSettingsView: View {
     } header: {
       Text("Client Priority")
     } footer: {
-      SettingsDescription(text: priorityFooterText)
+      priorityFooter
     }
   }
 
@@ -160,10 +160,18 @@ struct AdvancedSettingsView: View {
       + "Lower values favor quieter transitions; higher values follow curve changes more directly."
   }
 
-  private var priorityFooterText: String {
-    "Priority the agent uses when writing fans. Higher values preempt lower. "
-      + "Defaults match other fan aware apps: normal curve at 10, boost at 50. "
-      + "Raise boost above 50 if boost should preempt an active lmd LLM run."
+  private var priorityFooter: some View {
+    Text(
+      """
+      Priority determines which fan request takes effect when more than one app controls the fans. \
+      Fan Curve uses 10 for the normal curve and 50 for Boost. \
+      Raise Boost above 50 when it must take precedence over other clients, such as \
+      [LMD](https://github.com/agoodkind/lmd).
+      """
+    )
+    .font(.caption)
+    .foregroundStyle(.secondary)
+    .fixedSize(horizontal: false, vertical: true)
   }
 
   private var responseDisplayText: String {

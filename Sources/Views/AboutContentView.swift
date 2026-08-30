@@ -13,7 +13,6 @@ import SwiftUI
 private let aboutSettingsLog = AppLog.make(category: "AboutSettings")
 
 private enum AboutConstants {
-  static let formMaxWidth: CGFloat = 680
   static let heroIconSize: CGFloat = 112
   static let heroStackSpacing: CGFloat = 16
   static let heroTitleStackSpacing: CGFloat = 4
@@ -42,7 +41,6 @@ struct AboutContentView: View {
       buildDetailsSection
     }
     .formStyle(.grouped)
-    .frame(maxWidth: AboutConstants.formMaxWidth)
     .frame(maxWidth: .infinity, alignment: .center)
     .accessibilityIdentifier(AppAccessibilityIdentifier.Application.aboutContent)
   }
