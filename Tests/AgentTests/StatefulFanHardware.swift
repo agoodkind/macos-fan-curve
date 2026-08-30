@@ -278,6 +278,7 @@ final class StatefulHelperService: HelperServiceManaging, @unchecked Sendable {
       throw TestFailure.register
     case .requiresApproval:
       lock.withLock { storedStatus = .requiresApproval }
+      throw TestFailure.register
     case .succeed:
       let onRegistered = lock.withLock {
         storedGeneration += 1
