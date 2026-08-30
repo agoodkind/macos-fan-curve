@@ -19,7 +19,8 @@ enum ExpandedRangeConfigurationStore {
       return
     }
 
-    let allowed = defaults.bool(forKey: SharedConfigKeys.overdriveEnabled)
+    let allowed =
+      defaults.bool(forKey: SharedConfigKeys.overdriveEnabled)
       || defaults.bool(forKey: SharedConfigKeys.underdriveEnabled)
     defaults.set(allowed, forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)
     expandedRangeConfigurationStoreLog.notice(

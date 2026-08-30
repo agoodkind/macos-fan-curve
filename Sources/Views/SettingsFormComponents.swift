@@ -11,7 +11,6 @@ import SwiftUI
 
 enum SettingsFormComponents {
   static let sliderControlHeight: CGFloat = 22
-  static let switchAccessoryWidth: CGFloat = 56
   static let disclosureChevronWidth: CGFloat = 12
   static let disclosureTitleSpacing: CGFloat = 8
   static let disclosureContentLeadingPadding =

@@ -25,12 +25,6 @@ final class FanCurveUIControlTests: XCTestCase {
     let applyInBackground: Bool
   }
 
-  private struct ExtendedRangePersistentState {
-    let accessAllowed: Bool
-    let overdriveEnabled: Bool
-    let underdriveEnabled: Bool
-  }
-
   func testAboutReportsUnavailableWithoutActiveHelperIdentity() throws {
     try FanCurveUIScenario.run(in: self) { driver in
       try driver.prime(
@@ -66,78 +60,6 @@ final class FanCurveUIControlTests: XCTestCase {
       try verifyManualFanAndReset(driver)
       try verifyAboutAndLifecycle(driver)
     }
-  }
-
-  private func verifyExtendedRangeControls(_ driver: FanCurveUITestDriver) throws {
-    try driver.setBooleanControl(AppAccessibilityIdentifier.Dashboard.fanControl, to: true)
-    try driver.setBooleanControl(AppAccessibilityIdentifier.Dashboard.boost, to: false)
-    try driver.tapApplicationMenuCommand(
-      AppAccessibilityIdentifier.Application.settingsCommand
-    )
-    _ = try driver.waitForElement(AppAccessibilityIdentifier.Settings.root)
-    try driver.tap(AppAccessibilityIdentifier.Settings.advancedTab)
-    let originalAccessAllowed = try driver.booleanControlValue(
-      AppAccessibilityIdentifier.Settings.extendedRangeAccess
-    )
-    try driver.setBooleanControl(
-      AppAccessibilityIdentifier.Settings.extendedRangeAccess,
-      to: true
-    )
-    driver.closeWindow(named: "Settings")
-    let persistentState = ExtendedRangePersistentState(
-      accessAllowed: originalAccessAllowed,
-      overdriveEnabled: try driver.booleanControlValue(
-        AppAccessibilityIdentifier.Dashboard.overdrive
-      ),
-      underdriveEnabled: try driver.booleanControlValue(
-        AppAccessibilityIdentifier.Dashboard.underdrive
-      )
-    )
-    driver.registerCleanup {
-      try self.restoreExtendedRangePersistentState(persistentState, driver: driver)
-    }
-
-    try driver.setBooleanControl(AppAccessibilityIdentifier.Dashboard.overdrive, to: false)
-    try driver.setBooleanControl(AppAccessibilityIdentifier.Dashboard.underdrive, to: false)
-    try driver.tapApplicationMenuCommand(
-      AppAccessibilityIdentifier.Application.settingsCommand
-    )
-    try driver.tap(AppAccessibilityIdentifier.Settings.advancedTab)
-    try driver.setBooleanControl(
-      AppAccessibilityIdentifier.Settings.extendedRangeAccess,
-      to: false
-    )
-    driver.closeWindow(named: "Settings")
-    XCTAssertFalse(driver.element(AppAccessibilityIdentifier.Dashboard.overdrive).exists)
-    XCTAssertFalse(driver.element(AppAccessibilityIdentifier.Dashboard.underdrive).exists)
-
-    try driver.tapApplicationMenuCommand(
-      AppAccessibilityIdentifier.Application.settingsCommand
-    )
-    try driver.tap(AppAccessibilityIdentifier.Settings.advancedTab)
-    try driver.setBooleanControl(
-      AppAccessibilityIdentifier.Settings.extendedRangeAccess,
-      to: true
-    )
-    driver.closeWindow(named: "Settings")
-    _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.overdrive)
-    _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.underdrive)
-    try driver.cancelBooleanControlEnablement(
-      AppAccessibilityIdentifier.Dashboard.overdrive,
-      alertTitle: "Enable Overdrive?"
-    )
-    try driver.enableBooleanControl(
-      AppAccessibilityIdentifier.Dashboard.overdrive,
-      alertTitle: "Enable Overdrive?"
-    )
-    try driver.enableBooleanControl(
-      AppAccessibilityIdentifier.Dashboard.underdrive,
-      alertTitle: "Enable Underdrive?"
-    )
-    try driver.relaunch()
-    _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.overdrive)
-    XCTAssertTrue(try driver.booleanControlValue(AppAccessibilityIdentifier.Dashboard.overdrive))
-    XCTAssertTrue(try driver.booleanControlValue(AppAccessibilityIdentifier.Dashboard.underdrive))
   }
 
   private func verifyCurveAndControls(_ driver: FanCurveUITestDriver) throws {
@@ -361,48 +283,4 @@ final class FanCurveUIControlTests: XCTestCase {
     driver.closeWindow(named: "Settings")
   }
 
-  private func restoreExtendedRangePersistentState(
-    _ state: ExtendedRangePersistentState,
-    driver: FanCurveUITestDriver
-  ) throws {
-    driver.app.activate()
-    driver.closeWindow(named: "Settings")
-    _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.root)
-    try driver.setBooleanControl(AppAccessibilityIdentifier.Dashboard.fanControl, to: true)
-    try driver.setBooleanControl(AppAccessibilityIdentifier.Dashboard.boost, to: false)
-    try driver.tapApplicationMenuCommand(
-      AppAccessibilityIdentifier.Application.settingsCommand
-    )
-    try driver.tap(AppAccessibilityIdentifier.Settings.advancedTab)
-    try driver.setBooleanControl(
-      AppAccessibilityIdentifier.Settings.extendedRangeAccess,
-      to: true
-    )
-    driver.closeWindow(named: "Settings")
-    if state.overdriveEnabled {
-      try driver.enableBooleanControl(
-        AppAccessibilityIdentifier.Dashboard.overdrive,
-        alertTitle: "Enable Overdrive?"
-      )
-    } else {
-      try driver.setBooleanControl(AppAccessibilityIdentifier.Dashboard.overdrive, to: false)
-    }
-    if state.underdriveEnabled {
-      try driver.enableBooleanControl(
-        AppAccessibilityIdentifier.Dashboard.underdrive,
-        alertTitle: "Enable Underdrive?"
-      )
-    } else {
-      try driver.setBooleanControl(AppAccessibilityIdentifier.Dashboard.underdrive, to: false)
-    }
-    try driver.tapApplicationMenuCommand(
-      AppAccessibilityIdentifier.Application.settingsCommand
-    )
-    try driver.tap(AppAccessibilityIdentifier.Settings.advancedTab)
-    try driver.setBooleanControl(
-      AppAccessibilityIdentifier.Settings.extendedRangeAccess,
-      to: state.accessAllowed
-    )
-    driver.closeWindow(named: "Settings")
-  }
 }

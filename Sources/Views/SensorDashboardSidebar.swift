@@ -57,8 +57,6 @@ struct SensorDashboardSidebar: View {
   @State private var pendingActionStartDate: Date?
   @State private var displayedHolding: Set<LoadAssistKind> = []
   @State private var holdingReleaseToken: [LoadAssistKind: Int] = [:]
-  @State private var confirmOverdrive = false
-  @State private var confirmUnderdrive = false
   @ObservedObject var runtime: FanCurveAgentClient
   @ObservedObject var curveModel: FanCurveModel
   @ObservedObject var installState: InstallationState
@@ -100,28 +98,6 @@ struct SensorDashboardSidebar: View {
     }
     .onAppear {
       syncDisplayedHolding(animated: false)
-    }
-    .alert("Enable Overdrive?", isPresented: $confirmOverdrive) {
-      Button("Enable", role: .destructive) {
-        sensorDashboardSidebarViewLog.notice("sidebar.overdrive.confirmed enabled=true")
-        overdrive = true
-      }
-      Button("Cancel", role: .cancel) {
-        confirmOverdrive = false
-      }
-    } message: {
-      Text(overdriveWarningText)
-    }
-    .alert("Enable Underdrive?", isPresented: $confirmUnderdrive) {
-      Button("Enable", role: .destructive) {
-        sensorDashboardSidebarViewLog.notice("sidebar.underdrive.confirmed enabled=true")
-        underdrive = true
-      }
-      Button("Cancel", role: .cancel) {
-        confirmUnderdrive = false
-      }
-    } message: {
-      Text(underdriveWarningText)
     }
     .task(id: pendingAction) {
       guard let pendingAction else { return }
@@ -329,11 +305,15 @@ struct SensorDashboardSidebar: View {
           )
         if extendedRangeConfigurationAllowed {
           Divider().opacity(SensorDashboardSidebarConstants.dividerOpacity)
-          extendedRangeControls
+          ExtendedRangeControls(
+            overdrive: $overdrive,
+            underdrive: $underdrive
+          )
         }
       }
     }
   }
+
 }
 
 extension SensorDashboardSidebar {

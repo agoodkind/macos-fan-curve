@@ -31,54 +31,54 @@ final class ExpandedRangeConfigurationStoreTests: XCTestCase {
   }
 
   func testMigrationDisablesAccessForFreshInstall() throws {
-    let defaults = try requiredDefaults()
+    let testDefaults = try requiredDefaults()
 
-    ExpandedRangeConfigurationStore.migrateIfNeeded(defaults: defaults)
+    ExpandedRangeConfigurationStore.migrateIfNeeded(defaults: testDefaults)
 
     expect(
-      defaults.object(forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)
-    ).toNot(beNil())
-    expect(defaults.bool(forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)) == false
+      testDefaults.object(forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)
+    ) != nil
+    expect(testDefaults.bool(forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)) == false
   }
 
   func testMigrationEnablesAccessForExistingOverdrive() throws {
-    let defaults = try requiredDefaults()
-    defaults.set(true, forKey: SharedConfigKeys.overdriveEnabled)
+    let testDefaults = try requiredDefaults()
+    testDefaults.set(true, forKey: SharedConfigKeys.overdriveEnabled)
 
-    ExpandedRangeConfigurationStore.migrateIfNeeded(defaults: defaults)
+    ExpandedRangeConfigurationStore.migrateIfNeeded(defaults: testDefaults)
 
-    expect(defaults.bool(forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)) == true
+    expect(testDefaults.bool(forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)) == true
   }
 
   func testMigrationEnablesAccessForExistingUnderdrive() throws {
-    let defaults = try requiredDefaults()
-    defaults.set(true, forKey: SharedConfigKeys.underdriveEnabled)
+    let testDefaults = try requiredDefaults()
+    testDefaults.set(true, forKey: SharedConfigKeys.underdriveEnabled)
 
-    ExpandedRangeConfigurationStore.migrateIfNeeded(defaults: defaults)
+    ExpandedRangeConfigurationStore.migrateIfNeeded(defaults: testDefaults)
 
-    expect(defaults.bool(forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)) == true
+    expect(testDefaults.bool(forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)) == true
   }
 
   func testMigrationPreservesExistingAccessValue() throws {
-    let defaults = try requiredDefaults()
-    defaults.set(false, forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)
-    defaults.set(true, forKey: SharedConfigKeys.overdriveEnabled)
+    let testDefaults = try requiredDefaults()
+    testDefaults.set(false, forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)
+    testDefaults.set(true, forKey: SharedConfigKeys.overdriveEnabled)
 
-    ExpandedRangeConfigurationStore.migrateIfNeeded(defaults: defaults)
+    ExpandedRangeConfigurationStore.migrateIfNeeded(defaults: testDefaults)
 
-    expect(defaults.bool(forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)) == false
+    expect(testDefaults.bool(forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)) == false
   }
 
   func testDisablingAccessClearsLegacyModes() throws {
-    let defaults = try requiredDefaults()
-    defaults.set(true, forKey: SharedConfigKeys.overdriveEnabled)
-    defaults.set(true, forKey: SharedConfigKeys.underdriveEnabled)
+    let testDefaults = try requiredDefaults()
+    testDefaults.set(true, forKey: SharedConfigKeys.overdriveEnabled)
+    testDefaults.set(true, forKey: SharedConfigKeys.underdriveEnabled)
 
-    ExpandedRangeConfigurationStore.setAllowed(false, defaults: defaults)
+    ExpandedRangeConfigurationStore.setAllowed(false, defaults: testDefaults)
 
-    expect(defaults.bool(forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)) == false
-    expect(defaults.bool(forKey: SharedConfigKeys.overdriveEnabled)) == false
-    expect(defaults.bool(forKey: SharedConfigKeys.underdriveEnabled)) == false
+    expect(testDefaults.bool(forKey: SharedConfigKeys.extendedRangeConfigurationAllowed)) == false
+    expect(testDefaults.bool(forKey: SharedConfigKeys.overdriveEnabled)) == false
+    expect(testDefaults.bool(forKey: SharedConfigKeys.underdriveEnabled)) == false
   }
 
   private func requiredDefaults() throws -> UserDefaults {
