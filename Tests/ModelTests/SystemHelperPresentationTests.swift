@@ -46,8 +46,19 @@ final class SystemHelperPresentationTests: XCTestCase {
       repairInFlight: false
     )
 
-    expect(presentation.detail) == "Registration is missing"
-    expect(presentation.detail).toNot(contain("reachable"))
+    expect(presentation.detail)
+      == "Fan Curve can’t use the System Helper until its registration is repaired. Repair it to read "
+      + "temperatures and control your fans."
+  }
+
+  func testApprovalExplainsWhyBackgroundAccessIsRequired() {
+    let presentation = SystemHelperPresentation.resolve(
+      state: .approvalRequired,
+      repairInFlight: false
+    )
+
+    expect(presentation.detail)
+      == "Allow Fan Curve to run in the background so it can keep applying your fan curve after you close the app."
   }
 
   func testRepairFailureDetailIncludesStageReasonAndRecovery() {
