@@ -6,22 +6,11 @@
 //  Copyright © 2026, all rights reserved.
 //
 
-import AppLog
 import SwiftUI
 
 // MARK: - Layout and threshold constants
 
 private enum SidebarStatusConstants {
-  // Status indicator dot
-  static let statusDotSize: CGFloat = 8
-  static let statusDotShadowOpacity: Double = 0.6
-  static let statusDotShadowRadius: CGFloat = 3
-
-  // Status block layout
-  static let statusBlockSpacing: CGFloat = 8
-  static let statusHStackSpacing: CGFloat = 8
-  static let statusDetailLineLimit = 3
-
   // Assist caption row
   static let assistCaptionHStackSpacing: CGFloat = 6
   static let assistCaptionIconSize: CGFloat = 11
@@ -52,8 +41,6 @@ private enum SidebarStatusConstants {
   static let tempYellowMaxCelsius: Double = 75
   static let tempOrangeMaxCelsius: Double = 90
 }
-
-private let sensorDashboardSidebarStatusLog = AppLog.make(category: "SensorDashboardSidebar")
 
 extension SensorDashboardSidebar {
   var systemStatus: SystemStatus {
@@ -95,92 +82,11 @@ extension SensorDashboardSidebar {
     return .red
   }
 
-  var statusLabel: String {
-    let helperNeedsSetup =
-      installState.step == .helperMissing
-      || installState.step == .helperAwaitingApproval
-    if helperNeedsSetup { return systemHelperPresentation.status }
-    if presentation.installationStep == .agentMissing { return "Background Control Required" }
-    if presentation.installationStep == .agentAwaitingApproval {
-      return "Approval Required"
-    }
-    if runtime.runtimeState.health == .ownershipPreempted {
-      return "Fan Control Preempted"
-    }
-    if runtime.runtimeState.health == .stale {
-      return "Telemetry Stale"
-    }
-    if presentation.chartState == .degraded {
-      return presentation.telemetryFresh ? "Telemetry Unavailable" : "Agent Not Responding"
-    }
-    if !fanControlReady { return "Fan Control Not Set Up" }
-    switch systemStatus {
-    case .green: return "All systems go"
-    case .orange:
-      let needsUpdate =
-        installState.agentEnabled
-        && installState.agentLive
-        && !installState.agentSnapshotCompatible
-      if needsUpdate {
-        return "Update Required"
-      }
-      if installState.agentEnabled, !installState.agentLive {
-        return "Fan Control Paused"
-      }
-      return "Fan Control Offline"
-    case .red: return "Fan Control Unavailable"
-    }
-  }
-
-  private var systemHelperPresentation: SystemHelperPresentation {
-    SystemHelperPresentation.resolve(
-      state: installState.systemHelperState,
-      repairInFlight: installState.isRegisteringHelper
-    )
-  }
-
   var statusColor: Color {
     switch systemStatus {
     case .green: return Color(nsColor: .systemGreen)
     case .orange: return Color(nsColor: .systemOrange)
     case .red: return Color(nsColor: .systemRed)
-    }
-  }
-
-  var statusBlock: some View {
-    VStack(alignment: .leading, spacing: SidebarStatusConstants.statusBlockSpacing) {
-      HStack(spacing: SidebarStatusConstants.statusHStackSpacing) {
-        Circle()
-          .fill(statusColor)
-          .frame(
-            width: SidebarStatusConstants.statusDotSize,
-            height: SidebarStatusConstants.statusDotSize
-          )
-          .shadow(
-            color: statusColor.opacity(SidebarStatusConstants.statusDotShadowOpacity),
-            radius: SidebarStatusConstants.statusDotShadowRadius
-          )
-        Text(statusLabel)
-          .font(.caption)
-          .foregroundColor(.secondary)
-          .lineLimit(1)
-        Spacer()
-      }
-      if !installState.agentLastError.isEmpty {
-        Text("Fan Curve needs attention. Open settings or try setup again.")
-          .font(.caption2)
-          .foregroundColor(.secondary)
-          .lineLimit(SidebarStatusConstants.statusDetailLineLimit)
-          .fixedSize(horizontal: false, vertical: true)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .help("Fan Curve needs attention. Open settings or try setup again.")
-      }
-    }
-    .accessibilityIdentifier(AppAccessibilityIdentifier.Dashboard.status)
-    .onAppear {
-      sensorDashboardSidebarStatusLog.debug(
-        "sidebar.status.appeared label=\(statusLabel, privacy: .public)"
-      )
     }
   }
 

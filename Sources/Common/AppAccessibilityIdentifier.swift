@@ -36,7 +36,6 @@ enum AppAccessibilityIdentifier {
     static let temperature = "dashboard.temperature"
     static let cpuLoad = "dashboard.load.cpu"
     static let gpuLoad = "dashboard.load.gpu"
-    static let status = "dashboard.status"
     static let fanControl = "dashboard.fan-control"
     static let boost = "dashboard.boost"
     static let degraded = "dashboard.degraded"

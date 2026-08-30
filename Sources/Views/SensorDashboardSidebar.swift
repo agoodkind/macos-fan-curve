@@ -79,8 +79,6 @@ struct SensorDashboardSidebar: View {
       fansSection
       Divider().opacity(SensorDashboardSidebarConstants.dividerOpacity)
       controlsSection
-      Spacer()
-      statusBlock
     }
     .padding(.horizontal, SensorDashboardSidebarConstants.horizontalPadding)
     .padding(.top, SensorDashboardSidebarConstants.topPadding)
