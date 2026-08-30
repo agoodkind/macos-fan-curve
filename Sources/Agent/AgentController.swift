@@ -49,6 +49,7 @@ final class AgentController: @unchecked Sendable {
   var rampStateByFan: [UInt: RampCommandState] = [:]
   var rampSnapRequested = false
   var lastCurveShape: CurveShape?
+  var lastLoadAssistCurveShape: CurveShape?
   var lastBoostObservation: BoostObservation = .unobserved
   var lastExpandedRangeState: ExpandedRangeState?
   var lastPublishedSnapshot: AgentSnapshot?
