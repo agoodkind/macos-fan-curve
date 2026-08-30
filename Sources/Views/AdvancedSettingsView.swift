@@ -6,19 +6,13 @@
 //  Copyright © 2026, all rights reserved.
 //
 
-import AppLog
 import SwiftUI
-
-private let advancedSettingsLog = AppLog.make(category: "AdvancedSettings")
 
 struct AdvancedSettingsView: View {
   private static let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
 
-  @AppStorage(SharedConfigKeys.overdriveEnabled, store: suite)
-  private var overdrive: Bool = false
-
-  @AppStorage(SharedConfigKeys.underdriveEnabled, store: suite)
-  private var underdrive: Bool = false
+  @AppStorage(SharedConfigKeys.extendedRangeConfigurationAllowed, store: suite)
+  private var extendedRangeConfigurationAllowed: Bool = false
 
   @AppStorage(SharedConfigKeys.curveNormalPriority, store: suite)
   private var curveNormalPriority: Double = 10
@@ -32,55 +26,15 @@ struct AdvancedSettingsView: View {
   @AppStorage(SharedConfigKeys.inferFanResponseFromGraph, store: suite)
   private var inferFanResponseFromGraph: Bool = FanResponse.defaultInferFromGraph
 
-  @State private var confirmOverdrive = false
-  @State private var confirmUnderdrive = false
-
-  private var overdriveBinding: Binding<Bool> {
-    Binding(
-      get: { overdrive },
-      set: { newValue in
-        if newValue { confirmOverdrive = true } else { overdrive = false }
-      }
-    )
-  }
-
-  private var underdriveBinding: Binding<Bool> {
-    Binding(
-      get: { underdrive },
-      set: { newValue in
-        if newValue { confirmUnderdrive = true } else { underdrive = false }
-      }
-    )
-  }
-
   var body: some View {
     SettingsFormContainer {
       fanResponseSection
       loadAssistSection
       prioritySection
-      dangerZoneSection
+      extendedRangeConfigurationSection
     }
-    .alert("Enable Overdrive?", isPresented: $confirmOverdrive) {
-      Button("Enable", role: .destructive) {
-        advancedSettingsLog.notice("advanced_settings.overdrive.confirmed enabled=true")
-        overdrive = true
-      }
-      Button("Cancel", role: .cancel) {
-        confirmOverdrive = false
-      }
-    } message: {
-      Text(overdriveWarningText)
-    }
-    .alert("Enable Underdrive?", isPresented: $confirmUnderdrive) {
-      Button("Enable", role: .destructive) {
-        advancedSettingsLog.notice("advanced_settings.underdrive.confirmed enabled=true")
-        underdrive = true
-      }
-      Button("Cancel", role: .cancel) {
-        confirmUnderdrive = false
-      }
-    } message: {
-      Text(underdriveWarningText)
+    .onAppear {
+      ExpandedRangeConfigurationStore.migrateIfNeeded(defaults: Self.suite)
     }
   }
 
@@ -150,30 +104,29 @@ struct AdvancedSettingsView: View {
     }
   }
 
-  private var dangerZoneSection: some View {
+  private var extendedRangeConfigurationSection: some View {
     Section {
-      SettingsDangerDisclosure(
-        title: "Expanded Range",
-        status: expandedRangeStatus
-      ) {
-        SettingsDangerToggleRow(
-          title: "Overdrive",
-          description:
-            "Allows curve points to request up to \(Int(overdriveTargetRPM)) RPM.",
-          isOn: overdriveBinding
-        )
-
-        SettingsDangerToggleRow(
-          title: "Underdrive",
-          description: "Allows 0% curve points to stop fans in manual mode.",
-          isOn: underdriveBinding
-        )
-      }
+      SettingsToggleDescriptionRow(
+        title: "Allow configuring extended ranges",
+        description:
+          "Shows Overdrive and Underdrive controls in the dashboard. These modes may increase wear or reduce cooling.",
+        isOn: extendedRangeConfigurationBinding
+      )
+      .accessibilityValue(extendedRangeConfigurationAllowed ? "1" : "0")
+      .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.extendedRangeAccess)
     } header: {
       Text("Fan Range Limits")
-    } footer: {
-      SettingsDescription(text: expandedRangeDisclosureText)
     }
+  }
+
+  private var extendedRangeConfigurationBinding: Binding<Bool> {
+    Binding(
+      get: { extendedRangeConfigurationAllowed },
+      set: { allowed in
+        ExpandedRangeConfigurationStore.setAllowed(allowed, defaults: Self.suite)
+        extendedRangeConfigurationAllowed = allowed
+      }
+    )
   }
 
   private var fanResponseBinding: Binding<Double> {
@@ -211,36 +164,6 @@ struct AdvancedSettingsView: View {
     "Priority the agent uses when writing fans. Higher values preempt lower. "
       + "Defaults match other fan aware apps: normal curve at 10, boost at 50. "
       + "Raise boost above 50 if boost should preempt an active lmd LLM run."
-  }
-
-  private var expandedRangeDisclosureText: String {
-    "Allows fan targets outside the firmware reported safe range. "
-      + "Overdrive can increase noise and wear; underdrive can reduce cooling under load."
-  }
-
-  private var expandedRangeStatus: String? {
-    switch (overdrive, underdrive) {
-    case (true, true):
-      return "Both On"
-    case (true, false):
-      return "Overdrive On"
-    case (false, true):
-      return "Underdrive On"
-    case (false, false):
-      return nil
-    }
-  }
-
-  private var overdriveWarningText: String {
-    "Overdrive pushes fan targets beyond the firmware reported max. "
-      + "Sustained high RPM shortens bearing life and increases noise. "
-      + "Only enable if you accept the tradeoff."
-  }
-
-  private var underdriveWarningText: String {
-    "Underdrive lets the curve force fans to 0 RPM in manual mode. "
-      + "Without airflow your machine can overheat under load and throttle or shut down. "
-      + "Only enable if you know your thermal limits."
   }
 
   private var responseDisplayText: String {

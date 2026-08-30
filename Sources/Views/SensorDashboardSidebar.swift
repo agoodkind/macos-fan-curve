@@ -9,11 +9,11 @@
 import AppLog
 import SwiftUI
 
-private let sensorDashboardSidebarViewLog = AppLog.make(category: "SensorDashboardSidebar")
+let sensorDashboardSidebarViewLog = AppLog.make(category: "SensorDashboardSidebar")
 
 // MARK: - Layout Constants
 
-private enum SensorDashboardSidebarConstants {
+enum SensorDashboardSidebarConstants {
   // Outer layout
   static let outerVStackSpacing: CGFloat = 24
   static let horizontalPadding: CGFloat = 20
@@ -63,6 +63,9 @@ struct SensorDashboardSidebar: View {
   let renderMode: AppRenderMode
   let unit: TemperatureUnit
   @Binding var boost: Bool
+  let extendedRangeConfigurationAllowed: Bool
+  @Binding var overdrive: Bool
+  @Binding var underdrive: Bool
   let cpuLoadAssistEnabled: Bool
   let gpuLoadAssistEnabled: Bool
   let presentation: DashboardPresentationState
@@ -300,9 +303,17 @@ struct SensorDashboardSidebar: View {
               removal: .opacity
             )
           )
+        if extendedRangeConfigurationAllowed {
+          Divider().opacity(SensorDashboardSidebarConstants.dividerOpacity)
+          ExtendedRangeControls(
+            overdrive: $overdrive,
+            underdrive: $underdrive
+          )
+        }
       }
     }
   }
+
 }
 
 extension SensorDashboardSidebar {

@@ -16,34 +16,7 @@ private enum SettingsSliderRowConstants {
   static let sliderSectionSpacing: CGFloat = 4
   static let outerStackSpacing: CGFloat = 8
   static let headerStackSpacing: CGFloat = 12
-  static let dangerToggleSpacing: CGFloat = 16
-
-  // Layout
-  static let dangerToggleMinLabelWidth: CGFloat = 220
-  static let verticalRowPadding: CGFloat = 2
   static let headerLeadingLayoutPriority: Double = 2
-}
-
-struct SettingsDangerToggleRow: View {
-  let title: String
-  let description: String
-  @Binding var isOn: Bool
-
-  var body: some View {
-    SettingsAccessoryRow(
-      minimumLabelWidth: SettingsSliderRowConstants.dangerToggleMinLabelWidth,
-      accessoryWidth: SettingsFormComponents.switchAccessoryWidth,
-      spacing: SettingsSliderRowConstants.dangerToggleSpacing
-    ) {
-      SettingsTitleCaption(title: title, caption: description)
-    } accessory: {
-      Toggle(title, isOn: $isOn)
-        .labelsHidden()
-        .toggleStyle(.switch)
-        .help(description)
-    }
-    .padding(.vertical, SettingsSliderRowConstants.verticalRowPadding)
-  }
 }
 
 struct SettingsSliderScaleLabels {

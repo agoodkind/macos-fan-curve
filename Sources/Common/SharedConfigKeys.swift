@@ -20,6 +20,7 @@ enum SharedConfigKeys {
   static let curveActive = "curveActive"
   static let curveNormalPriority = "curveNormalPriority"
   static let curvePoints = "curvePoints"
+  static let extendedRangeConfigurationAllowed = "extendedRangeConfigurationAllowed"
   static let fanResponseValue = "fanResponseValue"
   static let gpuLoadAssistCurvePoints = "gpuLoadAssistCurvePoints"
   static let gpuLoadAssistEnabled = "gpuLoadAssistEnabled"

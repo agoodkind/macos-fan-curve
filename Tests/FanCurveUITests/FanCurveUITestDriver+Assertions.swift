@@ -115,6 +115,47 @@ extension FanCurveUITestDriver {
     )
   }
 
+  func enableBooleanControl(
+    _ identifier: String,
+    alertTitle: String,
+    timeout: TimeInterval = FanCurveUITestDriver.conditionTimeout
+  ) throws {
+    guard try booleanControlValue(identifier, timeout: timeout) == false else {
+      return
+    }
+    try tap(identifier, timeout: timeout)
+    let alert = app.alerts[alertTitle]
+    guard alert.waitForExistence(timeout: timeout) else {
+      throw FanCurveUITestDriverError.conditionTimedOut("alert \(alertTitle)")
+    }
+    alert.buttons["Enable"].tap()
+    try waitForPredicate(
+      NSPredicate(format: "value == %@", "1"),
+      object: try waitForElement(identifier, timeout: timeout),
+      description: "\(identifier) value to become 1",
+      timeout: timeout
+    )
+  }
+
+  func cancelBooleanControlEnablement(
+    _ identifier: String,
+    alertTitle: String,
+    timeout: TimeInterval = FanCurveUITestDriver.conditionTimeout
+  ) throws {
+    try tap(identifier, timeout: timeout)
+    let alert = app.alerts[alertTitle]
+    guard alert.waitForExistence(timeout: timeout) else {
+      throw FanCurveUITestDriverError.conditionTimedOut("alert \(alertTitle)")
+    }
+    alert.buttons["Cancel"].tap()
+    try waitForPredicate(
+      NSPredicate(format: "value == %@", "0"),
+      object: try waitForElement(identifier, timeout: timeout),
+      description: "\(identifier) value to remain 0",
+      timeout: timeout
+    )
+  }
+
   func controlPointFrames(count: Int) throws -> [CGRect] {
     var frames: [CGRect] = []
     for index in 0..<count {

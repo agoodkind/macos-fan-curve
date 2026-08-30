@@ -11,7 +11,6 @@ import SwiftUI
 
 enum SettingsFormComponents {
   static let sliderControlHeight: CGFloat = 22
-  static let switchAccessoryWidth: CGFloat = 56
   static let disclosureChevronWidth: CGFloat = 12
   static let disclosureTitleSpacing: CGFloat = 8
   static let disclosureContentLeadingPadding =
@@ -27,7 +26,6 @@ private enum SettingsFormComponentsConstants {
   static let accessoryRowDefaultSpacing: CGFloat = 12
   static let keyValueRowSpacing: CGFloat = 12
   static let keyValueLabelWidth: CGFloat = 112
-  static let dangerDisclosureTitleSpacing: CGFloat = 12
   static let disclosureDefaultContentSpacing: CGFloat = 8
   static let disclosureChevronExpandedRotation: Double = 90
   static let disclosureContentTopPadding: CGFloat = 10
@@ -62,9 +60,7 @@ struct SettingsDescription: View {
   }
 }
 
-/// A title stacked over a secondary caption, the shared label block used by the
-/// slider, toggle, and danger-toggle rows. An optional leading icon lets it also
-/// back the inline toggle-description layout.
+/// A title stacked over a secondary caption for slider and toggle rows.
 struct SettingsTitleCaption: View {
   let title: String
   let caption: String
@@ -182,44 +178,6 @@ struct SettingsKeyValueRow: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .font(.caption)
-  }
-}
-
-struct SettingsDangerDisclosure<Content: View>: View {
-  let title: String
-  let status: String?
-  @ViewBuilder let content: () -> Content
-
-  @State private var isExpanded = false
-
-  init(
-    title: String,
-    status: String? = nil,
-    @ViewBuilder content: @escaping () -> Content
-  ) {
-    self.title = title
-    self.status = status
-    self.content = content
-  }
-
-  var body: some View {
-    SettingsAnimatedDisclosure(isExpanded: $isExpanded) {
-      HStack(
-        alignment: .center,
-        spacing: SettingsFormComponentsConstants.dangerDisclosureTitleSpacing
-      ) {
-        Text(title)
-          .fontWeight(.semibold)
-          .lineLimit(1)
-          .frame(maxWidth: .infinity, alignment: .leading)
-
-        if let status {
-          SettingsDangerStatusBadge(status: status)
-        }
-      }
-    } content: {
-      content()
-    }
   }
 }
 

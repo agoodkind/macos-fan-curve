@@ -38,6 +38,8 @@ enum AppAccessibilityIdentifier {
     static let gpuLoad = "dashboard.load.gpu"
     static let fanControl = "dashboard.fan-control"
     static let boost = "dashboard.boost"
+    static let overdrive = "dashboard.overdrive"
+    static let underdrive = "dashboard.underdrive"
     static let degraded = "dashboard.degraded"
 
     static func fanRow(_ index: Int) -> String {
@@ -60,6 +62,7 @@ enum AppAccessibilityIdentifier {
     static let advancedTab = "settings.tab.advanced"
     static let aboutTab = "settings.tab.about"
     static let applyInBackground = "settings.apply-in-background"
+    static let extendedRangeAccess = "settings.extended-range-access"
     static let backgroundAgentRow = "settings.background-agent.row"
     static let backgroundAgentStatus = "settings.background-agent.status"
     static let backgroundAgentAction = "settings.background-agent.action"

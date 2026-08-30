@@ -55,6 +55,7 @@ final class FanCurveUIControlTests: XCTestCase {
       try driver.launch()
       _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.root)
       try verifyCurveAndControls(driver)
+      try verifyExtendedRangeControls(driver)
       try verifyGeneralSettingsAndOwnership(driver)
       try verifyManualFanAndReset(driver)
       try verifyAboutAndLifecycle(driver)
@@ -281,4 +282,5 @@ final class FanCurveUIControlTests: XCTestCase {
     )
     driver.closeWindow(named: "Settings")
   }
+
 }
