@@ -49,7 +49,7 @@ struct SensorDashboard: View {
           gpuLoadAssistEnabled: gpuLoadAssistEnabled,
           presentation: presentation
         )
-        .frame(minHeight: geometry.size.height)
+        .frame(minHeight: geometry.size.height, alignment: .top)
       }
       .scrollIndicators(.hidden)
     }
