@@ -18,7 +18,6 @@ private enum SensorDashboardSidebarConstants {
   static let outerVStackSpacing: CGFloat = 24
   static let horizontalPadding: CGFloat = 20
   static let topPadding: CGFloat = 24
-  static let bottomPadding: CGFloat = 20
   static let dividerOpacity: Double = 0.15
 
   // Hero section
@@ -82,7 +81,6 @@ struct SensorDashboardSidebar: View {
     }
     .padding(.horizontal, SensorDashboardSidebarConstants.horizontalPadding)
     .padding(.top, SensorDashboardSidebarConstants.topPadding)
-    .padding(.bottom, SensorDashboardSidebarConstants.bottomPadding)
     .onChange(of: installState.step) { _ in
       reconcilePendingAction(reason: "installation-step-changed")
     }
