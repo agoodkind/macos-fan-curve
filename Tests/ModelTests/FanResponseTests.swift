@@ -2,7 +2,7 @@
 //  FanResponseTests.swift
 //  FanCurve
 //
-//  Created by Alex Goodkind <alex@goodkind.io> on 2026-05-11.
+//  Created by Alexander Goodkind <alex@goodkind.io> on 2026-05-11.
 //  Copyright © 2026, all rights reserved.
 //
 

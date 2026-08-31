@@ -2,7 +2,7 @@
 //  CurveAxisScale.swift
 //  FanCurve
 //
-//  Created by Alex Goodkind <alex@goodkind.io> on 2026-06-04.
+//  Created by Alexander Goodkind <alex@goodkind.io> on 2026-06-04.
 //  Copyright © 2026, all rights reserved.
 //
 

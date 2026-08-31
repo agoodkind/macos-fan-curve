@@ -2,7 +2,7 @@
 //  AgentShutdownSequencerTests.swift
 //  FanCurve
 //
-//  Created by Alex Goodkind <alex@goodkind.io> on 2026-07-27.
+//  Created by Alexander Goodkind <alex@goodkind.io> on 2026-07-27.
 //  Copyright © 2026, all rights reserved.
 //
 

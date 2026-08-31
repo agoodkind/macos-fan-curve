@@ -20,6 +20,11 @@ These instructions are strict project rules for all automated coding agents work
 - Use clear names that describe domain behavior. Avoid vague names such as `data`, `item`, `thing`, `manager`, or `helper` when a domain term exists.
 - Keep comments rare and useful. Explain non-obvious intent, constraints, or invariants rather than restating code.
 
+## File Headers
+
+- New Swift files get an Xcode-style header. Run `git config user.name` and `git config user.email`, then stamp `Created by <name> <<email>> on YYYY-MM-DD`.
+- Do not copy a commit `Co-authored-by` identity into a file header. Do not hardcode a person name.
+
 ## Strong Types
 
 - Model domain concepts with strong types instead of strings, dictionaries, tuples, or loosely typed primitives.

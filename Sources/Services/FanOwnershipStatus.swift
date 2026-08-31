@@ -2,7 +2,7 @@
 //  FanOwnershipStatus.swift
 //  FanCurve
 //
-//  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-21.
+//  Created by Alexander Goodkind <alex@goodkind.io> on 2026-04-21.
 //  Copyright © 2026, all rights reserved.
 //
 //  Observable wrapper around FanCurveAgent XPC ownership reads for the
