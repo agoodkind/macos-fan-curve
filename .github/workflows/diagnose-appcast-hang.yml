@@ -19,25 +19,54 @@ on:
 permissions:
   contents: read
 
+env:
+  XCODE_VERSION: "latest-stable"
+  SPARKLE_VERSION: ${{ inputs.sparkle_version || '2.9.6' }}
+
 jobs:
+  # Each probe takes its own runner. A cold SwiftPM cache is the precondition for the
+  # stall, so two probes sharing a runner would leave the second one warm and prove
+  # nothing.
   probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        probe:
+          # Reach and SwiftPM on their own. Both already passed, and they stay as the
+          # controls that keep the network and the artifact ruled out.
+          - curl
+          - default
+          - nocreds
+          # The pair that isolates the defect. `swiftpm` runs the exact command tuist
+          # shells out to; `tuist` runs the command the appcast job reaches. They
+          # differ by who invokes the resolve and by nothing else.
+          - swiftpm
+          - tuist
+    name: probe (${{ matrix.probe }})
     runs-on: macos-latest
-    # Three probes of a download that healthy takes two seconds. The script caps each
-    # one at sixty seconds, so the job cap only bounds a runner that never starts.
-    timeout-minutes: 8
+    # Each probe caps itself at three minutes against work that healthy takes twenty
+    # seconds, so this only bounds a runner that never starts.
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v7
 
-      - name: Probe the Sparkle binary artifact download
+      - name: Set up the build environment
+        if: ${{ matrix.probe == 'swiftpm' || matrix.probe == 'tuist' }}
+        uses: agoodkind/swift-makefile/.github/actions/setup-build-env@main
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+          github-token: ${{ github.token }}
+
+      - name: Probe ${{ matrix.probe }}
         env:
-          SPARKLE_VERSION: ${{ inputs.sparkle_version || '2.9.6' }}
-          DIAGNOSTICS_DIR: ${{ runner.temp }}/sparkle-download-diagnostics
+          PROBE_NAME: ${{ matrix.probe }}
+          DIAGNOSTICS_DIR: ${{ runner.temp }}/diagnostics-${{ matrix.probe }}
         run: Scripts/diagnose-sparkle-download.sh
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: sparkle-download-diagnostics
-          path: ${{ runner.temp }}/sparkle-download-diagnostics
+          name: diagnostics-${{ matrix.probe }}
+          path: ${{ runner.temp }}/diagnostics-${{ matrix.probe }}
           if-no-files-found: error
