@@ -1,0 +1,43 @@
+name: Diagnose Appcast Hang
+
+# A probe, not a fix. It publishes nothing and touches no release, so it is safe to
+# run while the appcast pipeline is broken. It runs on its own pull request so the
+# evidence arrives without merging anything to main first.
+on:
+  workflow_dispatch:
+    inputs:
+      sparkle_version:
+        description: Sparkle release whose binary artifact should be probed
+        required: false
+        default: "2.9.6"
+        type: string
+  pull_request:
+    paths:
+      - .github/workflows/diagnose-appcast-hang.yml
+      - Scripts/diagnose-sparkle-download.sh
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: macos-latest
+    # Three probes of a download that healthy takes two seconds. The script caps each
+    # one at sixty seconds, so the job cap only bounds a runner that never starts.
+    timeout-minutes: 8
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Probe the Sparkle binary artifact download
+        env:
+          SPARKLE_VERSION: ${{ inputs.sparkle_version || '2.9.6' }}
+          DIAGNOSTICS_DIR: ${{ runner.temp }}/sparkle-download-diagnostics
+        run: Scripts/diagnose-sparkle-download.sh
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: sparkle-download-diagnostics
+          path: ${{ runner.temp }}/sparkle-download-diagnostics
+          if-no-files-found: error
