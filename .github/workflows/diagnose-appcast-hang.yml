@@ -45,6 +45,10 @@ jobs:
           - swiftpm
           - swiftpm-nokeychain
           - tuist
+          # The candidate fix, measured against both the bare resolve and the
+          # command the appcast job actually reaches.
+          - swiftpm-nohelper
+          - tuist-nohelper
     name: probe (${{ matrix.probe }})
     runs-on: macos-latest
     # Each probe caps itself at three minutes against work that healthy takes twenty
@@ -55,7 +59,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up the build environment
-        if: ${{ startsWith(matrix.probe, 'swiftpm') || matrix.probe == 'tuist' }}
+        if: ${{ startsWith(matrix.probe, 'swiftpm') || startsWith(matrix.probe, 'tuist') }}
         uses: agoodkind/swift-makefile/.github/actions/setup-build-env@main
         with:
           xcode-version: ${{ env.XCODE_VERSION }}

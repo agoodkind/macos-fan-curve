@@ -117,6 +117,24 @@ record_environment() {
     log "environment recorded in ${report}"
 }
 
+# Append the github.com credential state under a label, so a probe can show the
+# state before and after its resolve. Reading attributes never decrypts the item, so
+# this cannot itself block the way SwiftPM's lookup does.
+record_credential_state() {
+    local label="$1"
+    {
+        printf '\n## credential state: %s\n' "${label}"
+        if security find-internet-password -s github.com >/dev/null 2>&1; then
+            printf 'keychain github.com entry: present\n'
+            security find-internet-password -s github.com 2>&1 | grep -E '"acct"|"srvr"|"cdat"' || true
+        else
+            printf 'keychain github.com entry: absent\n'
+        fi
+        printf 'credential.helper: '
+        git config --get-all credential.helper 2>&1 || printf 'unset\n'
+    } >> "${diagnostics_dir}/credential-state.txt" 2>&1
+}
+
 write_probe_package() {
     local package_dir="$1"
     mkdir -p "${package_dir}/Sources/Probe"
@@ -276,8 +294,37 @@ case "${PROBE_NAME}" in
         run_watched swift package --package-path "${repository_root}/Tuist" resolve \
             --disable-keychain --disable-netrc
         ;;
+    swiftpm-nohelper)
+        # The candidate fix. The build environment rewrites github.com URLs to embed
+        # the token, and macOS git's osxkeychain helper then stores that credential
+        # as the github.com item SwiftPM blocks on. The token already travels in the
+        # rewritten URL, so the helper adds nothing here. Turning it off and clearing
+        # what it already wrote should leave SwiftPM nothing to look up.
+        record_credential_state "before the fix"
+        git config --global --unset-all credential.helper 2>/dev/null || true
+        git config --global credential.helper ""
+        while security delete-internet-password -s github.com >/dev/null 2>&1; do
+            printf 'removed one github.com keychain item\n'
+        done
+        record_credential_state "after the fix, before the resolve"
+        run_watched swift package --package-path "${repository_root}/Tuist" resolve
+        record_credential_state "after the resolve"
+        ;;
     tuist)
         run_watched tuist install --verbose
+        ;;
+    tuist-nohelper)
+        # The same fix measured against the command the appcast job actually reaches,
+        # so the result covers tuist's own child resolve rather than a stand-in.
+        record_credential_state "before the fix"
+        git config --global --unset-all credential.helper 2>/dev/null || true
+        git config --global credential.helper ""
+        while security delete-internet-password -s github.com >/dev/null 2>&1; do
+            printf 'removed one github.com keychain item\n'
+        done
+        record_credential_state "after the fix, before the resolve"
+        run_watched tuist install --verbose
+        record_credential_state "after the resolve"
         ;;
     *)
         printf 'diagnose-sparkle-download: unknown PROBE_NAME %s\n' "${PROBE_NAME}" >&2
