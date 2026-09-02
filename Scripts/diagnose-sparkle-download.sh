@@ -1,35 +1,27 @@
 #!/usr/bin/env bash
 #
-# Attribute the stall that hangs the appcast job on "Downloading binary artifact
-# .../Sparkle-for-Swift-Package-Manager.zip".
+# Run one named probe of the Sparkle binary-artifact download, so a resolve that
+# stalls can be attributed to a single layer. Each probe belongs on its own runner,
+# because a cold SwiftPM cache is the precondition for the stall.
 #
-# The job runs `make install-dependencies`, which reaches `tuist install`, which
-# shells out to `swift package --package-path <repo>/Tuist resolve`. The stall lands
-# on the artifact download line and never returns. This script runs one named probe
-# so each layer of that chain can be tested on its own runner, with nothing else
-# warming the caches first:
+#   curl                plain HTTPS reach, no SwiftPM
+#   default             isolated resolve of Sparkle alone
+#   nocreds             the same, with keychain and netrc lookups disabled
+#   swiftpm             the command tuist shells out to, run directly
+#   swiftpm-nokeychain  the same, with the credential lookup removed
+#   swiftpm-nohelper    the same, with the credential helper cleared
+#   tuist               `tuist install`, what `make install-dependencies` reaches
+#   tuist-nohelper      the same, with the credential helper cleared
 #
-#   curl       plain HTTPS reach for the artifact URL, no SwiftPM involved
-#   default    an isolated `swift package resolve` of Sparkle alone
-#   nocreds    the same isolated resolve with keychain and netrc lookups disabled
-#   swiftpm    the exact command tuist shells out to, run directly
-#   tuist      `tuist install`, which is what the appcast job actually reaches
-#
-# `swiftpm` and `tuist` differ by one variable: who invokes the resolve. A stall in
-# `tuist` that `swiftpm` clears puts the defect in tuist's handling of the child
-# process rather than in SwiftPM, the network, or the artifact.
-#
-# Every probe runs under a watchdog. When one overruns, the watchdog records the
-# stuck process's open file descriptors, samples its stacks, and stores the partial
-# download size before killing it, because a killed process leaves no evidence.
+# A killed process leaves no evidence, so the watchdog records open file
+# descriptors, stack samples, and the partial download before it kills one.
 
 set -euo pipefail
 
 readonly SPARKLE_VERSION="${SPARKLE_VERSION:-2.9.6}"
 readonly PROBE_NAME="${PROBE_NAME:?PROBE_NAME is required}"
-# A healthy resolve of these dependencies takes about twenty seconds on a hosted
-# runner, and the artifact itself downloads in under one. Three minutes is well past
-# healthy, so a probe that reaches the cap is stalled rather than slow.
+# A healthy resolve takes about twenty seconds, so a probe reaching this cap is
+# stalled rather than slow.
 readonly PROBE_TIMEOUT_SECONDS="${PROBE_TIMEOUT_SECONDS:-180}"
 readonly CURL_TIMEOUT_SECONDS="${CURL_TIMEOUT_SECONDS:-60}"
 readonly SAMPLE_DURATION_SECONDS=5
@@ -94,10 +86,8 @@ record_environment() {
             printf 'tuist absent\n'
         fi
         printf '\n## credential sources\n'
-        # The stall lands inside SwiftPM's keychain lookup for github.com, so
-        # record whether such an item exists and which keychain holds it. Reading
-        # attributes does not decrypt the item, so this call cannot itself hang;
-        # only reading the secret would.
+        # Attributes do not decrypt the item, so this cannot hang the way reading
+        # the secret does.
         if security find-internet-password -s github.com >/dev/null 2>&1; then
             printf 'keychain github.com entry: present\n'
             security find-internet-password -s github.com 2>&1 || true
@@ -117,9 +107,8 @@ record_environment() {
     log "environment recorded in ${report}"
 }
 
-# Append the github.com credential state under a label, so a probe can show the
-# state before and after its resolve. Reading attributes never decrypts the item, so
-# this cannot itself block the way SwiftPM's lookup does.
+# Record the credential state under a label, so a probe can show it before and after
+# its resolve.
 record_credential_state() {
     local label="$1"
     {
@@ -153,9 +142,9 @@ EOF
     printf 'public let probe = 1\n' > "${package_dir}/Sources/Probe/Probe.swift"
 }
 
-# Capture why a process is stuck. Open file descriptors say whether the child is
-# blocked writing to a pipe nobody drains, the stack sample names the blocking call,
-# and the partial artifact size says whether any bytes ever arrived.
+# Capture why a process is stuck: the stack sample names the blocking call, open
+# descriptors show a child blocked on an undrained pipe, and the partial artifact
+# size says whether any bytes arrived.
 capture_stall_evidence() {
     local evidence_dir="${diagnostics_dir}/stall"
     mkdir -p "${evidence_dir}"
@@ -170,8 +159,8 @@ capture_stall_evidence() {
 
     local pid
     for pid in ${stuck_pids}; do
-        # lsof first: sampling takes seconds, and a process that exits during the
-        # sample leaves an empty file-descriptor list behind.
+        # lsof first: sampling takes seconds, and a process that exits during it
+        # leaves an empty descriptor list.
         lsof -p "${pid}" > "${evidence_dir}/lsof-${pid}.txt" 2>&1 || true
         sample "${pid}" "${SAMPLE_DURATION_SECONDS}" \
             -file "${evidence_dir}/sample-${pid}.txt" >/dev/null 2>&1 || true
@@ -246,6 +235,19 @@ run_isolated_resolve() {
         --verbose "$@"
 }
 
+# Apply the fix under test: the token rides in the rewritten URL, so the helper only
+# stores the item SwiftPM blocks on. Clearing an existing item matters because
+# SwiftPM blocks on whichever one it finds.
+clear_credential_helper() {
+    record_credential_state "before the fix"
+    git config --global --unset-all credential.helper 2>/dev/null || true
+    git config --global credential.helper ""
+    while security delete-internet-password -s github.com >/dev/null 2>&1; do
+        printf 'removed one github.com keychain item\n'
+    done
+    record_credential_state "after the fix, before the resolve"
+}
+
 run_curl_probe() {
     local probe_log="${diagnostics_dir}/curl.log"
     log "curl: starting"
@@ -282,31 +284,15 @@ case "${PROBE_NAME}" in
         run_isolated_resolve --disable-keychain --disable-netrc
         ;;
     swiftpm)
-        # The exact command `tuist install` shells out to, run directly. It uses the
-        # default caches, as tuist's own child does.
+        # Uses the default caches, as tuist's own child resolve does.
         run_watched swift package --package-path "${repository_root}/Tuist" resolve
         ;;
     swiftpm-nokeychain)
-        # The same command with SwiftPM's credential lookups turned off. The stack
-        # sample from the stalled `swiftpm` probe blocks inside SecItemCopyMatching
-        # waiting on securityd, so if that lookup is the stall this probe clears it
-        # while everything else stays identical.
         run_watched swift package --package-path "${repository_root}/Tuist" resolve \
             --disable-keychain --disable-netrc
         ;;
     swiftpm-nohelper)
-        # The candidate fix. The build environment rewrites github.com URLs to embed
-        # the token, and macOS git's osxkeychain helper then stores that credential
-        # as the github.com item SwiftPM blocks on. The token already travels in the
-        # rewritten URL, so the helper adds nothing here. Turning it off and clearing
-        # what it already wrote should leave SwiftPM nothing to look up.
-        record_credential_state "before the fix"
-        git config --global --unset-all credential.helper 2>/dev/null || true
-        git config --global credential.helper ""
-        while security delete-internet-password -s github.com >/dev/null 2>&1; do
-            printf 'removed one github.com keychain item\n'
-        done
-        record_credential_state "after the fix, before the resolve"
+        clear_credential_helper
         run_watched swift package --package-path "${repository_root}/Tuist" resolve
         record_credential_state "after the resolve"
         ;;
@@ -314,15 +300,7 @@ case "${PROBE_NAME}" in
         run_watched tuist install --verbose
         ;;
     tuist-nohelper)
-        # The same fix measured against the command the appcast job actually reaches,
-        # so the result covers tuist's own child resolve rather than a stand-in.
-        record_credential_state "before the fix"
-        git config --global --unset-all credential.helper 2>/dev/null || true
-        git config --global credential.helper ""
-        while security delete-internet-password -s github.com >/dev/null 2>&1; do
-            printf 'removed one github.com keychain item\n'
-        done
-        record_credential_state "after the fix, before the resolve"
+        clear_credential_helper
         run_watched tuist install --verbose
         record_credential_state "after the resolve"
         ;;

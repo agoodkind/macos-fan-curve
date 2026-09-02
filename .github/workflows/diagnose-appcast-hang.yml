@@ -1,11 +1,8 @@
 name: Diagnose Appcast Hang
 
-# The reproduction harness for the stall that stopped appcast deployment between
-# 2026-08-13 and 2026-09-02. It publishes nothing and touches no release, so it is
-# safe to run at any time. Dispatch only, so it costs nothing until someone needs it
-# again: SwiftPM blocks reading a github.com keychain item before it downloads a
-# binary artifact, and these probes separate that lookup from the network, the
-# artifact, and the tool driving the resolve.
+# Reproduction harness for a resolve that stalls on "Downloading binary artifact".
+# The probes separate SwiftPM's github.com keychain lookup from the network, the
+# artifact, and the tool driving the resolve. It publishes nothing.
 on:
   workflow_dispatch:
     inputs:
@@ -23,35 +20,24 @@ env:
   SPARKLE_VERSION: ${{ inputs.sparkle_version || '2.9.6' }}
 
 jobs:
-  # Each probe takes its own runner. A cold SwiftPM cache is the precondition for the
-  # stall, so two probes sharing a runner would leave the second one warm and prove
-  # nothing.
+  # One runner per probe. A cold SwiftPM cache is the precondition for the stall, so
+  # a shared runner would leave every probe after the first warm.
   probe:
     strategy:
       fail-fast: false
       matrix:
         probe:
-          # Reach and SwiftPM on their own. Both already passed, and they stay as the
-          # controls that keep the network and the artifact ruled out.
           - curl
           - default
           - nocreds
-          # Both of these stalled, and both ran after the build environment setup
-          # that leaves a github.com item in the login keychain. The stack sample
-          # blocks in SecItemCopyMatching waiting on securityd, so `swiftpm` is the
-          # reproduction and `swiftpm-nokeychain` is the same command with only the
-          # credential lookup removed.
           - swiftpm
           - swiftpm-nokeychain
           - tuist
-          # The candidate fix, measured against both the bare resolve and the
-          # command the appcast job actually reaches.
           - swiftpm-nohelper
           - tuist-nohelper
     name: probe (${{ matrix.probe }})
     runs-on: macos-latest
-    # Each probe caps itself at three minutes against work that healthy takes twenty
-    # seconds, so this only bounds a runner that never starts.
+    # The script caps each probe, so this only bounds a runner that never starts.
     timeout-minutes: 20
 
     steps:
