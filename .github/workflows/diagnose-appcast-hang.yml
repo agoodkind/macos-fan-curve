@@ -1,8 +1,11 @@
 name: Diagnose Appcast Hang
 
-# A probe, not a fix. It publishes nothing and touches no release, so it is safe to
-# run while the appcast pipeline is broken. It runs on its own pull request so the
-# evidence arrives without merging anything to main first.
+# The reproduction harness for the stall that stopped appcast deployment between
+# 2026-08-13 and 2026-09-02. It publishes nothing and touches no release, so it is
+# safe to run at any time. Dispatch only, so it costs nothing until someone needs it
+# again: SwiftPM blocks reading a github.com keychain item before it downloads a
+# binary artifact, and these probes separate that lookup from the network, the
+# artifact, and the tool driving the resolve.
 on:
   workflow_dispatch:
     inputs:
@@ -11,10 +14,6 @@ on:
         required: false
         default: "2.9.6"
         type: string
-  pull_request:
-    paths:
-      - .github/workflows/diagnose-appcast-hang.yml
-      - Scripts/diagnose-sparkle-download.sh
 
 permissions:
   contents: read
