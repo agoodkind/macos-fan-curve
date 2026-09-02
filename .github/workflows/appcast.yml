@@ -43,6 +43,13 @@ env:
 jobs:
   deploy-appcast:
     runs-on: macos-latest
+    # A guard, not a fix. The cause of the six-hour stalls is a github.com
+    # keychain item that SwiftPM blocks reading, and setup-build-env now clears
+    # it. The longest this job has ever taken while succeeding is 13m01s, on
+    # 2026-07-02, and recent successes run 2 to 8 minutes, so 30 minutes leaves
+    # room for a slow release history download while capping the next stall at
+    # minutes instead of a whole job allowance.
+    timeout-minutes: 30
     permissions:
       contents: read
 
