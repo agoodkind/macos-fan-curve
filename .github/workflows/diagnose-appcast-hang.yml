@@ -37,10 +37,13 @@ jobs:
           - curl
           - default
           - nocreds
-          # The pair that isolates the defect. `swiftpm` runs the exact command tuist
-          # shells out to; `tuist` runs the command the appcast job reaches. They
-          # differ by who invokes the resolve and by nothing else.
+          # Both of these stalled, and both ran after the build environment setup
+          # that leaves a github.com item in the login keychain. The stack sample
+          # blocks in SecItemCopyMatching waiting on securityd, so `swiftpm` is the
+          # reproduction and `swiftpm-nokeychain` is the same command with only the
+          # credential lookup removed.
           - swiftpm
+          - swiftpm-nokeychain
           - tuist
     name: probe (${{ matrix.probe }})
     runs-on: macos-latest
@@ -52,7 +55,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up the build environment
-        if: ${{ matrix.probe == 'swiftpm' || matrix.probe == 'tuist' }}
+        if: ${{ startsWith(matrix.probe, 'swiftpm') || matrix.probe == 'tuist' }}
         uses: agoodkind/swift-makefile/.github/actions/setup-build-env@main
         with:
           xcode-version: ${{ env.XCODE_VERSION }}

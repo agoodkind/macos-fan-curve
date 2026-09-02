@@ -94,13 +94,18 @@ record_environment() {
             printf 'tuist absent\n'
         fi
         printf '\n## credential sources\n'
-        # A blocking keychain lookup was the first suspect, so record whether any
-        # github.com credential exists at all before a resolve looks for one.
+        # The stall lands inside SwiftPM's keychain lookup for github.com, so
+        # record whether such an item exists and which keychain holds it. Reading
+        # attributes does not decrypt the item, so this call cannot itself hang;
+        # only reading the secret would.
         if security find-internet-password -s github.com >/dev/null 2>&1; then
             printf 'keychain github.com entry: present\n'
+            security find-internet-password -s github.com 2>&1 || true
         else
             printf 'keychain github.com entry: absent\n'
         fi
+        printf '\nkeychain search list:\n'
+        security list-keychains 2>&1 || true
         if [[ -f "${HOME}/.netrc" ]]; then
             printf 'netrc: present, %s bytes\n' "$(wc -c < "${HOME}/.netrc" | tr -d ' ')"
         else
@@ -162,8 +167,13 @@ capture_stall_evidence() {
     log "${PROBE_NAME}: evidence in ${evidence_dir}"
 }
 
+probe_stalled=0
+
 record_outcome() {
     printf '%s\t%s\t%ss\n' "${PROBE_NAME}" "$1" "$2" >> "${diagnostics_dir}/summary.tsv"
+    if [[ "$1" == "STALLED" ]]; then
+        probe_stalled=1
+    fi
 }
 
 # Run one command under the watchdog, streaming its output to a log file.
@@ -258,6 +268,14 @@ case "${PROBE_NAME}" in
         # default caches, as tuist's own child does.
         run_watched swift package --package-path "${repository_root}/Tuist" resolve
         ;;
+    swiftpm-nokeychain)
+        # The same command with SwiftPM's credential lookups turned off. The stack
+        # sample from the stalled `swiftpm` probe blocks inside SecItemCopyMatching
+        # waiting on securityd, so if that lookup is the stall this probe clears it
+        # while everything else stays identical.
+        run_watched swift package --package-path "${repository_root}/Tuist" resolve \
+            --disable-keychain --disable-netrc
+        ;;
     tuist)
         run_watched tuist install --verbose
         ;;
@@ -270,3 +288,10 @@ esac
 printf '\n'
 log "summary"
 cat "${diagnostics_dir}/summary.tsv"
+
+# A stall is the finding, so it must fail the job. Reporting green while the probe
+# was killed at its cap is how the first matrix run looked like five passes.
+if (( probe_stalled == 1 )); then
+    printf 'diagnose-sparkle-download: %s stalled\n' "${PROBE_NAME}" >&2
+    exit 1
+fi
