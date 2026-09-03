@@ -240,8 +240,9 @@ run_isolated_resolve() {
 # SwiftPM blocks on whichever one it finds.
 clear_credential_helper() {
     record_credential_state "before the fix"
-    git config --global --unset-all credential.helper 2>/dev/null || true
-    git config --global credential.helper ""
+    # --replace-all, because a persistent runner's global config can already hold
+    # several helper values, and assigning one value over many fails.
+    git config --global --replace-all credential.helper ""
     while security delete-internet-password -s github.com >/dev/null 2>&1; do
         printf 'removed one github.com keychain item\n'
     done
