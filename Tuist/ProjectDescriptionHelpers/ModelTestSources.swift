@@ -47,6 +47,7 @@ public func makeModelTestSources(
     "Sources/Models/FixedColumnCurve.swift",
     "Sources/Models/FanCommand.swift",
     "Sources/Models/FanCommandMapping.swift",
+    "Sources/Models/CurveRPMRangeRescaler.swift",
     "Sources/Models/InterpolationMode.swift",
     "Sources/Models/LoadAssistKind.swift",
     "Sources/Models/LoadAssistCurveColumns.swift",
