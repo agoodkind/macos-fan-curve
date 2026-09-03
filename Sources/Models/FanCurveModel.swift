@@ -99,9 +99,11 @@ class FanCurveModel: ObservableObject {
     controlPoints = Self.normalizedCurve(points)
   }
 
-  /// Rewrites stored percents so each control point's commanded RPM holds
-  /// steady across an Overdrive/Underdrive toggle, at the cost of its
-  /// plotted height shrinking or growing to match the new RPM range.
+  /// Rewrites stored percents so each above-zero control point's commanded
+  /// RPM holds steady across an Overdrive/Underdrive toggle, at the cost of
+  /// its plotted height shrinking or growing to match the new RPM range. A
+  /// point at 0% is left untouched, since Underdrive intentionally redefines
+  /// what 0% commands rather than the toggle preserving it.
   func rescaleForRPMRangeChange(
     from oldRange: (min: Float, max: Float),
     to newRange: (min: Float, max: Float)

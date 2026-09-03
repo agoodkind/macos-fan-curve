@@ -52,9 +52,15 @@ final class CurveRPMRangeRescalerTests: XCTestCase {
   }
 
   func testZeroPercentPointsStayAtTheFloorRegardlessOfRangeChange() {
+    // FanCommandMapping treats 0% as a floor marker, not an interpolated
+    // RPM: Underdrive off commands the reported minimum RPM, Underdrive on
+    // commands true 0. Moving a 0% point onto some above-zero percent to
+    // "hold" its prior RPM would erase that floor, defeating the entire
+    // purpose of the Underdrive toggle. This case must stay untouched even
+    // when the old minimum RPM was nonzero.
     let rescaler = CurveRPMRangeRescaler(
-      oldRange: (min: 0, max: 6_000),
-      newRange: (min: 0, max: 10_000)
+      oldRange: (min: 1_200, max: 6_000),
+      newRange: (min: 0, max: 6_000)
     )
 
     let rescaled = rescaler.rescale([point(percent: 0)])

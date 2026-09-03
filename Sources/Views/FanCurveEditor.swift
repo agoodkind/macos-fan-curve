@@ -172,12 +172,21 @@ struct FanCurveEditor: View {
     rpmRange(overdrive: overdriveEnabled, underdrive: underdriveEnabled)
   }
 
-  /// Overdrive and Underdrive change the effective RPM range, so a control
-  /// point that keeps its stored percent would silently command a different
-  /// RPM once the toggle lands. Rescale stored percents against the range
-  /// that was actually in effect before the toggle so the curve holds its
-  /// commanded RPM and its plotted height shrinks or grows to match.
+  /// Overdrive and Underdrive change the effective RPM range, so an
+  /// above-zero control point that keeps its stored percent would silently
+  /// command a different RPM once the toggle lands. Rescale stored percents
+  /// against the range that was actually in effect before the toggle so the
+  /// curve holds its commanded RPM and its plotted height shrinks or grows
+  /// to match. A control point at 0% is left untouched: Underdrive already
+  /// redefines what 0% commands (the reported minimum RPM versus true 0),
+  /// so rescaling it would fight that floor instead of preserving it.
+  ///
+  /// Without a connected fan, `rpmRange` cannot compute a real range, so
+  /// this defers marking the toggle as applied until a fan reports in.
+  /// `runtime.snapshot` changing re-invokes this with the current flags so
+  /// a toggle that happened before telemetry arrived is not lost.
   func applyExtendedRangeRescale(overdrive: Bool, underdrive: Bool) {
+    guard runtime.fans.first != nil else { return }
     let oldRange = rpmRange(
       overdrive: previousOverdriveEnabled,
       underdrive: previousUnderdriveEnabled
@@ -243,7 +252,10 @@ struct FanCurveEditor: View {
       previousOverdriveEnabled = overdriveEnabled
       previousUnderdriveEnabled = underdriveEnabled
     }
-    .onChange(of: runtime.snapshot) { _ in refreshRuntimeMarkerTarget() }
+    .onChange(of: runtime.snapshot) { _ in
+      refreshRuntimeMarkerTarget()
+      applyExtendedRangeRescale(overdrive: overdriveEnabled, underdrive: underdriveEnabled)
+    }
     .onChange(of: boostEnabled) { _ in
       refreshRuntimeMarkerTarget()
     }
