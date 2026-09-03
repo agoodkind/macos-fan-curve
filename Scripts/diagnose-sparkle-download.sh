@@ -26,6 +26,7 @@ readonly PROBE_TIMEOUT_SECONDS="${PROBE_TIMEOUT_SECONDS:-180}"
 readonly CURL_TIMEOUT_SECONDS="${CURL_TIMEOUT_SECONDS:-60}"
 readonly SAMPLE_DURATION_SECONDS=5
 readonly WATCHDOG_POLL_SECONDS=2
+readonly KILL_GRACE_SECONDS=10
 
 readonly ARTIFACT_URL="https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-for-Swift-Package-Manager.zip"
 
@@ -174,12 +175,13 @@ capture_stall_evidence() {
     log "${PROBE_NAME}: evidence in ${evidence_dir}"
 }
 
-probe_stalled=0
+probe_failed=0
 
 record_outcome() {
     printf '%s\t%s\t%ss\n' "${PROBE_NAME}" "$1" "$2" >> "${diagnostics_dir}/summary.tsv"
-    if [[ "$1" == "STALLED" ]]; then
-        probe_stalled=1
+    # A stall and a non-zero exit are both findings, so both must fail the job.
+    if [[ "$1" != "PASSED" ]]; then
+        probe_failed=1
     fi
 }
 
@@ -201,7 +203,16 @@ run_watched() {
         fi
         if (( elapsed >= PROBE_TIMEOUT_SECONDS )); then
             capture_stall_evidence
+            # A stalled resolve is blocked in a mach call and may never act on
+            # SIGTERM, so escalate rather than waiting forever and losing the
+            # evidence upload to the job's own timeout.
             kill -TERM "${probe_pid}" 2>/dev/null || true
+            local grace=0
+            while kill -0 "${probe_pid}" 2>/dev/null && (( grace < KILL_GRACE_SECONDS )); do
+                sleep 1
+                grace=$(( grace + 1 ))
+            done
+            kill -KILL "${probe_pid}" 2>/dev/null || true
             wait "${probe_pid}" 2>/dev/null || true
             record_outcome "STALLED" "${elapsed}"
             return 0
@@ -254,7 +265,8 @@ run_curl_probe() {
     log "curl: starting"
     local started_at="${SECONDS}"
     local curl_status=0
-    curl --silent --show-error --location \
+    # --fail, so an HTTP 4xx or 5xx is a failure rather than a zero-exit PASSED.
+    curl --fail --silent --show-error --location \
         --max-time "${CURL_TIMEOUT_SECONDS}" \
         --output "${work_root}/curl-artifact.zip" \
         --write-out 'http_code=%{http_code} size=%{size_download} time=%{time_total}\n' \
@@ -315,9 +327,9 @@ printf '\n'
 log "summary"
 cat "${diagnostics_dir}/summary.tsv"
 
-# A stall is the finding, so it must fail the job. Reporting green while the probe
-# was killed at its cap is how the first matrix run looked like five passes.
-if (( probe_stalled == 1 )); then
-    printf 'diagnose-sparkle-download: %s stalled\n' "${PROBE_NAME}" >&2
+# Reporting green while the probe was killed at its cap is how the first matrix
+# run looked like five passes.
+if (( probe_failed == 1 )); then
+    printf 'diagnose-sparkle-download: %s did not pass\n' "${PROBE_NAME}" >&2
     exit 1
 fi
