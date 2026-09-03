@@ -43,6 +43,9 @@ env:
 jobs:
   deploy-appcast:
     runs-on: macos-latest
+    # Longest successful run is 13 minutes, so this caps a stall without
+    # threatening a slow release-history download.
+    timeout-minutes: 15
     permissions:
       contents: read
 

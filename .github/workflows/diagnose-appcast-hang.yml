@@ -1,0 +1,64 @@
+name: Diagnose Appcast Hang
+
+# Reproduction harness for a resolve that stalls on "Downloading binary artifact".
+# The probes separate SwiftPM's github.com keychain lookup from the network, the
+# artifact, and the tool driving the resolve. It publishes nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      sparkle_version:
+        description: Sparkle release whose binary artifact should be probed
+        required: false
+        default: "2.9.6"
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  XCODE_VERSION: "latest-stable"
+  SPARKLE_VERSION: ${{ inputs.sparkle_version || '2.9.6' }}
+
+jobs:
+  # One runner per probe. A cold SwiftPM cache is the precondition for the stall, so
+  # a shared runner would leave every probe after the first warm.
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        probe:
+          - curl
+          - default
+          - nocreds
+          - swiftpm
+          - swiftpm-nokeychain
+          - tuist
+          - swiftpm-nohelper
+          - tuist-nohelper
+    name: probe (${{ matrix.probe }})
+    runs-on: macos-latest
+    # The script caps each probe, so this only bounds a runner that never starts.
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up the build environment
+        if: ${{ startsWith(matrix.probe, 'swiftpm') || startsWith(matrix.probe, 'tuist') }}
+        uses: agoodkind/swift-makefile/.github/actions/setup-build-env@main
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+          github-token: ${{ github.token }}
+
+      - name: Probe ${{ matrix.probe }}
+        env:
+          PROBE_NAME: ${{ matrix.probe }}
+          DIAGNOSTICS_DIR: ${{ runner.temp }}/diagnostics-${{ matrix.probe }}
+        run: Scripts/diagnose-sparkle-download.sh
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: diagnostics-${{ matrix.probe }}
+          path: ${{ runner.temp }}/diagnostics-${{ matrix.probe }}
+          if-no-files-found: error
