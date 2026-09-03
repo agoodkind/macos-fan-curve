@@ -256,6 +256,36 @@ final class AgentControllerFanHardwareTests: XCTestCase {
     expect(controller.rampSnapRequested) == true
   }
 
+  func testLoadAssistEnabledTogglesRequestRampSnap() throws {
+    let defaults = try XCTUnwrap(isolatedDefaults)
+    let controller = try makeController(fanHardware: RecordingFanHardware())
+    let telemetry = AgentControllerTickTypes.TickTelemetry(
+      active: true,
+      result: FanHardwareBatchRead(fans: [], temps: [:]),
+      transitioned: false,
+      maxCPUTemp: 70,
+      cpuLoad: 80,
+      gpuLoad: 80
+    )
+
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == false
+
+    defaults.set(true, forKey: SharedConfigKeys.cpuLoadAssistEnabled)
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == true
+
+    controller.rampSnapRequested = false
+    defaults.set(false, forKey: SharedConfigKeys.cpuLoadAssistEnabled)
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == true
+
+    controller.rampSnapRequested = false
+    defaults.set(true, forKey: SharedConfigKeys.gpuLoadAssistEnabled)
+    _ = controller.makeActiveTickContext(from: telemetry)
+    expect(controller.rampSnapRequested) == true
+  }
+
   private func makeController(
     fanHardware: any FanHardware
   ) throws -> AgentController {
