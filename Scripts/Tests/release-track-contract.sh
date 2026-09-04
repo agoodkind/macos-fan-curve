@@ -35,26 +35,24 @@ assert_contains ".github/workflows/release.yml" "candidate-tag:"
 assert_contains ".github/workflows/release.yml" 'candidate-asset-pattern: "FanCurve-*.dmg"'
 assert_contains ".github/workflows/release.yml" "source-sha:"
 assert_contains ".github/workflows/release.yml" "allow-source-sha:"
-assert_contains ".github/workflows/release.yml" "uses: ./.github/workflows/appcast.yml"
-assert_contains ".github/workflows/release.yml" "needs.release.outputs['release-tag']"
-assert_contains ".github/workflows/release.yml" "needs.release.outputs['release-track']"
+assert_contains ".github/workflows/release.yml" "post-publish-timeout-minutes: 15"
+assert_contains ".github/workflows/release.yml" "post-publish-node-version: \"22\""
+assert_contains ".github/workflows/release.yml" "Scripts/deploy-appcast.sh"
+assert_contains ".github/workflows/release.yml" \
+    'POST_PUBLISH_SECRET_1: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}'
+assert_contains ".github/workflows/release.yml" \
+    'POST_PUBLISH_SECRET_2: ${{ secrets.CLOUDFLARE_API_TOKEN }}'
+assert_contains ".github/workflows/release.yml" \
+    'POST_PUBLISH_SECRET_3: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}'
+assert_not_contains ".github/workflows/release.yml" "pull_request:"
+assert_not_contains ".github/workflows/release.yml" "appcast:"
 
-assert_contains ".github/workflows/appcast.yml" "workflow_call:"
+assert_contains ".github/workflows/appcast.yml" "workflow_dispatch:"
 assert_contains ".github/workflows/appcast.yml" "release_tag:"
 assert_contains ".github/workflows/appcast.yml" "release_track:"
-assert_contains ".github/workflows/appcast.yml" "Scripts/prepare-appcast-history.sh"
-assert_contains ".github/workflows/appcast.yml" \
-    "uses: agoodkind/swift-makefile/.github/actions/stage-appcast-assets@main"
-# shellcheck disable=SC2016 # The assertion matches literal GitHub Actions syntax.
-assert_contains ".github/workflows/appcast.yml" 'release-track: ${{ inputs.release_track }}'
-assert_contains ".github/workflows/appcast.yml" \
-    "appcast-source: build/sparkle-updates/appcast.xml"
-assert_contains ".github/workflows/appcast.yml" \
-    "public-directory: deploy/appcast-worker/public"
-assert_contains ".github/workflows/appcast.yml" \
-    "stable-feed-url: https://goodkind.io/fancurve/appcast.xml"
-assert_contains ".github/workflows/appcast.yml" \
-    "prerelease-feed-url: https://goodkind.io/fancurve/prerelease/appcast.xml"
+assert_contains ".github/workflows/appcast.yml" "timeout-minutes: 15"
+assert_contains ".github/workflows/appcast.yml" "Scripts/deploy-appcast.sh"
+assert_not_contains ".github/workflows/appcast.yml" "workflow_call:"
 assert_not_contains ".github/workflows/appcast.yml" "git tag --points-at"
 assert_not_contains ".github/workflows/appcast.yml" "public_path="
 # shellcheck disable=SC2016 # The assertion matches literal Make syntax.

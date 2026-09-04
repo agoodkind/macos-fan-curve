@@ -1,27 +1,6 @@
 name: Deploy Appcast
 
 on:
-  workflow_call:
-    inputs:
-      release_tag:
-        required: true
-        type: string
-      release_track:
-        required: true
-        type: string
-      # A release dry run builds and validates the worker bundle without
-      # publishing it, so every step before the deploy runs for real.
-      dry_run:
-        required: false
-        default: false
-        type: boolean
-    secrets:
-      SPARKLE_PRIVATE_ED_KEY:
-        required: true
-      CLOUDFLARE_API_TOKEN:
-        required: true
-      CLOUDFLARE_ACCOUNT_ID:
-        required: true
   workflow_dispatch:
     inputs:
       release_tag:
@@ -57,64 +36,23 @@ jobs:
           xcode-version: ${{ env.XCODE_VERSION }}
           github-token: ${{ github.token }}
 
-      - name: Install Tuist dependencies
-        run: make install-dependencies
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
 
-      - name: Download release history
+      - name: Deploy appcast worker
         env:
           GH_REPOSITORY: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           RELEASE_TRACK: ${{ inputs.release_track }}
-          SPARKLE_UPDATES_DIR: build/sparkle-updates
-          DRY_RUN: ${{ inputs.dry_run }}
-        run: Scripts/prepare-appcast-history.sh
-
-      - name: Generate Sparkle appcast
-        env:
-          GH_REPOSITORY: ${{ github.repository }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          key_path="$RUNNER_TEMP/sparkle_private_key"
-          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key_path"
-          export SPARKLE_PRIVATE_KEY_FILE="$key_path"
-          make generate-sparkle-appcast
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DRY_RUN: "false"
+        run: Scripts/deploy-appcast.sh
 
       - uses: actions/upload-artifact@v7
         with:
           name: appcast-${{ inputs.release_track }}
           path: build/sparkle-updates/appcast.xml
           if-no-files-found: error
-
-      - name: Stage appcast assets
-        uses: agoodkind/swift-makefile/.github/actions/stage-appcast-assets@main
-        with:
-          release-track: ${{ inputs.release_track }}
-          appcast-source: build/sparkle-updates/appcast.xml
-          public-directory: deploy/appcast-worker/public
-          stable-feed-url: https://goodkind.io/fancurve/appcast.xml
-          prerelease-feed-url: https://goodkind.io/fancurve/prerelease/appcast.xml
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-
-      # `--dry-run` builds and validates the worker bundle and publishes nothing,
-      # so a dry run still fails on a broken worker config or a bundle that cannot
-      # build, which is what a publish would have failed on.
-      - name: Deploy appcast worker
-        working-directory: deploy/appcast-worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          DRY_RUN: ${{ inputs.dry_run }}
-        run: |
-          set -euo pipefail
-
-          if [[ "${DRY_RUN}" == "true" ]]; then
-              npx wrangler deploy --dry-run --config wrangler.toml
-          else
-              npx wrangler deploy --config wrangler.toml
-          fi

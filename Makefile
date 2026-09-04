@@ -86,7 +86,7 @@ SWIFT_ANALYZE_CMD := $(MAKE) xcode-analyze swiftlint-analyze
 SWIFT_FORMAT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTLINT_TARGETS := $(SWIFT_FORMAT_FILES)
 SWIFTCHECK_EXTRA_TARGETS := $(SWIFT_FORMAT_FILES)
-SWIFT_AUDIT_EXTRA_CMD := Scripts/Tests/release-track-contract.sh && Scripts/Tests/select-appcast-releases.sh && Scripts/Tests/prepare-appcast-history.sh && Scripts/Tests/rewrite-appcast-urls.sh && Scripts/Tests/generate-sparkle-appcast.sh
+SWIFT_AUDIT_EXTRA_CMD := Scripts/Tests/release-track-contract.sh && Scripts/Tests/select-appcast-releases.sh && Scripts/Tests/prepare-appcast-history.sh && Scripts/Tests/deploy-appcast.sh && Scripts/Tests/rewrite-appcast-urls.sh && Scripts/Tests/generate-sparkle-appcast.sh
 
 # Generator names are data, bound to variables so no recipe line names a build
 # tool directly; every build/test/analyze routes through the swift-mk toolchain.
