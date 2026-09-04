@@ -59,6 +59,13 @@ struct ExpandedRangeState: Equatable {
   let underdriveEnabled: Bool
 }
 
+// MARK: - LoadAssistEnabledState
+
+struct LoadAssistEnabledState: Equatable {
+  let cpuEnabled: Bool
+  let gpuEnabled: Bool
+}
+
 private struct ActiveTickCurveState {
   let boost: Bool
   let baseCurvePercent: Double
@@ -152,9 +159,13 @@ extension AgentController {
     agentControllerLog.notice("agent.curve.edited fans=snap-to-curve")
   }
 
-  func resetObservedCurveShapes() {
+  /// Clears every "last observed" value the snap-if-changed hooks above
+  /// compare against, so the next active tick after activation records a
+  /// fresh starting point instead of treating it as a user edit.
+  func resetObservedTickChangeState() {
     lastCurveShape = nil
     lastLoadAssistCurveShape = nil
+    lastLoadAssistEnabledState = nil
   }
 
   private func snapIfLoadAssistCurveChanged(to shape: CurveShape) {
@@ -162,6 +173,19 @@ extension AgentController {
     guard let lastLoadAssistCurveShape, lastLoadAssistCurveShape != shape else { return }
     beginRampSnap(resettingDemand: true)
     agentControllerLog.notice("agent.load_assist_curve.edited fans=snap-to-curve")
+  }
+
+  /// Snaps onto the new target when Load Assist is switched on or off.
+  /// Applying or removing the assist floor moves the raw baseline percent
+  /// as abruptly as a curve edit does, so it gets the same immediate
+  /// response instead of crawling there under acoustic damping.
+  private func snapIfLoadAssistEnabledChanged(to state: LoadAssistEnabledState) {
+    defer { lastLoadAssistEnabledState = state }
+    guard let lastLoadAssistEnabledState, lastLoadAssistEnabledState != state else { return }
+    beginRampSnap(resettingDemand: true)
+    agentControllerLog.notice(
+      "agent.load_assist_enabled.changed cpu=\(state.cpuEnabled, privacy: .public) gpu=\(state.gpuEnabled, privacy: .public) fans=snap-to-curve"
+    )
   }
 
   private func loadAssistCurveShape() -> CurveShape {
@@ -210,6 +234,7 @@ extension AgentController {
     let mode = sharedConfig.loadInterpolationMode()
     snapIfCurveChanged(to: CurveShape(points: points, interpolationMode: mode))
     snapIfLoadAssistCurveChanged(to: loadAssistCurveShape())
+    snapIfLoadAssistEnabledChanged(to: sharedConfig.loadLoadAssistEnabledState())
     let baseCurvePercent = CurveInterpolation.evaluate(
       at: pressureTemperature,
       points: points,

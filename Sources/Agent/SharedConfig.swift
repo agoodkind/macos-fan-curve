@@ -95,6 +95,13 @@ struct SharedConfig {
     LoadAssistStore.loadEnabled(kind, defaults: defaults)
   }
 
+  func loadLoadAssistEnabledState() -> LoadAssistEnabledState {
+    LoadAssistEnabledState(
+      cpuEnabled: loadLoadAssistEnabled(.cpu),
+      gpuEnabled: loadLoadAssistEnabled(.gpu)
+    )
+  }
+
   func loadLoadAssistCurve(_ kind: LoadAssistKind) -> [CurvePoint] {
     LoadAssistStore.loadPoints(kind, defaults: defaults)
   }
