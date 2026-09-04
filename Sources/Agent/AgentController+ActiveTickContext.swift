@@ -159,7 +159,10 @@ extension AgentController {
     agentControllerLog.notice("agent.curve.edited fans=snap-to-curve")
   }
 
-  func resetObservedCurveShapes() {
+  /// Clears every "last observed" value the snap-if-changed hooks above
+  /// compare against, so the next active tick after activation records a
+  /// fresh starting point instead of treating it as a user edit.
+  func resetObservedTickChangeState() {
     lastCurveShape = nil
     lastLoadAssistCurveShape = nil
     lastLoadAssistEnabledState = nil
