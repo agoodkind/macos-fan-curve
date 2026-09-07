@@ -76,6 +76,9 @@ run_case() {
     SPARKLE_PRIVATE_KEY="${fixture_value}" \
     CLOUDFLARE_API_TOKEN="test-api-token" \
     CLOUDFLARE_ACCOUNT_ID="test-account" \
+    POST_PUBLISH_SECRET_1="${fixture_value}" \
+    POST_PUBLISH_SECRET_2="test-api-token" \
+    POST_PUBLISH_SECRET_3="test-account" \
     DRY_RUN="${dry_run}" \
         "${test_repository}/Scripts/deploy-appcast.sh"
 
