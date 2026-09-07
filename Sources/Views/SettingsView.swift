@@ -14,6 +14,7 @@ private let settingsViewLog = AppLog.make(category: "SettingsView")
 
 private enum SettingsWindowConstants {
   static let minWidth: CGFloat = 520
+  static let maxWidth: CGFloat = 720
   static let minHeight: CGFloat = 460
 }
 
@@ -117,9 +118,23 @@ private final class WindowAttachmentView: NSView {
     settingsViewLog.debug(
       "settings.window_attachment.refresh has_window=\((window != nil), privacy: .public)"
     )
+    restrictWidth(of: window)
     Task { @MainActor [weak self] in
       self?.activity?.attach(window: self?.window)
     }
+  }
+
+  private func restrictWidth(of attachedWindow: NSWindow?) {
+    guard let attachedWindow else { return }
+    guard attachedWindow.maxSize.width != SettingsWindowConstants.maxWidth else { return }
+
+    attachedWindow.maxSize = NSSize(
+      width: SettingsWindowConstants.maxWidth,
+      height: attachedWindow.maxSize.height
+    )
+    settingsViewLog.info(
+      "settings.window_max_width.updated width=\(SettingsWindowConstants.maxWidth, privacy: .public)"
+    )
   }
 }
 

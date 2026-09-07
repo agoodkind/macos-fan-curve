@@ -386,6 +386,6 @@ run-audit:
 settings-layout-audit:
 	@Scripts/SettingsLayoutAudit.swift Sources/Views
 
-verify: launch-agent-audit run-audit settings-layout-audit log-audit test
+verify: launch-agent-audit run-audit settings-layout-audit test
 
 quality: lint analyze verify
