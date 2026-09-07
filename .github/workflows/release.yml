@@ -4,11 +4,6 @@ on:
   push:
     branches:
       - main
-  # The signed release dry run moved into CI's Verify job, which runs it on the
-  # same machine as the verify build. A pull request still triggers this workflow
-  # for the appcast dry run only: the release job skips, and the appcast job
-  # generates, signs, stages, and validates the worker bundle without publishing.
-  pull_request:
   workflow_dispatch:
     inputs:
       release_track:
@@ -33,11 +28,9 @@ on:
         default: false
         type: boolean
 
-# One group per ref. A new pull request push cancels its own superseded dry run,
-# while a push to main is a real release and never cancels an in-flight publish.
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
 
 # The caller must grant every permission the called workflow's jobs request.
 permissions:
@@ -48,13 +41,9 @@ permissions:
 
 jobs:
   release:
-    # A pull request's signed dry run lives in CI's Verify job now, so the
-    # release pipeline itself runs only on a merge or a manual dispatch.
-    if: ${{ github.event_name != 'pull_request' }}
     uses: agoodkind/swift-makefile/.github/workflows/_release.yml@main
     with:
       runner: macos-26
-      ephemeral: ${{ github.event_name == 'pull_request' }}
       release-track: ${{ github.event_name == 'workflow_dispatch' && inputs.release_track || '' }}
       release-on-merge: stable
       candidate-tag: ${{ inputs.candidate_tag || '' }}
@@ -65,32 +54,23 @@ jobs:
       apple-team-id: ${{ vars.APPLE_TEAM_ID }}
       notarize-pattern: "*.dmg"
       sbom-subject-path: "Products/Fan Curve.app"
-    secrets: inherit
-
-  appcast:
-    needs: release
-    # On a pull request the release job is skipped, so `!cancelled()` lets this
-    # job still run its dry run while a failed or cancelled real release still
-    # blocks it. A fork pull request cannot read the Sparkle and Cloudflare
-    # secrets, and a Dependabot pull request reads its own secret store, so both
-    # skip.
-    if: >-
-      ${{ !cancelled() && needs.release.result != 'failure'
-      && needs.release.result != 'cancelled'
-      && (github.event_name != 'pull_request'
-      || (github.event.pull_request.head.repo.full_name == github.repository
-      && github.actor != 'dependabot[bot]')) }}
-    uses: ./.github/workflows/appcast.yml
-    with:
-      # The skipped release job produces no outputs on a pull request. The dry
-      # run only logs the tag (its own tag can never be in the published
-      # history), and the track picks which history to stage, so the fallbacks
-      # keep the history script's required-input guards satisfied.
-      release_tag: ${{ needs.release.outputs['release-tag'] || 'dry-run' }}
-      release_track: ${{ needs.release.outputs['release-track'] || 'stable' }}
-      # The dry run generates, signs, and stages the appcast exactly as a real
-      # release does, and only the worker publish is held back. Skipping the whole
-      # job instead would leave appcast generation unexercised until a merge, which
-      # is the failure this pull request run exists to catch.
-      dry_run: ${{ github.event_name == 'pull_request' }}
-    secrets: inherit
+      smoke-asset: "FanCurve-__ARTIFACT_VERSION__.dmg"
+      smoke-binary: "FanCurve"
+      post-publish-timeout-minutes: 15
+      post-publish-node-version: "22"
+      post-publish-command: >-
+        SPARKLE_PRIVATE_KEY="${POST_PUBLISH_SECRET_1}"
+        CLOUDFLARE_API_TOKEN="${POST_PUBLISH_SECRET_2}"
+        CLOUDFLARE_ACCOUNT_ID="${POST_PUBLISH_SECRET_3}"
+        DRY_RUN=false
+        Scripts/deploy-appcast.sh
+    secrets:
+      APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+      APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+      APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+      LOCAL_POOL_CAPACITY_TOKEN: ${{ secrets.LOCAL_POOL_CAPACITY_TOKEN }}
+      POST_PUBLISH_SECRET_1: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+      POST_PUBLISH_SECRET_2: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      POST_PUBLISH_SECRET_3: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

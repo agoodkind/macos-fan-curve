@@ -105,6 +105,7 @@ do {
         "@@BUNDLE_ID_PREFIX@@": try requiredEnv("BUNDLE_ID_PREFIX"),
         "@@MARKETING_VERSION@@": try requiredEnv("MARKETING_VERSION"),
         "@@BUILD_NUMBER@@": try requiredEnv("CURRENT_PROJECT_VERSION"),
+        "@@RELEASE_TAG@@": try requiredEnv("RELEASE_TAG"),
         "@@GIT_COMMIT@@": run("/usr/bin/git", ["-C", srcRoot, "rev-parse", "--short", "HEAD"]) ?? "unknown",
         "@@GIT_VERSION@@": run("/usr/bin/git", ["-C", srcRoot, "describe", "--tags", "--always", "--dirty"]) ?? "dev",
         "@@GIT_DIRTY@@": run("/usr/bin/git", ["-C", srcRoot, "diff", "--quiet"]) == nil ? "true" : "false",

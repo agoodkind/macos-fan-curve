@@ -20,6 +20,7 @@ private let testRepositoryURL = URL(fileURLWithPath: #filePath)
 private func addTestBuildVersion(to environment: inout [String: String]) {
   environment["MARKETING_VERSION"] = "0.0.0-test"
   environment["CURRENT_PROJECT_VERSION"] = "0"
+  environment["RELEASE_TAG"] = "test-release-tag"
 }
 
 final class TestControlCommandTests: XCTestCase {

@@ -1,27 +1,7 @@
 name: Deploy Appcast
 
 on:
-  workflow_call:
-    inputs:
-      release_tag:
-        required: true
-        type: string
-      release_track:
-        required: true
-        type: string
-      # A release dry run builds and validates the worker bundle without
-      # publishing it, so every step before the deploy runs for real.
-      dry_run:
-        required: false
-        default: false
-        type: boolean
-    secrets:
-      SPARKLE_PRIVATE_ED_KEY:
-        required: true
-      CLOUDFLARE_API_TOKEN:
-        required: true
-      CLOUDFLARE_ACCOUNT_ID:
-        required: true
+  pull_request:
   workflow_dispatch:
     inputs:
       release_tag:
@@ -40,9 +20,16 @@ env:
   XCODE_VERSION: "latest-stable"
   GH_TOKEN: ${{ github.token }}
 
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && format('release-{0}', github.repository) || format('appcast-check-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   deploy-appcast:
-    runs-on: macos-latest
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'macos-latest' }}
+    # Longest successful run is 13 minutes, so this caps a stall without
+    # threatening a slow release-history download.
+    timeout-minutes: 15
     permissions:
       contents: read
 
@@ -50,68 +37,37 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: agoodkind/swift-makefile/.github/actions/setup-build-env@main
+        if: github.event_name == 'workflow_dispatch'
         with:
           xcode-version: ${{ env.XCODE_VERSION }}
           github-token: ${{ github.token }}
-
-      - name: Install Tuist dependencies
-        run: make install-dependencies
-
-      - name: Download release history
-        env:
-          GH_REPOSITORY: ${{ github.repository }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          RELEASE_TRACK: ${{ inputs.release_track }}
-          SPARKLE_UPDATES_DIR: build/sparkle-updates
-          DRY_RUN: ${{ inputs.dry_run }}
-        run: Scripts/prepare-appcast-history.sh
-
-      - name: Generate Sparkle appcast
-        env:
-          GH_REPOSITORY: ${{ github.repository }}
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          key_path="$RUNNER_TEMP/sparkle_private_key"
-          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key_path"
-          export SPARKLE_PRIVATE_KEY_FILE="$key_path"
-          make generate-sparkle-appcast
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: appcast-${{ inputs.release_track }}
-          path: build/sparkle-updates/appcast.xml
-          if-no-files-found: error
-
-      - name: Stage appcast assets
-        uses: agoodkind/swift-makefile/.github/actions/stage-appcast-assets@main
-        with:
-          release-track: ${{ inputs.release_track }}
-          appcast-source: build/sparkle-updates/appcast.xml
-          public-directory: deploy/appcast-worker/public
-          stable-feed-url: https://goodkind.io/fancurve/appcast.xml
-          prerelease-feed-url: https://goodkind.io/fancurve/prerelease/appcast.xml
 
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
 
-      # `--dry-run` builds and validates the worker bundle and publishes nothing,
-      # so a dry run still fails on a broken worker config or a bundle that cannot
-      # build, which is what a publish would have failed on.
       - name: Deploy appcast worker
-        working-directory: deploy/appcast-worker
+        if: github.event_name == 'workflow_dispatch'
         env:
+          GH_REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_TRACK: ${{ inputs.release_track }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          DRY_RUN: ${{ inputs.dry_run }}
-        run: |
-          set -euo pipefail
+          DRY_RUN: "false"
+        run: Scripts/deploy-appcast.sh
 
-          if [[ "${DRY_RUN}" == "true" ]]; then
-              npx wrangler deploy --dry-run --config wrangler.toml
-          else
-              npx wrangler deploy --config wrangler.toml
-          fi
+      - name: Validate appcast worker bundle
+        if: github.event_name == 'pull_request'
+        working-directory: deploy/appcast-worker
+        run: |
+          npm install --no-save --package-lock=false wrangler@4.123.0
+          ./node_modules/.bin/wrangler deploy --dry-run --config wrangler.toml
+
+      - uses: actions/upload-artifact@v7
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: appcast-${{ inputs.release_track }}
+          path: build/sparkle-updates/appcast.xml
+          if-no-files-found: error
