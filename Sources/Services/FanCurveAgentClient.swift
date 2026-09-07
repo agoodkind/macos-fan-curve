@@ -199,7 +199,7 @@ extension FanCurveAgentClient {
     fanCurveAgentClientLog.debug("agent_client.events.registered")
   }
 
-  private func refreshCurrentState() async throws {
+  func refreshCurrentState() async throws {
     let stateData = try await performRequest(.currentState)
     guard let stateData else {
       throw FanCurveAgentClientError.invalidReply

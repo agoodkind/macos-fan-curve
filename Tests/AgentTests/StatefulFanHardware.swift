@@ -246,8 +246,13 @@ final class StatefulHelperService: HelperServiceManaging, @unchecked Sendable {
 
   var status: ManagedServiceStatus { lock.withLock { storedStatus } }
   var registrationGeneration: Int { lock.withLock { storedGeneration } }
-  var hasRegistration: Bool { status != .notRegistered }
+  var hasRegistration: Bool { ![.notRegistered, .notFound].contains(status) }
+  var registerAttemptCount: Int { lock.withLock { storedRegisterAttemptCount } }
   var unregisterCount: Int { lock.withLock { storedUnregisterCount } }
+
+  func setStatus(_ status: ManagedServiceStatus) {
+    lock.withLock { storedStatus = status }
+  }
 
   func setOnRegistered(_ onRegistered: @escaping @Sendable () -> Void) {
     lock.withLock { storedOnRegistered = onRegistered }

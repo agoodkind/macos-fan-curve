@@ -162,6 +162,39 @@ extension TestControlXPCIntegrationTests {
     expect(harness.controllerIsPaused) == true
   }
 
+  func testFirstInstallationApprovalRejectsCommandAndRemainsReadableThroughXPC() async throws {
+    let fixture = try ControlledSystemHelperLifecycleFixture(
+      testCase: self,
+      active: .unreachable,
+      serviceStatus: .notFound,
+      registerBehavior: .requiresApproval
+    )
+    let harness = try ControlledXPCHarness(lifecycleFixture: fixture)
+    defer { harness.stop() }
+    try await harness.startAndWaitUntilConnected()
+
+    let error = await captureError {
+      try await harness.client.installOrRepairHelper()
+    }
+    let accepted = error == nil
+    expect(accepted) == false
+
+    try await harness.client.refreshCurrentState()
+    expect(harness.client.runtimeState.systemHelper) == .approvalRequired
+    expect(fixture.service.registerAttemptCount) == 1
+    expect(fixture.service.unregisterCount) == 0
+    expect(harness.controllerIsPaused) == true
+
+    let repeatedError = await captureError {
+      try await harness.client.installOrRepairHelper()
+    }
+    let repeatedAccepted = repeatedError == nil
+    expect(repeatedAccepted) == false
+    try await harness.client.refreshCurrentState()
+    expect(harness.client.runtimeState.systemHelper) == .approvalRequired
+    expect(fixture.service.registerAttemptCount) == 1
+  }
+
   func testHealthyReconnectDoesNotMutateRegistrationAgain() async throws {
     let fixture = try ControlledSystemHelperLifecycleFixture(
       testCase: self,

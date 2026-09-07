@@ -49,10 +49,15 @@ final class InstallationState: ObservableObject {
   @Published var agentLastError: String = ""
   @Published var agentExecutableHash: String = ""
   @Published var agentSnapshotSchemaVersion: Int?
-  @Published private(set) var isRegisteringAgent = false
-  @Published private(set) var isRegisteringHelper = false
+  @Published var isRegisteringAgent = false
+  @Published var isRegisteringHelper = false
+  @Published var isOpeningSetupSettings = false
+  @Published var setupProgress: GuidedSetupProgress
+  let setupDefaults: UserDefaults
+  var setupTask: Task<Void, Never>?
 
   private var timer: Timer?
+  var isReadingApprovalState = false
   /// When the refresh loop first observed the registered Agent without an open
   /// XPC connection. Cleared the moment the Agent answers again.
   var agentDisconnectedSince: Date?
@@ -67,15 +72,39 @@ final class InstallationState: ObservableObject {
   var lastAgentServiceRegisterDate: Date?
   let agentStartupGraceInterval: TimeInterval = 5
   let backgroundAgentService: any BackgroundAgentServiceManaging
+  let legacyLaunchAgentRepair: () -> LegacyLaunchAgentRepairResult
   let bundledAgentHash: () -> String
 
   init(
     backgroundAgentService: any BackgroundAgentServiceManaging =
       ServiceManagementAdapters.backgroundAgent(),
+    setupDefaults: UserDefaults = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard,
+    legacyLaunchAgentRepair: @escaping () -> LegacyLaunchAgentRepairResult = {
+      InstallationState.repairLegacyLaunchAgentIfNeeded()
+    },
     bundledAgentHash: @escaping () -> String = { BuildFingerprint.bundledAgentHash }
   ) {
     self.backgroundAgentService = backgroundAgentService
+    self.legacyLaunchAgentRepair = legacyLaunchAgentRepair
     self.bundledAgentHash = bundledAgentHash
+    self.setupDefaults = setupDefaults
+    if let storedProgress = setupDefaults.string(forKey: SharedConfigKeys.guidedSetupProgress) {
+      if let progress = GuidedSetupProgress(rawValue: storedProgress) {
+        self.setupProgress = progress
+      } else {
+        self.setupProgress = .failed
+        let reason = "Saved setup progress is invalid. Retry Setup to check the installed services."
+        setupDefaults.set(reason, forKey: SharedConfigKeys.guidedSetupFailure)
+        setupDefaults.set(
+          GuidedSetupProgress.failed.rawValue, forKey: SharedConfigKeys.guidedSetupProgress)
+        log.error("setup.restore.failed reason=invalid-progress recovery=explicit-retry")
+      }
+    } else {
+      self.setupProgress = .idle
+    }
+    if setupProgress.isFailed {
+      lastError = setupDefaults.string(forKey: SharedConfigKeys.guidedSetupFailure)
+    }
   }
 
   /// Convenience computed helpers for the Settings UI.
@@ -122,16 +151,16 @@ final class InstallationState: ObservableObject {
     return agentSnapshotSchemaVersion == AgentSnapshot.currentSchemaVersion
   }
 
-  func startMonitoring(agentClient: FanCurveAgentClient) {
-    Task { refresh(agentClient: agentClient) }
-    timer?.invalidate()
+  func startMonitoring(agentClient: any InstallationAgentClient) {
+    guard timer == nil else { return }
+    Task { await refreshObservedSetup(agentClient: agentClient) }
     let scheduled = Timer(
       timeInterval: InstallationStateConstants.monitoringPollInterval,
       repeats: true
     ) { [weak self] _ in
       Task { @MainActor in
         if let self {
-          self.refresh(agentClient: agentClient)
+          await self.refreshObservedSetup(agentClient: agentClient)
         }
       }
     }
@@ -142,95 +171,56 @@ final class InstallationState: ObservableObject {
     timer = scheduled
   }
 
-  func stopMonitoring() {
-    timer?.invalidate()
-    timer = nil
-  }
-
-  func refreshOnce(agentClient: FanCurveAgentClient) {
+  func refreshOnce(agentClient: any InstallationAgentClient) {
     refresh(agentClient: agentClient)
   }
 
-  /// Attempts to register the agent via SMAppService. Idempotent.
-  /// Opens System Settings if approval is required.
   func registerAgent() {
-    guard #available(macOS 13.0, *) else { return }
-    guard !isRegisteringAgent else {
+    guard !setupActionIsBusy, setupTask == nil else {
       log.notice(
         "agent.register.skipped reason=registration-in-progress recovery=keep-current-registration"
       )
       return
     }
     isRegisteringAgent = true
+    transitionSetup(to: .connectingAgent)
+    setupDefaults.removeObject(forKey: SharedConfigKeys.guidedSetupFailure)
     lastError = nil
+    agentDisconnectedSince = Date()
     log.notice("agent.register.started")
-    Task {
-      defer {
-        isRegisteringAgent = false
-        log.notice("agent.register.finished")
-      }
-      let result = registerAgentService()
-      log.notice(
-        "agent.register.requested plist=\(generatedAgentPlistName, privacy: .public) status=\(result.statusBefore.description, privacy: .public)"
-      )
-
-      if let errorDescription = result.errorDescription {
-        lastError = errorDescription
-        log.error(
-          "agent.register.failed error=\(errorDescription, privacy: .public) recovery=show-login-item-error"
-        )
-        return
-      }
-
-      lastAgentServiceRegisterDate = Date()
-      let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
-      suite.set(
-        serviceRegistrationFingerprints().agent,
-        forKey: SharedConfigKeys.agentRegistrationFingerprint
-      )
-      lastError = nil
-      log.notice(
-        "agent.register.done status=\(result.statusAfterRegister?.description ?? "unknown", privacy: .public)"
-      )
+    defer {
+      isRegisteringAgent = false
+      log.notice("agent.register.finished")
     }
+    let result = registerAgentService()
+    agentStatus = currentAgentStatus()
+    if let errorDescription = result.errorDescription, agentStatus != .requiresApproval {
+      failSetup(errorDescription)
+      return
+    }
+    lastAgentServiceRegisterDate = Date()
+    setupDefaults.set(
+      serviceRegistrationFingerprints().agent,
+      forKey: SharedConfigKeys.agentRegistrationFingerprint
+    )
+    log.notice("agent.register.done status=\(agentStatus.description, privacy: .public)")
   }
 
-  func installOrRepairHelper(agentClient: FanCurveAgentClient) {
-    guard !isRegisteringHelper else {
+  func installOrRepairHelper(agentClient: any InstallationAgentClient) {
+    guard !setupActionIsBusy, setupTask == nil else {
       log.notice(
         "helper.register.skipped reason=registration-in-progress recovery=keep-current-registration"
       )
       return
     }
-    isRegisteringHelper = true
-    lastError = nil
-    log.notice("helper.install.requested owner=agent-xpc")
-    Task {
-      defer {
-        isRegisteringHelper = false
-        log.notice("helper.install.finished owner=agent-xpc")
-      }
-      do {
-        try await agentClient.installOrRepairHelper()
-      } catch {
-        lastError = error.localizedDescription
-        log.error(
-          "helper.install.failed owner=agent-xpc error=\(error.localizedDescription, privacy: .public) recovery=show-login-item-error"
-        )
-        return
-      }
-
-      log.notice("helper.install.done owner=agent-xpc")
-      refresh(agentClient: agentClient)
-    }
+    installGuidedHelper(agentClient: agentClient)
   }
 
   func openAgentLoginItemsSettings() {
-    lastError = nil
     do {
       try backgroundAgentService.openSystemSettings()
     } catch {
-      lastError = error.localizedDescription
+      failSetup(error.localizedDescription)
       log.error(
         "agent.settings.open_failed error=\(error.localizedDescription, privacy: .public) recovery=show-login-item-error"
       )
@@ -239,26 +229,19 @@ final class InstallationState: ObservableObject {
 
   /// Unregister the agent. Stops it and removes its entry from Login Items.
   func unregisterAgent() {
-    guard #available(macOS 13.0, *) else { return }
-    Task {
-      let result = unregisterAgentService()
-      log.notice(
-        "agent.unregister.requested plist=\(generatedAgentPlistName, privacy: .public) status=\(result.statusBefore.description, privacy: .public)"
+    cancelSetup()
+    isRegisteringAgent = true
+    defer { isRegisteringAgent = false }
+    let result = unregisterAgentService()
+    agentStatus = currentAgentStatus()
+    if let errorDescription = result.errorDescription {
+      lastError = errorDescription
+      log.error(
+        "agent.unregister.failed error=\(errorDescription, privacy: .public) recovery=explicit-retry"
       )
-
-      if let errorDescription = result.errorDescription {
-        lastError = errorDescription
-        log.error(
-          "agent.unregister.failed error=\(errorDescription, privacy: .public) recovery=show-login-item-error"
-        )
-        return
-      }
-
-      lastError = nil
-      log.notice(
-        "agent.unregister.done status=\(result.statusAfterUnregister?.description ?? "unknown", privacy: .public)"
-      )
+      return
     }
+    log.notice("agent.unregister.done status=\(agentStatus.description, privacy: .public)")
   }
 
   /// Takes one reading of everything the Agent reports about itself.
@@ -276,9 +259,10 @@ final class InstallationState: ObservableObject {
   }
 
   /// Probes current installation status.
-  private func refresh(agentClient: FanCurveAgentClient) {
+  func refresh(agentClient: any InstallationAgentClient) {
+    defer { continueSetup(agentClient: agentClient) }
     let currentAgentServiceStatus = currentAgentStatus()
-    let suite = UserDefaults(suiteName: generatedSharedSuiteID) ?? .standard
+    let suite = setupDefaults
     let helperOK = agentClient.helperReachable
     let runtimeState = agentClient.runtimeState
     let runtimeSetup = runtimeState.setup
@@ -348,7 +332,16 @@ final class InstallationState: ObservableObject {
       return
     }
 
-    step = Self.installationStep(from: runtimeSetup)
+    resolveHelperStep(runtimeSetup)
+  }
+
+  private func resolveHelperStep(_ runtimeSetup: SetupState) {
+    switch systemHelperState {
+    case .checking, .updating, .outdated:
+      step = .checking
+    default:
+      step = Self.installationStep(from: runtimeSetup)
+    }
   }
 
   /// Stamps when the Agent connection dropped and clears the stamp on
@@ -364,7 +357,7 @@ final class InstallationState: ObservableObject {
   /// True when the registered Agent has been unconnected for the whole
   /// unresponsive grace window. A brief disconnect during app or Agent startup
   /// stays inside the window, so healthy launches never trigger a refresh.
-  private var agentUnresponsiveNow: Bool {
+  var agentUnresponsiveNow: Bool {
     guard !agentConnected, let agentDisconnectedSince else { return false }
     return Date().timeIntervalSince(agentDisconnectedSince) >= agentUnresponsiveRefreshInterval
   }
@@ -387,16 +380,13 @@ final class InstallationState: ObservableObject {
 
   private func adoptSystemHelperState(_ state: SystemHelperRuntimeState) {
     systemHelperState = state
-    if case .running = state {
-      lastError = nil
-    }
   }
 }
 
 extension InstallationState {
   func registerAgentService() -> AgentServiceMutationResult {
     let statusBefore = backgroundAgentService.status
-    let legacyRepair = Self.repairLegacyLaunchAgentIfNeeded()
+    let legacyRepair = legacyLaunchAgentRepair()
     if legacyRepair.repaired {
       log.notice(
         "agent.register.legacy_repair.done path=\(legacyRepair.sourcePath, privacy: .public) backup=\(legacyRepair.backupPath ?? "none", privacy: .public) reason=\(legacyRepair.reason, privacy: .public)"

@@ -37,7 +37,7 @@ enum SystemHelperClassifier {
     case .notRegistered:
       return .registrationNeedsRepair(reason: "System Helper is not registered")
     case .notFound:
-      return .unavailable(reason: "System Helper registration definition was not found")
+      return .unavailable(reason: "System Helper is not registered")
     case .unknown(let rawValue):
       return .unavailable(reason: "System Helper service status is unknown (\(rawValue))")
     case .enabled:

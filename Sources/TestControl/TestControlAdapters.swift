@@ -349,6 +349,8 @@
         self = .requiresApproval
       case .enabled:
         self = .enabled
+      case .notFound:
+        self = .notFound
       case .notRegistered:
         self = .notRegistered
       }

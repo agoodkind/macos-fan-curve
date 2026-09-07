@@ -114,7 +114,7 @@ extension FanCurveAgentXPCService: NSXPCListenerDelegate {
 }
 
 extension FanCurveAgentXPCService: FanCurveAgentXPCProtocol {
-  func getCurrentState(reply: @Sendable (Bool, Data?, String?) -> Void) {
+  func getCurrentState(reply: @escaping @Sendable (Bool, Data?, String?) -> Void) {
     agentXPCLog.debug("agent.xpc.current_state.requested")
     let faultEffect = faultController.consumeFault(at: .currentState)
     switch faultEffect {
@@ -131,17 +131,26 @@ extension FanCurveAgentXPCService: FanCurveAgentXPCProtocol {
     default:
       break
     }
-    let runtimeState = controller.currentRuntimeStateForXPC()
-
-    do {
-      let data = try JSONEncoder().encode(runtimeState)
-      agentXPCLog.debug("agent.xpc.current_state.returned")
-      reply(true, data, nil)
-    } catch {
-      agentXPCLog.error(
-        "agent.xpc.current_state.encode_failed error=\(error.localizedDescription, privacy: .public) recovery=return-error"
-      )
-      reply(false, nil, error.localizedDescription)
+    Task {
+      if controller.currentRuntimeStateForXPC().systemHelper == .approvalRequired,
+        helperService.status != .requiresApproval
+      {
+        agentXPCLog.notice(
+          "agent.xpc.current_state.approval_changed recovery=reconcile-helper"
+        )
+        _ = await reconcileSystemHelper(trigger: .reconnect)
+      }
+      let runtimeState = controller.currentRuntimeStateForXPC()
+      do {
+        let data = try JSONEncoder().encode(runtimeState)
+        agentXPCLog.debug("agent.xpc.current_state.returned")
+        reply(true, data, nil)
+      } catch {
+        agentXPCLog.error(
+          "agent.xpc.current_state.encode_failed error=\(error.localizedDescription, privacy: .public) recovery=return-error"
+        )
+        reply(false, nil, error.localizedDescription)
+      }
     }
   }
 

@@ -72,6 +72,7 @@ extension InstallationState {
     applyInBackground: Bool,
     storedFingerprint: String?
   ) -> ManagedServiceStatus {
+    guard !setupProgress.ownsLifecycle, !isRegisteringAgent else { return agentStatus }
     guard agentStatus != .enabled, agentStatus != .requiresApproval else {
       return agentStatus
     }
@@ -121,6 +122,7 @@ extension InstallationState {
     let developerManaged = isDeveloperManagedBuild
     let bundledHash = bundledAgentHash()
     guard bundledAgentHashIsAvailable(bundledHash) else { return }
+    guard permitsAgentRefresh(context, bundledHash: bundledHash) else { return }
     logRefreshContextIfNeeded(appBundlePath: appBundlePath, developerManaged: developerManaged)
     guard
       runningAgentHashIsAvailable(
@@ -274,15 +276,24 @@ extension InstallationState {
     }
 
     if let errorDescription = result.errorDescription {
-      lastError = errorDescription
+      let recovery: String
+      if setupProgress.ownsLifecycle {
+        failSetup(errorDescription)
+        recovery = "explicit-retry"
+      } else {
+        lastError = errorDescription
+        recovery = "retry-auto-refresh"
+      }
       installationStateAgentLifecycleLog.error(
-        "agent.refresh.failed appPath=\(appBundlePath, privacy: .public) status=\(result.statusBefore.description, privacy: .public) error=\(errorDescription, privacy: .public) recovery=retry-auto-refresh"
+        "agent.refresh.failed appPath=\(appBundlePath, privacy: .public) status=\(result.statusBefore.description, privacy: .public) error=\(errorDescription, privacy: .public) recovery=\(recovery, privacy: .public)"
       )
       return
     }
 
     if let statusAfterRegister = result.statusAfterRegister {
-      lastError = nil
+      if !setupProgress.isFailed {
+        lastError = nil
+      }
       lastAgentServiceRegisterDate = Date()
       installationStateAgentLifecycleLog.notice(
         "agent.refresh.done appPath=\(appBundlePath, privacy: .public) bundledHash=\(bundledHash, privacy: .public) registrationMismatch=\(context.registrationMismatch, privacy: .public) status=\(statusAfterRegister.description, privacy: .public)"

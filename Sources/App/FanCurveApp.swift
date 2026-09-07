@@ -35,6 +35,7 @@ private enum WindowConstants {
 @main
 struct FanCurveApp: App {
   @StateObject private var agentClient: FanCurveAgentClient
+  @StateObject private var installState = InstallationState()
   @StateObject private var curveModel = FanCurveModel()
   @StateObject private var appUpdater = AppUpdater()
 
@@ -69,8 +70,13 @@ struct FanCurveApp: App {
     WindowGroup {
       ContentView()
         .environmentObject(agentClient)
+        .environmentObject(installState)
         .environmentObject(curveModel)
         .environmentObject(appUpdater)
+        .onAppear {
+          agentClient.start()
+          installState.startMonitoring(agentClient: agentClient)
+        }
         .onReceive(
           NotificationCenter.default.publisher(
             for: NSApplication.willTerminateNotification)
@@ -143,8 +149,13 @@ struct FanCurveApp: App {
     Window("Settings", id: "settings") {
       SettingsView()
         .environmentObject(agentClient)
+        .environmentObject(installState)
         .environmentObject(curveModel)
         .environmentObject(appUpdater)
+        .onAppear {
+          agentClient.start()
+          installState.startMonitoring(agentClient: agentClient)
+        }
         .accessibilityIdentifier(AppAccessibilityIdentifier.Application.settingsWindow)
     }
     .defaultSize(

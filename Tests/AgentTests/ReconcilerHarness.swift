@@ -98,7 +98,7 @@ final class ReconcilerHarness: @unchecked Sendable {
     )
     service = StatefulHelperService(
       status: serviceStatus,
-      registrationGeneration: serviceStatus == .notRegistered ? 0 : 1,
+      registrationGeneration: serviceStatus == .notRegistered || serviceStatus == .notFound ? 0 : 1,
       unregisterFails: unregisterBehavior == .fail,
       registerBehavior: registerBehavior,
       unregisterStarted: unregisterStarted,
