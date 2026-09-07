@@ -111,6 +111,11 @@ printf 'deploy-appcast: downloading %s release history\n' "${RELEASE_TRACK}"
 SPARKLE_UPDATES_DIR="${UPDATES_DIRECTORY}" \
     Scripts/prepare-appcast-history.sh
 
+(
+    cd "${WORKER_DIRECTORY}"
+    npm install --no-save --package-lock=false wrangler@4.123.0
+)
+
 KEY_PATH="$(mktemp "${RUNNER_TEMP}/fancurve-sparkle-key.XXXXXX")"
 chmod 600 "${KEY_PATH}"
 printf '%s' "${SPARKLE_PRIVATE_KEY_VALUE}" > "${KEY_PATH}"
@@ -126,13 +131,13 @@ if [[ "${DRY_RUN}" == "true" ]]; then
         cd "${WORKER_DIRECTORY}"
         CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN_VALUE}" \
             CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID_VALUE}" \
-            npx wrangler deploy --dry-run --config wrangler.toml
+            ./node_modules/.bin/wrangler deploy --dry-run --config wrangler.toml
     )
 else
     (
         cd "${WORKER_DIRECTORY}"
         CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN_VALUE}" \
             CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID_VALUE}" \
-            npx wrangler deploy --config wrangler.toml
+            ./node_modules/.bin/wrangler deploy --config wrangler.toml
     )
 fi

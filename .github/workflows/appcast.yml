@@ -61,7 +61,9 @@ jobs:
       - name: Validate appcast worker bundle
         if: github.event_name == 'pull_request'
         working-directory: deploy/appcast-worker
-        run: npx wrangler deploy --dry-run --config wrangler.toml
+        run: |
+          npm install --no-save --package-lock=false wrangler@4.123.0
+          ./node_modules/.bin/wrangler deploy --dry-run --config wrangler.toml
 
       - uses: actions/upload-artifact@v7
         if: github.event_name == 'workflow_dispatch'
