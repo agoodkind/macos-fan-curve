@@ -28,10 +28,6 @@ on:
         default: false
         type: boolean
 
-concurrency:
-  group: release-${{ github.repository }}
-  cancel-in-progress: false
-
 # The caller must grant every permission the called workflow's jobs request.
 permissions:
   contents: write
