@@ -54,6 +54,8 @@ jobs:
       apple-team-id: ${{ vars.APPLE_TEAM_ID }}
       notarize-pattern: "*.dmg"
       sbom-subject-path: "Products/Fan Curve.app"
+      smoke-asset: "FanCurve-__ARTIFACT_VERSION__.dmg"
+      smoke-binary: "FanCurve"
       post-publish-timeout-minutes: 15
       post-publish-node-version: "22"
       post-publish-command: >-

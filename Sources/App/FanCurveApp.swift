@@ -12,6 +12,13 @@ import SwiftUI
 
 private let log = AppLog.make(category: "AgentMain")
 
+private func terminateAfterPrintingReleaseVersionIfRequested() {
+  guard Array(CommandLine.arguments.dropFirst()) == ["version"] else { return }
+  log.info("app.version.requested")
+  FileHandle.standardOutput.write(Data("version: \(generatedGitVersion)\n".utf8))
+  NSApplication.shared.terminate(nil)
+}
+
 private enum WindowConstants {
   static let mainWindowWidth: CGFloat = 980
   static let mainWindowHeight: CGFloat = 560
@@ -33,6 +40,7 @@ struct FanCurveApp: App {
 
   init() {
     AppLog.bootstrap(subsystem: "io.goodkind.fan")
+    terminateAfterPrintingReleaseVersionIfRequested()
     #if DEBUG
       FrameProfiler.shared.startIfEnabled()
       _agentClient = StateObject(

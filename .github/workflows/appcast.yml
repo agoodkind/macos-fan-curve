@@ -1,6 +1,7 @@
 name: Deploy Appcast
 
 on:
+  pull_request:
   workflow_dispatch:
     inputs:
       release_tag:
@@ -19,9 +20,13 @@ env:
   XCODE_VERSION: "latest-stable"
   GH_TOKEN: ${{ github.token }}
 
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && format('release-{0}', github.repository) || format('appcast-check-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   deploy-appcast:
-    runs-on: macos-latest
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'macos-latest' }}
     # Longest successful run is 13 minutes, so this caps a stall without
     # threatening a slow release-history download.
     timeout-minutes: 15
@@ -32,6 +37,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: agoodkind/swift-makefile/.github/actions/setup-build-env@main
+        if: github.event_name == 'workflow_dispatch'
         with:
           xcode-version: ${{ env.XCODE_VERSION }}
           github-token: ${{ github.token }}
@@ -41,6 +47,7 @@ jobs:
           node-version: "22"
 
       - name: Deploy appcast worker
+        if: github.event_name == 'workflow_dispatch'
         env:
           GH_REPOSITORY: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.release_tag }}
@@ -51,7 +58,13 @@ jobs:
           DRY_RUN: "false"
         run: Scripts/deploy-appcast.sh
 
+      - name: Validate appcast worker bundle
+        if: github.event_name == 'pull_request'
+        working-directory: deploy/appcast-worker
+        run: npx wrangler deploy --dry-run --config wrangler.toml
+
       - uses: actions/upload-artifact@v7
+        if: github.event_name == 'workflow_dispatch'
         with:
           name: appcast-${{ inputs.release_track }}
           path: build/sparkle-updates/appcast.xml
