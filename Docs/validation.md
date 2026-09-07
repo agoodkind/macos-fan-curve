@@ -208,13 +208,16 @@ outside version control.
 
 ### Prepare the host and guest
 
-Run these commands on the host. Replace `<candidate-commit>` with the full
-candidate commit. Set `SPARKLE_PRIVATE_KEY_FILE` to the release key file without
-printing its contents.
+Run these commands from the repository checkout on the host. Replace
+`<external-validation-directory>` with an absolute directory on external storage
+whose `tart` subdirectory contains the cached images. Replace `<candidate-commit>`
+with the full candidate commit. Set `SPARKLE_PRIVATE_KEY_FILE` to the release key
+file without printing its contents.
 
 ```sh
-export TART_HOME="/Volumes/Chaos Storage/ict-vm-tmp-68974"
-SOURCE_REPOSITORY="/Users/agoodkind/Sites/macos-fan-curve"
+EXTERNAL_VALIDATION_DIRECTORY="<external-validation-directory>"
+export TART_HOME="$EXTERNAL_VALIDATION_DIRECTORY/tart"
+SOURCE_REPOSITORY="$(git rev-parse --show-toplevel)"
 CANDIDATE_COMMIT="<candidate-commit>"
 SPARKLE_PRIVATE_KEY_FILE="<release-environment-key-file>"
 VM_NAME="fan-curve-helper-upgrade-$(date +%Y%m%d%H%M%S)"
@@ -225,8 +228,7 @@ CANDIDATE_WORKTREE="$VALIDATION_ROOT/candidate"
 CERTIFICATE_DIRECTORY="$VALIDATION_ROOT/certificates"
 FEED_DIRECTORY="$VALIDATION_ROOT/feed"
 TRANSFER_DIRECTORY="$VALIDATION_ROOT/transfer"
-EVIDENCE_DIRECTORY="/Volumes/Chaos Storage/fan-curve-validation/\
-$VM_NAME"
+EVIDENCE_DIRECTORY="$EXTERNAL_VALIDATION_DIRECTORY/evidence/$VM_NAME"
 mkdir -p \
   "$CERTIFICATE_DIRECTORY" \
   "$FEED_DIRECTORY" \
