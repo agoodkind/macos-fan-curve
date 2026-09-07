@@ -49,7 +49,6 @@ final class ReleaseVersionCommandTests: XCTestCase {
     }
 
     expect(process.terminationStatus) == 0
-    expect(output).to(beginWith("version: "))
-    expect(output.trimmingCharacters(in: .whitespacesAndNewlines)) != "version:"
+    expect(output) == "version: test-release-tag\n"
   }
 }

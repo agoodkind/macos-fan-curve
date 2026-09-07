@@ -15,7 +15,7 @@ private let log = AppLog.make(category: "AgentMain")
 private func terminateAfterPrintingReleaseVersionIfRequested() {
   guard Array(CommandLine.arguments.dropFirst()) == ["version"] else { return }
   log.info("app.version.requested")
-  FileHandle.standardOutput.write(Data("version: \(generatedGitVersion)\n".utf8))
+  FileHandle.standardOutput.write(Data("version: \(generatedReleaseTag)\n".utf8))
   NSApplication.shared.terminate(nil)
 }
 
