@@ -1,0 +1,8 @@
+bundle=/Applications/Fan56Probe.app
+identifier=io.goodkind.fan56.probe
+status.before=3
+bundle=/Applications/Fan56Probe.app
+identifier=io.goodkind.fan56.probe
+status.before=3
+register=failed domain=SMAppServiceErrorDomain code=1 reason=The operation couldn’t be completed. Operation not permitted
+status.after=2

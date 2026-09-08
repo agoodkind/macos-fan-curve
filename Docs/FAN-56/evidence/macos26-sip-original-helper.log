@@ -1,0 +1,4 @@
+Timestamp               Ty Process[PID:TID]
+2026-09-07 23:07:00.497 Df FanCurveAgent[1120:3b54] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=forced_repair
+2026-09-07 23:07:00.498 Df FanCurveAgent[1120:3b54] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=forced_repair
+2026-09-07 23:07:00.514 Df FanCurveAgent[1120:3b54] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.finished operation=forced_repair state=unavailable

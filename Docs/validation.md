@@ -203,22 +203,24 @@ Tart guest receives completed artifacts only. Do not install Xcode or copy
 repository source into the guest. Do not run Make, a compiler, a package tool,
 or an appcast tool in the guest.
 
-Keep apps, archives, certificates, logs, screenshots, and other evidence
-outside version control.
+Store review evidence under the repository's `Docs` directory. Keep apps,
+archives, certificates, and private keys outside version control.
 
 ### Prepare the host and guest
 
 Run these commands from the repository checkout on the host. Replace
 `<external-validation-directory>` with an absolute directory on external storage
 whose `tart` subdirectory contains the cached images. Replace `<candidate-commit>`
-with the full candidate commit. Set `SPARKLE_PRIVATE_KEY_FILE` to the release key
-file without printing its contents.
+with the full candidate commit. Replace `<ticket-or-change>` with the review
+directory name under `Docs`. Set `SPARKLE_PRIVATE_KEY_FILE` to the release key file
+without printing its contents.
 
 ```sh
 EXTERNAL_VALIDATION_DIRECTORY="<external-validation-directory>"
 export TART_HOME="$EXTERNAL_VALIDATION_DIRECTORY/tart"
 SOURCE_REPOSITORY="$(git rev-parse --show-toplevel)"
 CANDIDATE_COMMIT="<candidate-commit>"
+CHANGE_REFERENCE="<ticket-or-change>"
 SPARKLE_PRIVATE_KEY_FILE="<release-environment-key-file>"
 VM_NAME="fan-curve-helper-upgrade-$(date +%Y%m%d%H%M%S)"
 VALIDATION_ROOT="$(mktemp -d \
@@ -228,7 +230,7 @@ CANDIDATE_WORKTREE="$VALIDATION_ROOT/candidate"
 CERTIFICATE_DIRECTORY="$VALIDATION_ROOT/certificates"
 FEED_DIRECTORY="$VALIDATION_ROOT/feed"
 TRANSFER_DIRECTORY="$VALIDATION_ROOT/transfer"
-EVIDENCE_DIRECTORY="$EXTERNAL_VALIDATION_DIRECTORY/evidence/$VM_NAME"
+EVIDENCE_DIRECTORY="$SOURCE_REPOSITORY/Docs/$CHANGE_REFERENCE/evidence/$VM_NAME"
 mkdir -p \
   "$CERTIFICATE_DIRECTORY" \
   "$FEED_DIRECTORY" \
