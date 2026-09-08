@@ -58,6 +58,7 @@ final class InstallationState: ObservableObject {
 
   private var timer: Timer?
   var isReadingApprovalState = false
+  var retiringAgentConnectionGeneration: UInt64?
   /// When the refresh loop first observed the registered Agent without an open
   /// XPC connection. Cleared the moment the Agent answers again.
   var agentDisconnectedSince: Date?
@@ -294,19 +295,8 @@ final class InstallationState: ObservableObject {
     agentStatus = resolvedAgentStatus
     logAgentPresenceChange(from: previousPresence, previousEvidence: previousEvidence)
 
-    let fingerprints = serviceRegistrationFingerprints()
-    if resolvedAgentStatus == .enabled {
-      refreshAgentIfNeeded(
-        AgentRefreshContext(
-          agentConnected: agentConnected,
-          agentUnresponsive: agentUnresponsiveNow,
-          runningHash: agentExecutableHash,
-          snapshotSchemaVersion: agentSnapshotSchemaVersion,
-          storedFingerprint: storedAgentFingerprint,
-          expectedFingerprint: fingerprints.agent,
-          defaults: suite)
-      )
-    }
+    refreshRegisteredAgentIfNeeded(
+      agentClient: agentClient, storedFingerprint: storedAgentFingerprint)
 
     if resolvedAgentStatus == .requiresApproval, !agentConnected {
       step = .agentAwaitingApproval
@@ -333,6 +323,27 @@ final class InstallationState: ObservableObject {
     }
 
     resolveHelperStep(runtimeSetup)
+  }
+
+  private func refreshRegisteredAgentIfNeeded(
+    agentClient: any InstallationAgentClient,
+    storedFingerprint: String?
+  ) {
+    guard agentStatus == .enabled else { return }
+    let context = AgentRefreshContext(
+      agentConnected: agentConnected,
+      agentUnresponsive: agentUnresponsiveNow,
+      runningHash: agentExecutableHash,
+      snapshotSchemaVersion: agentSnapshotSchemaVersion,
+      storedFingerprint: storedFingerprint,
+      expectedFingerprint: serviceRegistrationFingerprints().agent,
+      defaults: setupDefaults
+    )
+    guard refreshAgentIfNeeded(context) else { return }
+    retiringAgentConnectionGeneration = agentClient.connectionGeneration
+    log.notice(
+      "agent.refresh.connection.retiring generation=\(agentClient.connectionGeneration, privacy: .public) recovery=wait-for-replacement-connection"
+    )
   }
 
   private func resolveHelperStep(_ runtimeSetup: SetupState) {

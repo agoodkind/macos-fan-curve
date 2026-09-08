@@ -217,7 +217,7 @@ final class GuidedSetupTests: XCTestCase {
 // MARK: - Command outcomes
 
 extension GuidedSetupTests {
-  func testApprovalReadWaitsForReplacedAgentIdentity() async throws {
+  func testApprovalReadWaitsForReplacementConnectionWithoutHeartbeat() async throws {
     let fixture = try GuidedSetupFixture()
     defer { fixture.cleanUp() }
     fixture.defaults.set("verifyingHelper", forKey: SharedConfigKeys.guidedSetupProgress)
@@ -236,7 +236,7 @@ extension GuidedSetupTests {
     expect(state.setupProgress) == .verifyingHelper
     expect(state.lastError) == nil
 
-    fixture.defaults.set("bundled-agent", forKey: SharedConfigKeys.agentExecutableHash)
+    fixture.client.connectionGeneration += 1
     fixture.client.refreshError = nil
     fixture.client.refreshedState = .running(active: fixture.identity)
     await state.refreshObservedSetup(agentClient: fixture.client)

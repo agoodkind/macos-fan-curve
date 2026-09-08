@@ -94,6 +94,7 @@ final class GuidedBackgroundAgentService: BackgroundAgentServiceManaging {
 @MainActor
 final class GuidedAgentClient: InstallationAgentClient {
   var connectionState: FanCurveAgentConnectionState = .disconnected
+  var connectionGeneration: UInt64 = 0
   var helperState: SystemHelperRuntimeState = .checking
   var installedState: SystemHelperRuntimeState = .approvalRequired
   var installError: GuidedSetupTestError?

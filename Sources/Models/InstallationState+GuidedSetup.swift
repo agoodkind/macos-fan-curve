@@ -37,6 +37,7 @@ enum GuidedSetupProgress: String {
 @MainActor
 protocol InstallationAgentClient: Sendable {
   var connectionState: FanCurveAgentConnectionState { get }
+  var connectionGeneration: UInt64 { get }
   var runtimeState: RuntimeState { get }
   var helperReachable: Bool { get }
 
@@ -75,8 +76,12 @@ extension InstallationState {
       !setupProgress.isFailed, setupProgress != .cancelled,
       !isReadingApprovalState, setupTask == nil
     else { return }
-    if let refreshedHash = lastAutoRefreshAttemptedHash, agentExecutableHash != refreshedHash {
-      return
+    if let retiringGeneration = retiringAgentConnectionGeneration {
+      guard agentClient.connectionGeneration != retiringGeneration else { return }
+      retiringAgentConnectionGeneration = nil
+      guidedSetupLog.notice(
+        "setup.approval.connection.replaced generation=\(agentClient.connectionGeneration, privacy: .public) recovery=read-current-agent-state"
+      )
     }
     isReadingApprovalState = true
     defer { isReadingApprovalState = false }

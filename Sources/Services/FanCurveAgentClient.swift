@@ -35,7 +35,7 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
   private let decoder = JSONDecoder()
   private var pendingRequests: [UUID: AgentXPCReplyResumer] = [:]
   private var stopped = false
-  private var connectionGeneration: UInt64 = 0
+  private(set) var connectionGeneration: UInt64 = 0
 
   var pendingRequestCount: Int {
     pendingRequests.count

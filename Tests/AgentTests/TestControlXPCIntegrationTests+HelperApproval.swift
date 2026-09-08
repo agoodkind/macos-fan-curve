@@ -124,4 +124,47 @@ extension TestControlXPCIntegrationTests {
     expect(fixture.service.registerAttemptCount) == 0
     expect(fixture.service.unregisterCount) == 0
   }
+
+  func testReconnectedAgentResumesApprovalWithoutPublishingHeartbeatIdentity() async throws {
+    let fixture = try ControlledSystemHelperLifecycleFixture(
+      testCase: self,
+      active: .unreachable,
+      serviceStatus: .requiresApproval
+    )
+    let harness = try ControlledXPCHarness(lifecycleFixture: fixture)
+    defer { harness.stop() }
+    try await harness.startAndWaitUntilConnected()
+    _ = await harness.reconcile(.startup)
+    try await harness.client.refreshCurrentState()
+    let backgroundService = TestControlAdapters.backgroundAgentService(mode: harness.appMode) {
+      fail("Controlled approval test must not construct a production service")
+      return GuidedBackgroundAgentService()
+    }
+    let state = InstallationState(
+      backgroundAgentService: backgroundService,
+      setupDefaults: harness.defaults
+    )
+    state.transitionSetup(to: .verifyingHelper)
+    state.lastAutoRefreshAttemptedHash = "replacement-agent"
+    let retiringGeneration = harness.client.connectionGeneration
+    state.retiringAgentConnectionGeneration = retiringGeneration
+
+    harness.invalidateMostRecentClientConnection()
+    try await harness.waitForReplacementConnection()
+    expect(harness.client.connectionGeneration) > retiringGeneration
+    expect(harness.controllerIsPaused) == true
+    let heartbeatIdentityExists =
+      harness.defaults.object(forKey: SharedConfigKeys.agentExecutableHash) != nil
+    expect(heartbeatIdentityExists) == false
+
+    fixture.service.setStatus(.enabled)
+    fixture.fanHardware.setIdentity(.identity(fixture.bundledIdentity))
+    await state.refreshObservedSetup(agentClient: harness.client)
+
+    expect(state.setupProgress) == .complete
+    expect(harness.client.runtimeState.systemHelper)
+      == .running(active: fixture.bundledIdentity)
+    expect(fixture.service.registerAttemptCount) == 0
+    expect(fixture.service.unregisterCount) == 0
+  }
 }
