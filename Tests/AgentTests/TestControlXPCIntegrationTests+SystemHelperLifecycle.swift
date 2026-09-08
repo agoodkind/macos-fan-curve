@@ -246,6 +246,7 @@ final class ControlledSystemHelperLifecycleFixture: @unchecked Sendable {
   let executableURL: URL
   let fanHardware: StatefulFanHardware
   let fanResetDeadline = ControlledXPCTestValues.systemHelperFanResetDeadline
+  let replacementJournal = InMemorySystemHelperReplacementJournal()
   let service: StatefulHelperService
   let verificationPollInterval =
     ControlledXPCTestValues.systemHelperVerificationPollInterval

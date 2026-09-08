@@ -125,6 +125,32 @@ extension TestControlXPCIntegrationTests {
     expect(fixture.service.unregisterCount) == 0
   }
 
+  func testCurrentStateDoesNotRetryUnchangedDeniedReplacement() async throws {
+    let fixture = try ControlledSystemHelperLifecycleFixture(
+      testCase: self,
+      active: .unreachable,
+      serviceStatus: .notRegistered,
+      registerBehavior: .operationNotPermitted
+    )
+    fixture.replacementJournal.recordPendingReplacement()
+    let harness = try ControlledXPCHarness(lifecycleFixture: fixture)
+    defer { harness.stop() }
+    try await harness.startAndWaitUntilConnected()
+
+    let initialState = await harness.reconcile(.startup)
+    expect(initialState) == .approvalRequired
+    let initialAttemptCount = fixture.service.registerAttemptCount
+    expect(initialAttemptCount) > 0
+
+    try await harness.client.refreshCurrentState()
+    try await harness.client.refreshCurrentState()
+
+    expect(harness.client.runtimeState.systemHelper) == .approvalRequired
+    expect(fixture.service.status) == .notRegistered
+    expect(fixture.replacementJournal.hasPendingReplacement) == true
+    expect(fixture.service.registerAttemptCount) == initialAttemptCount
+  }
+
   func testReconnectedAgentResumesApprovalWithoutPublishingHeartbeatIdentity() async throws {
     let fixture = try ControlledSystemHelperLifecycleFixture(
       testCase: self,
