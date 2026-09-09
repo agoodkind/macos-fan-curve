@@ -97,7 +97,6 @@ for file in swiftFiles(at: root) {
     let fileName = URL(fileURLWithPath: file).lastPathComponent
     let isSettingsComponents = fileName == "SettingsFormComponents.swift"
     let isSliderRowFile = fileName == "SettingsSliderRow.swift"
-    let isDangerBadgeFile = fileName == "SettingsDangerStatusBadge.swift"
 
     if contents.contains("SettingsResponsiveRow") {
         violations.append(
@@ -175,90 +174,6 @@ for file in swiftFiles(at: root) {
             )
         }
 
-        if let dangerDisclosureBlock = sourceBlock(
-            in: contents,
-            from: "struct SettingsDangerDisclosure",
-            to: "struct SettingsAnimatedDisclosure"
-        ) {
-            if dangerDisclosureBlock.contains("let description")
-                || dangerDisclosureBlock.contains("SettingsDescription")
-            {
-                violations.append(
-                    Violation(
-                        file: file,
-                        line: 1,
-                        message: "SettingsDangerDisclosure label must not render multiline explanatory text"
-                    )
-                )
-            }
-
-            if !dangerDisclosureBlock.contains("SettingsAnimatedDisclosure(isExpanded: $isExpanded)") {
-                violations.append(
-                    Violation(
-                        file: file,
-                        line: 1,
-                        message: "SettingsDangerDisclosure must use the animated settings disclosure primitive"
-                    )
-                )
-            }
-
-            if !dangerDisclosureBlock.contains("SettingsDangerStatusBadge(status: status)") {
-                violations.append(
-                    Violation(
-                        file: file,
-                        line: 1,
-                        message: "SettingsDangerDisclosure status must render through the compact status badge"
-                    )
-                )
-            }
-        } else {
-            violations.append(
-                Violation(
-                    file: file,
-                    line: 1,
-                    message: "SettingsDangerDisclosure must be defined in SettingsFormComponents.swift"
-                )
-            )
-        }
-    }
-
-    if isDangerBadgeFile, !contents.contains("struct SettingsDangerStatusBadge: View") {
-        violations.append(
-            Violation(
-                file: file,
-                line: 1,
-                message: "SettingsDangerStatusBadge must be defined in SettingsDangerStatusBadge.swift"
-            )
-        )
-    }
-
-    if isSliderRowFile {
-        if let dangerToggleBlock = sourceBlock(
-            in: contents,
-            from: "struct SettingsDangerToggleRow",
-            to: "struct SettingsSliderScaleLabels"
-        ) {
-            if !dangerToggleBlock.contains("SettingsAccessoryRow(")
-                || !dangerToggleBlock.contains("switchAccessoryWidth")
-                || !dangerToggleBlock.contains(".labelsHidden()")
-            {
-                violations.append(
-                    Violation(
-                        file: file,
-                        line: 1,
-                        message: "SettingsDangerToggleRow must use a row-owned switch accessory layout"
-                    )
-                )
-            }
-        } else {
-            violations.append(
-                Violation(
-                    file: file,
-                    line: 1,
-                    message: "SettingsDangerToggleRow must exist before SettingsSliderScaleLabels"
-                )
-            )
-        }
     }
 
     if fileName == "GeneralSettingsView.swift" {
@@ -321,55 +236,57 @@ for file in swiftFiles(at: root) {
     }
 
     if fileName == "AdvancedSettingsView.swift" {
-        if let dangerZoneBlock = sourceBlock(
+        if let extendedRangeBlock = sourceBlock(
             in: contents,
-            from: "private var dangerZoneSection: some View",
-            to: "private var fanResponseBinding: Binding<Double>"
+            from: "private var extendedRangeConfigurationSection: some View",
+            to: "private var extendedRangeConfigurationBinding: Binding<Bool>"
         ) {
             if !matches(
-                dangerZoneBlock,
-                #"SettingsDangerDisclosure\s*\(\s*title:\s*"Expanded Range""#
+                extendedRangeBlock,
+                #"SettingsToggleDescriptionRow\s*\(\s*title:\s*"Allow configuring extended ranges""#
             ) {
                 violations.append(
                     Violation(
                         file: file,
                         line: 1,
-                        message: "Expanded Range must live inside SettingsDangerDisclosure"
+                        message: "Fan Range Limits must use a settings toggle-description row for extended range access"
                     )
                 )
             }
 
-            if dangerZoneBlock.contains("SettingsToggleDescriptionRow(")
-                || !dangerZoneBlock.contains("SettingsDangerToggleRow(")
+            if !extendedRangeBlock.contains("isOn: extendedRangeConfigurationBinding")
+                || !extendedRangeBlock.contains("AppAccessibilityIdentifier.Settings.extendedRangeAccess")
             {
                 violations.append(
                     Violation(
                         file: file,
                         line: 1,
-                        message: "Fan Range Limits toggles must use row-owned danger toggle rows"
+                        message: "Extended range access must retain its settings binding and accessibility identifier"
                     )
                 )
             }
 
-            if dangerZoneBlock.contains("description: expandedRangeDisclosureText") {
+            if !extendedRangeBlock.contains("Shows Overdrive and Underdrive controls in the dashboard.")
+                || !extendedRangeBlock.contains("increase wear or reduce cooling")
+            {
                 violations.append(
                     Violation(
                         file: file,
                         line: 1,
-                        message: "Expanded range explanatory text must not live in the disclosure label"
+                        message: "Extended range access must explain the dashboard controls and their risks"
                     )
                 )
             }
 
             if !matches(
-                dangerZoneBlock,
-                #"\}\s*header:\s*\{\s*Text\("Fan Range Limits"\)\s*\}\s*footer:\s*\{\s*SettingsDescription\(text:\s*expandedRangeDisclosureText\)"#
+                extendedRangeBlock,
+                #"\}\s*header:\s*\{\s*Text\("Fan Range Limits"\)"#
             ) {
                 violations.append(
                     Violation(
                         file: file,
                         line: 1,
-                        message: "Fan Range Limits must render expandedRangeDisclosureText in the section footer"
+                        message: "Extended range access must retain the Fan Range Limits section header"
                     )
                 )
             }
@@ -378,19 +295,7 @@ for file in swiftFiles(at: root) {
                 Violation(
                     file: file,
                     line: 1,
-                    message: "AdvancedSettingsView must define dangerZoneSection before fanResponseBinding"
-                )
-            )
-        }
-
-        if !contents.contains("Overdrive can increase noise and wear")
-            || !contents.contains("underdrive can reduce cooling under load")
-        {
-            violations.append(
-                Violation(
-                    file: file,
-                    line: 1,
-                    message: "Fan Range Limits footer must include compact risk context"
+                    message: "AdvancedSettingsView must define the extended range access section before its binding"
                 )
             )
         }
