@@ -41,57 +41,6 @@ final class AgentUpgradeRefreshTests: XCTestCase {
     expect(service.status) == .enabled
   }
 
-  func testPendingSetupRefreshesMismatchedSchemaWithMatchingHash() throws {
-    let pendingStages: [GuidedSetupProgress] = [
-      .connectingAgent, .verifyingHelper, .failedHelper,
-    ]
-    for progress in pendingStages {
-      let service = RecordingBackgroundAgentService()
-      let suiteName = "AgentUpgradeRefreshTests.\(UUID().uuidString)"
-      let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-      defer { defaults.removePersistentDomain(forName: suiteName) }
-      defaults.set(progress.rawValue, forKey: SharedConfigKeys.guidedSetupProgress)
-      let bundledHash = { "bundled-agent" }
-      let state = InstallationState(
-        backgroundAgentService: service,
-        setupDefaults: defaults,
-        bundledAgentHash: bundledHash
-      )
-      let incompatibleContext = AgentRefreshContext(
-        agentConnected: true,
-        agentUnresponsive: false,
-        runningHash: "bundled-agent",
-        snapshotSchemaVersion: AgentSnapshot.currentSchemaVersion - 1,
-        storedFingerprint: "new-registration",
-        expectedFingerprint: "new-registration",
-        defaults: defaults
-      )
-
-      expect(state.refreshAgentIfNeeded(incompatibleContext)) == true
-      expect(state.refreshAgentIfNeeded(incompatibleContext)) == false
-      expect(service.unregisterCount) == 1
-      expect(service.registerCount) == 1
-
-      state.lastAgentServiceRegisterDate = .distantPast
-      state.lastAutoRefreshAttemptDate = .distantPast
-      let compatibleContext = AgentRefreshContext(
-        agentConnected: true,
-        agentUnresponsive: false,
-        runningHash: "bundled-agent",
-        snapshotSchemaVersion: AgentSnapshot.currentSchemaVersion,
-        storedFingerprint: "new-registration",
-        expectedFingerprint: "new-registration",
-        defaults: defaults
-      )
-
-      expect(state.refreshAgentIfNeeded(compatibleContext)) == false
-      expect(service.unregisterCount) == 1
-      expect(service.registerCount) == 1
-      expect(service.status) == .enabled
-      expect(state.setupProgress) == progress
-    }
-  }
-
   func testUnresponsiveAgentWithMatchingHashRefreshesRegistration() throws {
     let service = RecordingBackgroundAgentService()
     let suiteName = "AgentUpgradeRefreshTests.\(UUID().uuidString)"

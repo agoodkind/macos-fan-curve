@@ -27,7 +27,7 @@ The macOS 15 crash occurs in `readIOAcceleratorDeviceUtilizationPercent`, throug
 
 On September 9, `make verify` passed all 291 tests and the launch, run, and Settings audits. The Settings audit now checks the current extended-range access controls instead of controls removed in August. `make lint-swiftlint lint-format lint-complexity swiftcheck-extra`, `make log-audit`, and `make -B release-assets FORCE=1 ARTIFACT_VERSION=fan56-review` also passed.
 
-Registration-error and schema-mismatch regression tests failed before their fixes and passed afterward. A forced dead-code scan exposed a separate build fault: unsigned analysis products replaced the deployable Debug app. Isolating analysis output preserved the Debug executable and signed resource manifest byte-for-byte across `make -B lint-deadcode FORCE=1`. Deep signature verification and normal `make run` then passed, including installation and launch at the canonical path.
+The reproduced approval denial is covered by a regression test. A forced dead-code scan exposed a separate build fault: unsigned analysis products replaced the deployable Debug app. Isolating analysis output preserved the Debug executable and signed resource manifest byte-for-byte across `make -B lint-deadcode FORCE=1`. Deep signature verification and normal `make run` then passed, including installation and launch at the canonical path.
 
 | Candidate artifact | SHA-256 |
 | --- | --- |

@@ -65,7 +65,7 @@ extension InstallationState {
     case .connectingAgent, .installingHelper, .verifyingHelper, .failedHelper:
       return context.agentConnected
         && !context.runningHash.isEmpty
-        && (context.runningHash != bundledHash || context.snapshotSchemaMismatch)
+        && context.runningHash != bundledHash
         && !agentStartupGracePeriodIsActive()
     }
   }

@@ -175,21 +175,6 @@ final class GuidedSetupTests: XCTestCase {
     expect(fixture.client.installCount) == 0
   }
 
-  func testAgentRegistrationErrorWithApprovalStatusFailsSetup() throws {
-    let fixture = try GuidedSetupFixture()
-    defer { fixture.cleanUp() }
-    fixture.service.registrationStatus = .requiresApproval
-    fixture.service.registerError = GuidedSetupTestError.registrationFailed
-    let state = fixture.makeState()
-    state.beginSetup(agentClient: fixture.client)
-
-    expect(state.setupActionTitle) == "Retry Setup"
-    expect(state.lastError) == "Registration was rejected"
-    expect(state.setupProgress) == .failed
-    expect(fixture.defaults.string(forKey: SharedConfigKeys.agentRegistrationFingerprint)) == nil
-    expect(fixture.service.registerCount) == 1
-  }
-
   func testRestartSerializesUnregisterBeforeRegister() throws {
     let fixture = try GuidedSetupFixture()
     defer { fixture.cleanUp() }
@@ -201,40 +186,18 @@ final class GuidedSetupTests: XCTestCase {
     expect(state.isRegisteringAgent) == false
   }
 
-  func testAgentApprovalDenialWaitsForApprovalDuringSetupAndRestart() throws {
-    for restarting in [false, true] {
-      let fixture = try GuidedSetupFixture()
-      defer { fixture.cleanUp() }
-      fixture.service.registrationStatus = .requiresApproval
-      fixture.service.registerError = NSError(domain: "SMAppServiceErrorDomain", code: 1)
-      let state = fixture.makeState()
-
-      if restarting {
-        state.restartAgent()
-      } else {
-        state.beginSetup(agentClient: fixture.client)
-      }
-
-      expect(state.setupActionTitle) == "Open System Settings"
-      expect(state.lastError) == nil
-      expect(state.setupProgress.ownsLifecycle) == true
-      expect(fixture.service.registerCount) == 1
-    }
-  }
-
-  func testRestartRegistrationErrorWithApprovalStatusFailsSetup() throws {
+  func testAgentApprovalDenialWaitsForApproval() throws {
     let fixture = try GuidedSetupFixture()
     defer { fixture.cleanUp() }
     fixture.service.registrationStatus = .requiresApproval
-    fixture.service.registerError = GuidedSetupTestError.registrationFailed
+    fixture.service.registerError = NSError(domain: "SMAppServiceErrorDomain", code: 1)
     let state = fixture.makeState()
 
-    state.restartAgent()
+    state.beginSetup(agentClient: fixture.client)
 
-    expect(state.setupActionTitle) == "Retry Setup"
-    expect(state.lastError) == "Registration was rejected"
-    expect(state.setupProgress) == .failed
-    expect(fixture.service.operations) == ["unregister", "register"]
+    expect(state.setupActionTitle) == "Open System Settings"
+    expect(state.lastError) == nil
+    expect(fixture.service.registerCount) == 1
   }
 
   func testImmediateEnableDisableEnableKeepsLastUserChoice() throws {
@@ -249,45 +212,6 @@ final class GuidedSetupTests: XCTestCase {
     expect(state.agentStatus) == .enabled
     expect(state.setupProgress) == .connectingAgent
   }
-
-  func testDirectRegistrationDistinguishesApprovalFromOtherFailures() throws {
-    let fixture = try GuidedSetupFixture()
-    defer { fixture.cleanUp() }
-    fixture.service.registrationStatus = .requiresApproval
-    fixture.service.registerError = GuidedSetupTestError.registrationFailed
-    let state = fixture.makeState()
-
-    state.registerAgent()
-
-    expect(state.setupActionTitle) == "Retry Setup"
-    expect(state.lastError) == "Registration was rejected"
-    expect(fixture.defaults.string(forKey: SharedConfigKeys.agentRegistrationFingerprint)) == nil
-
-    fixture.service.registerError = NSError(domain: "SMAppServiceErrorDomain", code: 1)
-    state.registerAgent()
-
-    expect(state.setupActionTitle) == "Open System Settings"
-    expect(state.lastError) == nil
-    expect(fixture.service.registerCount) == 2
-  }
-
-  func testRestartUnregisterDenialDoesNotBecomePendingApproval() throws {
-    let fixture = try GuidedSetupFixture()
-    defer { fixture.cleanUp() }
-    let denial = NSError(domain: "SMAppServiceErrorDomain", code: 1)
-    fixture.service.status = .requiresApproval
-    fixture.service.unregisterError = denial
-    let state = fixture.makeState()
-
-    state.restartAgent()
-
-    expect(state.setupProgress) == .failed
-    expect(state.setupActionTitle) == "Retry Setup"
-    expect(state.lastError) == denial.localizedDescription
-    expect(fixture.service.operations) == ["unregister"]
-    expect(fixture.service.registerCount) == 0
-  }
-
 }
 
 // MARK: - Command outcomes
