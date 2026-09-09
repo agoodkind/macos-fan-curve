@@ -2,7 +2,7 @@
 
 Published Fan Curve releases reproduce the first-install failure on macOS 15.7.7 and macOS 26.6.2. The final candidate completes guided setup on both systems.
 
-Source report: [GitHub issue 91](https://github.com/agoodkind/macos-fan-curve/issues/91). Investigation date: 2026-09-07. The implementation is committed locally and has not been pushed or merged.
+Source report: [GitHub issue 91](https://github.com/agoodkind/macos-fan-curve/issues/91). Investigation date: 2026-09-07. Follow-up validation: 2026-09-09.
 
 ## Current acceptance
 
@@ -25,13 +25,16 @@ The first candidate omitted an observation edge: the app's timer copied cached A
 
 The macOS 15 crash occurs in `readIOAcceleratorDeviceUtilizationPercent`, through `CFDictionaryGetValueIfPresent` and an Objective-C `hash` message. The reader converted a temporary bridged string into an unretained pointer and used it in a later statement. The final candidate retains the lookup key through the dictionary call. A real GPU statistic test performs 1,000 public reader calls inside autorelease pools. The installed final Agent remained stable beyond the earlier ten-second crash interval.
 
-`make -B release-assets FORCE=1 ARTIFACT_VERSION=fan56-final` passed with build and signing gates. `make -B run FORCE=1` passed after the final GPU change and installed the Debug app at the canonical path. `make verify` remains blocked by four settings-layout source assertions whose source files are unchanged from `origin/main`. No audit was weakened.
+On September 9, `make verify` passed all 291 tests and the launch, run, and Settings audits. The Settings audit now checks the current extended-range access controls instead of controls removed in August. `make lint-swiftlint lint-format lint-complexity swiftcheck-extra`, `make log-audit`, and `make -B release-assets FORCE=1 ARTIFACT_VERSION=fan56-review` also passed.
+
+Registration-error and schema-mismatch regression tests failed before their fixes and passed afterward. A forced dead-code scan exposed a separate build fault: unsigned analysis products replaced the deployable Debug app. Isolating analysis output preserved the Debug executable and signed resource manifest byte-for-byte across `make -B lint-deadcode FORCE=1`. Deep signature verification and normal `make run` then passed, including installation and launch at the canonical path.
 
 | Candidate artifact | SHA-256 |
 | --- | --- |
 | FanCurve-fan56-guided-setup.dmg | `e0b8337c743e59c681ab36d1cbfb7219dbc18ae30404ea37bcce826b9d37674d` |
 | FanCurve-fan56-candidate2.dmg | `b1dbe57df531b009e079f09e778297bef17886ec704224ab463ba5b6412d86ec` |
 | FanCurve-fan56-final.dmg | `4729942b16338bb4b5b4bdb3e185ac1ac23a6bdfee822988ad9cff74955d58fe` |
+| FanCurve-fan56-review.dmg | `9a76aed5fbe07b0b5c2fa58495172550b1767f32e7f077b0b67e1209d127e504` |
 
 The candidates are local Developer ID-signed Release builds, not notarized published updates. Their display version is 0.0.0. Sparkle's offer to replace them with the published release was skipped during testing. These tests do not prove a new Sparkle deployment, a packaged Sparkle upgrade, or physical fan control. Tart has no AppleSMC device, so it cannot complete the mandatory fan reset that precedes Helper replacement.
 

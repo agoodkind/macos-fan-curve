@@ -1,6 +1,6 @@
 # Final installed runtime evidence
 
-The final Release candidate was installed at `/Applications/Fan Curve.app` on macOS 15.7.7 and macOS 26.6.2. System Integrity Protection was enabled on both guests.
+The September 7 Release candidate was installed at `/Applications/Fan Curve.app` on macOS 15.7.7 and macOS 26.6.2. System Integrity Protection was enabled on both guests.
 
 ## Fresh setup
 
@@ -27,6 +27,12 @@ The final Agent then validated the final Helper artifact and started automatic H
 
 Candidate Agent crash reports on macOS 15 ended at 05:53:08. The final Agent started at 05:53:44 and remained PID 880 through the final observation after 05:56. macOS 26 remained PID 942 through the same observation. No final Agent crash report appeared on either guest.
 
-## Artifact
+## September 9 review follow-up
 
-`FanCurve-fan56-final.dmg` SHA-256: `4729942b16338bb4b5b4bdb3e185ac1ac23a6bdfee822988ad9cff74955d58fe`
+The review candidate at `25c2b6d` was installed in fresh macOS 15.7.7 and macOS 26.6.2 guests with no existing Fan Curve app. System Integrity Protection and application assessment were enabled on both. Strict deep signature verification passed before launch.
+
+Enable Background Control reached macOS approval on both systems. Opening System Settings and approving Fan Curve completed setup without another installation action. Both app Settings screens showed Background Agent and Privileged Helper as Running. Both persisted `guidedSetupProgress=complete` through quit and relaunch.
+
+Both running Agents reported fingerprint `f389a57dfc48`, matching the release Agent digest prefix. Helper launchd state was Running on both systems. Both validation guests were then shut down cleanly and confirmed stopped.
+
+Product source and configuration trees are identical between this installed candidate and `dbd4d7c`. The intervening change only isolates unsigned analysis output in the build system. The recorded successful setup covers unchanged product code.
