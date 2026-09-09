@@ -75,10 +75,9 @@ SWIFT_BUILD_CMD := $(MAKE) app-local
 # dist/. MARKETING_VERSION/CURRENT_PROJECT_VERSION/RELEASE_TAG arrive as env
 # from the workflow's release-meta job.
 SWIFT_MK_RELEASE_BUILD_CMD := $(MAKE) release-assets && cp "$(RELEASE_DMG_PATH)" dist/
-# The project-build recipe writes its index store under BUILD_DIR, so the
-# dead-code gate reads from there. A clean build before the scan keeps the index
-# free of stale units from earlier incremental builds.
-SWIFT_MK_DERIVED_DATA := $(BUILD_DIR)
+# Coverage scans wipe and rebuild unsigned products, so they need a directory
+# separate from the signed apps used by run and packaging.
+SWIFT_MK_DERIVED_DATA := $(ANALYZE_BUILD_DIR)/DeadcodeDerivedData
 SWIFT_TEST_CMD := $(MAKE) test-local
 SWIFT_GENERATE_CMD := $(MAKE) generate-project
 SWIFT_CLEAN_CMD := rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) FanCurveApp.xcworkspace FanCurveApp.xcodeproj
