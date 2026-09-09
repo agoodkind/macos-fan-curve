@@ -13,4 +13,26 @@ struct AgentServiceMutationResult: Sendable, Equatable {
   let statusAfterUnregister: ManagedServiceStatus?
   let statusAfterRegister: ManagedServiceStatus?
   let errorDescription: String?
+  let failureReason: ManagedServiceFailureReason?
+
+  init(
+    statusBefore: ManagedServiceStatus,
+    statusAfterUnregister: ManagedServiceStatus?,
+    statusAfterRegister: ManagedServiceStatus?,
+    errorDescription: String?,
+    failureReason: ManagedServiceFailureReason? = nil
+  ) {
+    self.statusBefore = statusBefore
+    self.statusAfterUnregister = statusAfterUnregister
+    self.statusAfterRegister = statusAfterRegister
+    self.errorDescription = errorDescription
+    self.failureReason = failureReason
+  }
+
+  func errorRequiringRetry(status: ManagedServiceStatus) -> String? {
+    if status == .requiresApproval, failureReason == .operationNotPermitted {
+      return nil
+    }
+    return errorDescription
+  }
 }

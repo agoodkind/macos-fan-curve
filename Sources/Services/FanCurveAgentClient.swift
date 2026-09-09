@@ -35,7 +35,7 @@ final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEve
   private let decoder = JSONDecoder()
   private var pendingRequests: [UUID: AgentXPCReplyResumer] = [:]
   private var stopped = false
-  private var connectionGeneration: UInt64 = 0
+  private(set) var connectionGeneration: UInt64 = 0
 
   var pendingRequestCount: Int {
     pendingRequests.count
@@ -199,7 +199,7 @@ extension FanCurveAgentClient {
     fanCurveAgentClientLog.debug("agent_client.events.registered")
   }
 
-  private func refreshCurrentState() async throws {
+  func refreshCurrentState() async throws {
     let stateData = try await performRequest(.currentState)
     guard let stateData else {
       throw FanCurveAgentClientError.invalidReply

@@ -32,6 +32,14 @@ extension SensorDashboardSidebar {
         )
         .help(setupHelp)
         .accessibilityIdentifier(AppAccessibilityIdentifier.Setup.sidebarAction)
+      } else if let status = installState.setupStatusText {
+        HStack(spacing: SensorDashboardSidebarSetupConstants.checkingStatusRowSpacing) {
+          ProgressView()
+            .controlSize(.small)
+          Text(status)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
       } else if installState.step == .checking {
         HStack(spacing: SensorDashboardSidebarSetupConstants.checkingStatusRowSpacing) {
           ProgressView()
@@ -77,52 +85,22 @@ extension SensorDashboardSidebar {
   }
 
   private var setupAction: (String, () -> Void)? {
-    switch installState.step {
-    case .helperMissing, .helperAwaitingApproval:
-      guard let title = helperPresentation.actionTitle else { return nil }
-      return (title, { performSystemHelperAction(helperPresentation.action) })
-    case .agentMissing:
-      return (
-        "Enable Background Control",
-        {
-          sensorDashboardSidebarSetupLog.notice("sidebar.agent_setup.tapped")
-          beginPendingAction(.agentSetup)
-          installState.registerAgent()
-        }
-      )
-    case .agentAwaitingApproval:
-      return (
-        "Open System Settings",
-        {
-          sensorDashboardSidebarSetupLog.notice(
-            "sidebar.login_items_settings.tapped step=\(String(describing: installState.step), privacy: .public)"
-          )
-          beginPendingAction(.openSystemSettings)
-          installState.openAgentLoginItemsSettings()
-        }
-      )
-    case .ready, .checking:
-      return nil
-    }
+    guard let title = installState.setupActionTitle else { return nil }
+    return (
+      title,
+      {
+        sensorDashboardSidebarSetupLog.notice("sidebar.setup.tapped")
+        installState.performSetupAction(agentClient: runtime)
+      }
+    )
   }
 
   private var setupButtonBusy: Bool {
-    installState.isRegisteringAgent
-      || helperPresentation.isBusy
-      || isPendingAction(.helperSetup)
-      || isPendingAction(.agentSetup)
-      || isPendingAction(.openSystemSettings)
+    installState.setupActionIsBusy
   }
 
   private func setupButtonLabel(fallback: String) -> String {
-    if isPendingAction(.helperSetup) {
-      return busyHelperPresentation.actionTitle ?? fallback
-    }
-    if isPendingAction(.agentSetup) { return "Enabling Background Control" }
-    if isPendingAction(.openSystemSettings) { return "Opening System Settings" }
-    if installState.isRegisteringHelper { return busyHelperPresentation.actionTitle ?? fallback }
-    if installState.isRegisteringAgent { return "Enabling Background Control" }
-    return fallback
+    installState.setupActionTitle ?? fallback
   }
 
   private var helperPresentation: SystemHelperPresentation {
@@ -130,42 +108,6 @@ extension SensorDashboardSidebar {
       state: installState.systemHelperState,
       repairInFlight: installState.isRegisteringHelper
     )
-  }
-
-  private var busyHelperPresentation: SystemHelperPresentation {
-    SystemHelperPresentation.resolve(
-      state: installState.systemHelperState,
-      repairInFlight: true
-    )
-  }
-
-  private func performSystemHelperAction(_ action: SystemHelperPresentation.Action?) {
-    switch action {
-    case .repair:
-      sensorDashboardSidebarSetupLog.notice("sidebar.helper_setup.tapped")
-      beginPendingAction(.helperSetup)
-      installState.installOrRepairHelper(agentClient: runtime)
-    case .openSystemSettings:
-      sensorDashboardSidebarSetupLog.notice(
-        "sidebar.login_items_settings.tapped step=\(String(describing: installState.step), privacy: .public)"
-      )
-      beginPendingAction(.openSystemSettings)
-      Task {
-        do {
-          try await runtime.openSystemSettings()
-        } catch {
-          sensorDashboardSidebarSetupLog.notice(
-            "sidebar.login_items_settings.agent_command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-agent-command-error"
-          )
-          await MainActor.run {
-            installState.lastError = error.localizedDescription
-            completePendingAction(.openSystemSettings, reason: "command-failed")
-          }
-        }
-      }
-    case nil:
-      return
-    }
   }
 
   var fanControlToggleHelp: String {

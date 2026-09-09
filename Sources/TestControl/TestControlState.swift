@@ -74,6 +74,7 @@
   enum TestManagedServiceStatus: String, Codable, Equatable, Sendable {
     case approvalRequired = "approval_required"
     case enabled
+    case notFound = "not_found"
     case notRegistered = "not_registered"
   }
 

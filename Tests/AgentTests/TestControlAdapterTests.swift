@@ -66,6 +66,20 @@ final class TestControlAdapterTests: XCTestCase {
     )
   }
 
+  func testControlledHelperRegistersFromNotFound() throws {
+    let store = try makeStore(
+      state: makeState(sessionID: UUID(), revision: 1, helperStatus: .notFound)
+    )
+    let runtime = try TestControlRuntime(store: store, participant: .agent)
+    let service = ControlledHelperServiceAdapter(runtime: runtime)
+
+    expect(service.status) == .notFound
+    try service.register()
+    expect(service.status) == .enabled
+    try service.unregister()
+    expect(service.status) == .notRegistered
+  }
+
   func testControlledHardwareReturnsConfiguredValuesAndRecordsEveryOperation() throws {
     let sessionID = UUID()
     let store = try makeStore(state: makeState(sessionID: sessionID, revision: 2))
@@ -416,6 +430,7 @@ extension TestControlAdapterTests {
     sessionID: UUID,
     revision: UInt64,
     backgroundAgentStatus: TestManagedServiceStatus = .enabled,
+    helperStatus: TestManagedServiceStatus = .enabled,
     serviceOperation: TestOperationDirective = .succeed,
     hardwareOperation: TestOperationDirective = .succeed,
     runtimeFlags: TestRuntimeFlags = TestRuntimeFlags(
@@ -429,7 +444,7 @@ extension TestControlAdapterTests {
       revision: revision,
       services: TestServiceState(
         backgroundAgentStatus: backgroundAgentStatus,
-        helperStatus: .enabled,
+        helperStatus: helperStatus,
         nextOperation: serviceOperation
       ),
       hardware: TestHardwareState(

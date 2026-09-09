@@ -1,0 +1,8 @@
+Command: tart exec fan56-macos15-sip csrutil status
+After enabling SIP in guest Recovery and booting normally on 2026-09-07:
+System Integrity Protection status: enabled.
+
+Command: tart exec fan56-macos15-sip sw_vers
+ProductName: macOS
+ProductVersion: 15.7.7
+BuildVersion: 24G720

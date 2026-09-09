@@ -80,7 +80,7 @@ final class SystemHelperClassifierTests: XCTestCase {
     expect(runtime.setup) == .helperApproval(action: .approveHelper)
   }
 
-  func testMissingRegistrationDefinitionIsUnavailable() {
+  func testNotFoundHelperRemainsInstallable() {
     let runtime = resolve(
       serviceStatus: .notFound,
       observation: .unreachable(reason: "not attempted")
@@ -88,7 +88,7 @@ final class SystemHelperClassifierTests: XCTestCase {
 
     expect(runtime.systemHelper)
       == .unavailable(
-        reason: "System Helper registration definition was not found"
+        reason: "System Helper is not registered"
       )
     expect(runtime.setup) == .helperRequired(action: .installHelper)
   }

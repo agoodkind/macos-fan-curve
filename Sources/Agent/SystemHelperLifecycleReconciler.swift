@@ -199,6 +199,10 @@ extension SystemHelperLifecycleReconciler {
     trigger: SystemHelperReconcileTrigger,
     serviceStatus: ManagedServiceStatus
   ) -> Bool {
+    // A fresh daemon can report notFound until its first registration attempt.
+    if serviceStatus == .notFound {
+      return trigger == .forcedRepair
+    }
     guard serviceStatus == .notRegistered else { return false }
     return trigger == .forcedRepair || replacementJournal.hasPendingReplacement
   }

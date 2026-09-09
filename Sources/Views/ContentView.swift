@@ -53,7 +53,7 @@ struct ContentView: View {
   @Environment(\.openWindow) private var openWindow
   @EnvironmentObject var agentClient: FanCurveAgentClient
   @EnvironmentObject var curveModel: FanCurveModel
-  @StateObject private var installState = InstallationState()
+  @EnvironmentObject private var installState: InstallationState
   @StateObject private var renderActivity = AppRenderActivity()
 
   @AppStorage("sidebarWidth") private var sidebarWidth: Double = ContentViewConstants
@@ -116,7 +116,6 @@ struct ContentView: View {
         "content_view.appeared installation_step=\(String(describing: installState.step), privacy: .public) ready=\(fanControlReady, privacy: .public) dashboard_area=\(showsDashboardArea, privacy: .public)"
       )
       agentClient.start()
-      installState.startMonitoring(agentClient: agentClient)
     }
     .onChange(of: installState.step) { step in
       contentViewLog.notice(
@@ -133,7 +132,6 @@ struct ContentView: View {
         FrameProfiler.shared.setSamplingActive(false)
       #endif
       renderActivity.stop()
-      installState.stopMonitoring()
     }
     .onChange(of: curveModel.controlPoints) { _ in pushCurveToAgent(reason: "points-changed") }
     .onChange(of: curveModel.interpolationMode) { _ in pushCurveToAgent(reason: "mode-changed")

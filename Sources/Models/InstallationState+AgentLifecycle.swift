@@ -72,6 +72,7 @@ extension InstallationState {
     applyInBackground: Bool,
     storedFingerprint: String?
   ) -> ManagedServiceStatus {
+    guard !setupProgress.ownsLifecycle, !isRegisteringAgent else { return agentStatus }
     guard agentStatus != .enabled, agentStatus != .requiresApproval else {
       return agentStatus
     }
@@ -116,11 +117,13 @@ extension InstallationState {
     backgroundAgentService.status
   }
 
-  func refreshAgentIfNeeded(_ context: AgentRefreshContext) {
+  @discardableResult
+  func refreshAgentIfNeeded(_ context: AgentRefreshContext) -> Bool {
     let appBundlePath = Bundle.main.bundleURL.path
     let developerManaged = isDeveloperManagedBuild
     let bundledHash = bundledAgentHash()
-    guard bundledAgentHashIsAvailable(bundledHash) else { return }
+    guard bundledAgentHashIsAvailable(bundledHash) else { return false }
+    guard permitsAgentRefresh(context, bundledHash: bundledHash) else { return false }
     logRefreshContextIfNeeded(appBundlePath: appBundlePath, developerManaged: developerManaged)
     guard
       runningAgentHashIsAvailable(
@@ -128,20 +131,20 @@ extension InstallationState {
         appBundlePath: appBundlePath,
         bundledHash: bundledHash
       )
-    else { return }
+    else { return false }
     if reconcileCurrentAgentIfNeeded(
       context: context,
       appBundlePath: appBundlePath,
       bundledHash: bundledHash
     ) {
-      return
+      return false
     }
     guard
       shouldRefreshAgent(
         appBundlePath: appBundlePath,
         bundledHash: bundledHash
       )
-    else { return }
+    else { return false }
 
     installationStateAgentLifecycleLog.notice(
       "agent.refresh.started appPath=\(appBundlePath, privacy: .public) connected=\(context.agentConnected, privacy: .public) runningHash=\(context.runningHash, privacy: .public) bundledHash=\(bundledHash, privacy: .public)"
@@ -154,6 +157,7 @@ extension InstallationState {
       developerManaged: developerManaged,
       bundledHash: bundledHash
     )
+    return result.errorDescription == nil && result.statusAfterRegister != nil
   }
 
   func bundledAgentHashIsAvailable(_ bundledHash: String) -> Bool {
@@ -274,15 +278,24 @@ extension InstallationState {
     }
 
     if let errorDescription = result.errorDescription {
-      lastError = errorDescription
+      let recovery: String
+      if setupProgress.ownsLifecycle {
+        failSetup(errorDescription)
+        recovery = "explicit-retry"
+      } else {
+        lastError = errorDescription
+        recovery = "retry-auto-refresh"
+      }
       installationStateAgentLifecycleLog.error(
-        "agent.refresh.failed appPath=\(appBundlePath, privacy: .public) status=\(result.statusBefore.description, privacy: .public) error=\(errorDescription, privacy: .public) recovery=retry-auto-refresh"
+        "agent.refresh.failed appPath=\(appBundlePath, privacy: .public) status=\(result.statusBefore.description, privacy: .public) error=\(errorDescription, privacy: .public) recovery=\(recovery, privacy: .public)"
       )
       return
     }
 
     if let statusAfterRegister = result.statusAfterRegister {
-      lastError = nil
+      if !setupProgress.isFailed {
+        lastError = nil
+      }
       lastAgentServiceRegisterDate = Date()
       installationStateAgentLifecycleLog.notice(
         "agent.refresh.done appPath=\(appBundlePath, privacy: .public) bundledHash=\(bundledHash, privacy: .public) registrationMismatch=\(context.registrationMismatch, privacy: .public) status=\(statusAfterRegister.description, privacy: .public)"

@@ -268,7 +268,9 @@ final class ControlledXPCHarness {
       verificationTimeout: lifecycleFixture?.verificationTimeout
         ?? ControlledXPCTestValues.systemHelperVerificationTimeout,
       verificationPollInterval: lifecycleFixture?.verificationPollInterval
-        ?? ControlledXPCTestValues.systemHelperVerificationPollInterval
+        ?? ControlledXPCTestValues.systemHelperVerificationPollInterval,
+      replacementJournal: lifecycleFixture?.replacementJournal
+        ?? SystemHelperReplacementJournal(defaults: defaults)
     ) { [controller] state in
       controller.updateSystemHelperRuntimeState(state)
     }

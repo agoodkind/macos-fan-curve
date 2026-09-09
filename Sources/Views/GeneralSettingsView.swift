@@ -56,7 +56,7 @@ struct GeneralSettingsView: View {
   private var applyInBackground: Bool = true
 
   @EnvironmentObject var agentClient: FanCurveAgentClient
-  @StateObject private var installState = InstallationState()
+  @EnvironmentObject private var installState: InstallationState
   @StateObject private var ownershipStatus = FanOwnershipStatus()
   @State private var showOwnership = false
   @State private var isMonitoringActive = false
@@ -163,12 +163,10 @@ struct GeneralSettingsView: View {
 
     if active {
       agentClient.start()
-      installState.startMonitoring(agentClient: agentClient)
       ownershipStatus.startMonitoring(
         agentClient: agentClient,
         intervalSeconds: GeneralSettingsConstants.ownershipRefreshIntervalSeconds)
     } else {
-      installState.stopMonitoring()
       ownershipStatus.stopMonitoring()
     }
   }
@@ -396,18 +394,7 @@ extension GeneralSettingsView {
   private func performHelperAction(_ action: SystemHelperPresentation.Action?) {
     if action == .openSystemSettings {
       generalSettingsLog.info("general_settings.helper.approval.tapped owner=agent-xpc")
-      Task {
-        do {
-          try await agentClient.openSystemSettings()
-        } catch {
-          generalSettingsLog.notice(
-            "general_settings.helper.approval.failed error=\(error.localizedDescription, privacy: .public) recovery=show-agent-command-error"
-          )
-          await MainActor.run {
-            installState.lastError = error.localizedDescription
-          }
-        }
-      }
+      installState.openHelperApproval(agentClient: agentClient)
       return
     }
 
@@ -423,28 +410,29 @@ extension GeneralSettingsView {
   @ViewBuilder
   private var agentAction: some View {
     if installState.agentEnabled, !installState.agentLive {
-      Button("Restart") { restartAgent() }
-        .controlSize(.small)
-        .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.backgroundAgentAction)
+      if let status = installState.setupStatusText, !installState.setupProgress.isFailed {
+        SettingsDescription(text: status)
+      } else {
+        Button("Restart") { restartAgent() }
+          .disabled(installState.setupActionIsBusy)
+          .controlSize(.small)
+          .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.backgroundAgentAction)
+      }
     } else if !installState.agentEnabled {
       Button {
         generalSettingsLog.info("general_settings.agent.install.tapped")
-        installState.registerAgent()
+        installState.performSetupAction(agentClient: agentClient)
       } label: {
         HStack(spacing: GeneralSettingsConstants.helperActionButtonHStackSpacing) {
-          if installState.isRegisteringAgent {
+          if installState.setupActionIsBusy {
             ProgressView()
               .controlSize(.small)
               .scaleEffect(GeneralSettingsConstants.progressViewScale)
           }
-          Text(
-            installState.isRegisteringAgent
-              ? "Enabling Background Control"
-              : "Enable Background Control"
-          )
+          Text(installState.setupActionTitle ?? "Enable Background Control")
         }
       }
-      .disabled(installState.isRegisteringAgent)
+      .disabled(installState.setupActionIsBusy)
       .controlSize(.small)
       .accessibilityIdentifier(AppAccessibilityIdentifier.Settings.backgroundAgentAction)
     }
@@ -456,7 +444,6 @@ extension GeneralSettingsView {
 
   private func restartAgent() {
     generalSettingsLog.info("general_settings.agent.restart.tapped")
-    installState.unregisterAgent()
-    installState.registerAgent()
+    installState.restartAgent()
   }
 }

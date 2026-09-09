@@ -1,0 +1,6 @@
+Timestamp               Ty Process[PID:TID]
+2026-09-08 04:52:41.560 Df FanCurveAgent[1138:4f62] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=forced_repair
+2026-09-08 04:52:41.561 Df FanCurveAgent[1138:4f62] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=forced_repair
+2026-09-08 04:52:41.578 Df FanCurveAgent[1138:4f62] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.replace.started operation=forced_repair
+2026-09-08 04:52:41.579 E  FanCurveAgent[1138:4f61] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.failed operation=forced_repair stage=fan_reset reason=Failed to open AppleSMC recovery=Retry after fan communication recovers
+2026-09-08 04:52:41.579 Df FanCurveAgent[1138:4f61] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.finished operation=forced_repair state=repair_failed

@@ -20,7 +20,9 @@ final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
   private let faultController: any FanCurveAgentXPCFaultControlling
   private let processTerminator: @Sendable () -> Void
   private let reconciler: SystemHelperLifecycleReconciler
+  private let approvalObservationLock = NSLock()
   private let callbackLock = NSLock()
+  private var lastObservedHelperServiceStatus: ManagedServiceStatus
   private var eventCallbacks: [ObjectIdentifier: FanCurveAgentXPCEventProtocol] = [:]
   private var connections: [ObjectIdentifier: NSXPCConnection] = [:]
 
@@ -58,6 +60,7 @@ final class FanCurveAgentXPCService: NSObject, @unchecked Sendable {
     self.reconciler = reconciler
     self.faultController = faultController
     self.processTerminator = processTerminator
+    self.lastObservedHelperServiceStatus = helperService.status
     super.init()
     self.listener.delegate = self
     self.controller.runtimeStateDidChange = { [weak self] runtimeState in
@@ -114,7 +117,7 @@ extension FanCurveAgentXPCService: NSXPCListenerDelegate {
 }
 
 extension FanCurveAgentXPCService: FanCurveAgentXPCProtocol {
-  func getCurrentState(reply: @Sendable (Bool, Data?, String?) -> Void) {
+  func getCurrentState(reply: @escaping @Sendable (Bool, Data?, String?) -> Void) {
     agentXPCLog.debug("agent.xpc.current_state.requested")
     let faultEffect = faultController.consumeFault(at: .currentState)
     switch faultEffect {
@@ -131,17 +134,29 @@ extension FanCurveAgentXPCService: FanCurveAgentXPCProtocol {
     default:
       break
     }
-    let runtimeState = controller.currentRuntimeStateForXPC()
-
-    do {
-      let data = try JSONEncoder().encode(runtimeState)
-      agentXPCLog.debug("agent.xpc.current_state.returned")
-      reply(true, data, nil)
-    } catch {
-      agentXPCLog.error(
-        "agent.xpc.current_state.encode_failed error=\(error.localizedDescription, privacy: .public) recovery=return-error"
-      )
-      reply(false, nil, error.localizedDescription)
+    Task {
+      let initialRuntimeState = controller.currentRuntimeStateForXPC()
+      let serviceStatus = helperService.status
+      if approvalTransitionNeedsReconciliation(
+        runtimeState: initialRuntimeState.systemHelper,
+        serviceStatus: serviceStatus
+      ) {
+        agentXPCLog.notice(
+          "agent.xpc.current_state.approval_changed status=\(serviceStatus.description, privacy: .public) recovery=reconcile-helper"
+        )
+        _ = await reconcileSystemHelper(trigger: .reconnect)
+      }
+      let runtimeState = controller.currentRuntimeStateForXPC()
+      do {
+        let data = try JSONEncoder().encode(runtimeState)
+        agentXPCLog.debug("agent.xpc.current_state.returned")
+        reply(true, data, nil)
+      } catch {
+        agentXPCLog.error(
+          "agent.xpc.current_state.encode_failed error=\(error.localizedDescription, privacy: .public) recovery=return-error"
+        )
+        reply(false, nil, error.localizedDescription)
+      }
     }
   }
 
@@ -275,6 +290,20 @@ extension FanCurveAgentXPCService: FanCurveAgentXPCProtocol {
 }
 
 extension FanCurveAgentXPCService {
+  private func approvalTransitionNeedsReconciliation(
+    runtimeState: SystemHelperRuntimeState,
+    serviceStatus: ManagedServiceStatus
+  ) -> Bool {
+    approvalObservationLock.withLock {
+      let previousStatus = lastObservedHelperServiceStatus
+      lastObservedHelperServiceStatus = serviceStatus
+      guard runtimeState == .approvalRequired else { return false }
+      if serviceStatus == .enabled { return true }
+      return previousStatus == .requiresApproval
+        && serviceStatus != .requiresApproval
+    }
+  }
+
   func publishConfigChange() {
     controller.sharedConfig.defaults.synchronize()
     controller.requestTickIfRunning()

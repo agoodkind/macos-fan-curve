@@ -1,0 +1,10 @@
+Timestamp               Ty Process[PID:TID]
+2026-09-07 23:55:46.149 Df FanCurve[1093:3963] [io.goodkind.fan:InstallationState] setup.stage.changed from=idle to=connectingAgent
+2026-09-07 23:55:46.255 Df FanCurveAgent[1122:3dbb] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.finished operation=automatic_update state=unavailable
+2026-09-07 23:55:46.585 Df FanCurve[1093:3963] [io.goodkind.fan:InstallationState] setup.stage.changed from=connectingAgent to=installingHelper
+2026-09-07 23:55:46.614 Df FanCurveAgent[1122:3dc1] [io.goodkind.fan:HelperServiceManagement] helper.service.register.started
+2026-09-07 23:55:46.632 E  FanCurveAgent[1122:3dc1] [io.goodkind.fan:HelperServiceManagement] helper.service.register.failed error=The operation couldn’t be completed. Operation not permitted domain=SMAppServiceErrorDomain code=1 underlyingDomain=none underlyingCode=0 reason=operationNotPermitted recovery=return-error-to-agent
+2026-09-07 23:55:46.647 Df FanCurveAgent[1122:3dc1] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.finished operation=forced_repair state=approval_required
+2026-09-07 23:55:46.659 Df FanCurve[1093:3963] [io.goodkind.fan:InstallationState] setup.stage.changed from=installingHelper to=verifyingHelper
+2026-09-07 23:57:56.609 Df FanCurveAgent[1122:3dbc] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.finished operation=automatic_update state=running
+2026-09-07 23:57:56.622 Df FanCurve[1093:3963] [io.goodkind.fan:InstallationState] setup.stage.changed from=verifyingHelper to=complete

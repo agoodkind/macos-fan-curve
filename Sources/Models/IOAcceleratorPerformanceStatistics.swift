@@ -61,11 +61,16 @@ private func ioAcceleratorPerformanceStatistics(
 private func ioAcceleratorDeviceUtilizationPercent(
   in performanceStatistics: CFDictionary
 ) -> Double? {
-  let keyPointer = Unmanaged.passUnretained(ioAcceleratorDeviceUtilizationKey as CFString)
-    .toOpaque()
+  let key = ioAcceleratorDeviceUtilizationKey as CFString
   var valuePointer: UnsafeRawPointer?
+  // The raw pointer does not retain the bridged string used by the CF lookup.
+  let found = withExtendedLifetime(key) {
+    CFDictionaryGetValueIfPresent(
+      performanceStatistics, Unmanaged.passUnretained(key).toOpaque(), &valuePointer
+    )
+  }
   guard
-    CFDictionaryGetValueIfPresent(performanceStatistics, keyPointer, &valuePointer),
+    found,
     let valuePointer
   else {
     return nil

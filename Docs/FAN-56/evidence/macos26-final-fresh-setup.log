@@ -1,0 +1,12 @@
+Timestamp               Ty Process[PID:TID]
+2026-09-08 04:22:47.944 Df FanCurveAgent[782:19a7] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=8454d3a7b01f
+2026-09-08 04:22:47.957 Df FanCurve[757:165a] [io.goodkind.fan:InstallationState] setup.stage.changed from=verifyingHelper to=complete
+2026-09-08 04:41:16.756 Df FanCurveAgent[1524:5c85] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=8454d3a7b01f
+2026-09-08 04:48:48.414 Df FanCurve[1433:55d5] [io.goodkind.fan:InstallationState] setup.stage.changed from=complete to=installingHelper
+2026-09-08 04:48:48.453 Df FanCurveAgent[1524:5c86] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=8454d3a7b01f
+2026-09-08 04:48:48.517 Df FanCurve[1433:55d5] [io.goodkind.fan:InstallationState] setup.stage.changed from=installingHelper to=failedHelper
+2026-09-08 04:57:11.029 Df FanCurveAgent[1771:70d7] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=26.9.7 build=202609072031000195 hash=e251ad495271
+2026-09-08 04:57:11.438 Df FanCurveAgent[1784:7153] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=26.9.7 build=202609072031000195 hash=e251ad495271
+2026-09-08 06:07:54.285 Df FanCurveAgent[413:bf1] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=8454d3a7b01f
+2026-09-08 06:07:55.305 Df FanCurve[350:84b] [io.goodkind.fan:InstallationState] setup.stage.changed from=failedHelper to=verifyingHelper
+2026-09-08 06:07:55.305 Df FanCurve[350:84b] [io.goodkind.fan:InstallationState] setup.stage.changed from=verifyingHelper to=complete

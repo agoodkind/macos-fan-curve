@@ -1,0 +1,19 @@
+Timestamp               Ty Process[PID:TID]
+2026-09-07 23:17:09.986 Df FanCurve[691:1851] [io.goodkind.fan:OnboardingView] onboarding.setup.tapped
+2026-09-07 23:17:09.995 Df FanCurve[691:1851] [io.goodkind.fan:InstallationState] setup.stage.changed from=idle to=connectingAgent
+2026-09-07 23:17:10.062 Df FanCurve[691:1851] [io.goodkind.fan:InstallationState] setup.agent.registered status=enabled
+2026-09-07 23:17:10.082 Df FanCurveAgent[702:1bca] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-07 23:17:10.082 Df FanCurveAgent[702:1bca] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-07 23:17:10.090 Df FanCurveAgent[702:1bca] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.finished operation=automatic_update state=unavailable
+2026-09-07 23:17:11.046 Df FanCurve[691:1851] [io.goodkind.fan:InstallationState] setup.stage.changed from=connectingAgent to=installingHelper
+2026-09-07 23:17:11.046 Df FanCurve[691:1851] [io.goodkind.fan:InstallationState] setup.helper.install.started owner=agent-xpc
+2026-09-07 23:17:11.053 Df FanCurveAgent[702:1bca] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.command.helper_install.started owner=reconciler
+2026-09-07 23:17:11.053 Df FanCurveAgent[702:1bca] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=forced_repair
+2026-09-07 23:17:11.053 Df FanCurveAgent[702:1bca] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=forced_repair
+2026-09-07 23:17:11.071 Df FanCurveAgent[702:1bd9] [io.goodkind.fan:HelperServiceManagement] helper.service.register.started
+2026-09-07 23:17:11.087 E  FanCurveAgent[702:1bd9] [io.goodkind.fan:HelperServiceManagement] helper.service.register.failed error=The operation couldn’t be completed. Operation not permitted domain=SMAppServiceErrorDomain code=1 underlyingDomain=none underlyingCode=0 reason=operationNotPermitted recovery=return-error-to-agent
+2026-09-07 23:17:11.100 Df FanCurveAgent[702:1bd9] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.finished operation=forced_repair state=approval_required
+2026-09-07 23:17:11.103 Df FanCurve[691:1851] [io.goodkind.fan:InstallationState] setup.helper.command.failed reason=System Helper approval is required recovery=read-current-state
+2026-09-07 23:17:11.103 Df FanCurve[691:1851] [io.goodkind.fan:InstallationState] setup.stage.changed from=installingHelper to=verifyingHelper
+2026-09-07 23:17:11.103 Df FanCurve[691:1851] [io.goodkind.fan:InstallationState] setup.helper.install.finished recovery=verify-agent-runtime
+2026-09-07 23:20:39.614 Df FanCurve[739:223d] [io.goodkind.fan:OnboardingView] onboarding.setup.tapped

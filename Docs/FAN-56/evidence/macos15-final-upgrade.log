@@ -1,0 +1,156 @@
+Timestamp               Ty Process[PID:TID]
+2026-09-08 05:48:04.226 Df FanCurveAgent[638:13f4] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:04.226 Df FanCurveAgent[638:13f4] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:04.242 Df FanCurveAgent[638:13f4] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:48:14.075 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.started appPath=/Applications/Fan Curve.app connected=false runningHash=10869efeb8e2 bundledHash=10869efeb8e2
+2026-09-08 05:48:14.117 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.needed appPath=/Applications/Fan Curve.app developerManaged=false status=enabled runningHash=10869efeb8e2 bundledHash=10869efeb8e2 snapshotSchema=-1 expectedSchema=6 schemaMismatch=false
+2026-09-08 05:48:14.117 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.done appPath=/Applications/Fan Curve.app bundledHash=10869efeb8e2 registrationMismatch=false status=enabled
+2026-09-08 05:48:14.121 Df FanCurveAgent[639:1433] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:14.121 Df FanCurveAgent[639:1433] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:14.135 Df FanCurveAgent[639:1433] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:48:24.153 Df FanCurveAgent[647:14bc] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:24.153 Df FanCurveAgent[647:14bc] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:24.167 Df FanCurveAgent[647:14bc] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:48:34.191 Df FanCurveAgent[649:152f] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:34.191 Df FanCurveAgent[649:152f] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:34.206 Df FanCurveAgent[649:152f] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:48:44.225 Df FanCurveAgent[650:156f] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:44.225 Df FanCurveAgent[650:156f] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:44.239 Df FanCurveAgent[650:156f] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:48:46.074 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.started appPath=/Applications/Fan Curve.app connected=false runningHash=10869efeb8e2 bundledHash=10869efeb8e2
+2026-09-08 05:48:46.116 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.needed appPath=/Applications/Fan Curve.app developerManaged=false status=enabled runningHash=10869efeb8e2 bundledHash=10869efeb8e2 snapshotSchema=-1 expectedSchema=6 schemaMismatch=false
+2026-09-08 05:48:46.116 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.done appPath=/Applications/Fan Curve.app bundledHash=10869efeb8e2 registrationMismatch=false status=enabled
+2026-09-08 05:48:46.120 Df FanCurveAgent[651:158c] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:46.120 Df FanCurveAgent[651:158c] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:46.137 Df FanCurveAgent[651:158c] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:48:56.164 Df FanCurveAgent[652:15d0] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:56.164 Df FanCurveAgent[652:15d0] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:48:56.186 Df FanCurveAgent[652:15d0] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:49:06.219 Df FanCurveAgent[653:1609] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:06.219 Df FanCurveAgent[653:1609] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:06.242 Df FanCurveAgent[653:1609] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:49:16.271 Df FanCurveAgent[654:1634] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:16.271 Df FanCurveAgent[654:1634] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:16.289 Df FanCurveAgent[654:1634] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:49:18.072 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.started appPath=/Applications/Fan Curve.app connected=false runningHash=10869efeb8e2 bundledHash=10869efeb8e2
+2026-09-08 05:49:18.144 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.needed appPath=/Applications/Fan Curve.app developerManaged=false status=enabled runningHash=10869efeb8e2 bundledHash=10869efeb8e2 snapshotSchema=-1 expectedSchema=6 schemaMismatch=false
+2026-09-08 05:49:18.144 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.done appPath=/Applications/Fan Curve.app bundledHash=10869efeb8e2 registrationMismatch=false status=enabled
+2026-09-08 05:49:18.147 Df FanCurveAgent[655:1650] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:18.147 Df FanCurveAgent[655:1650] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:18.171 Df FanCurveAgent[655:1650] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:49:28.190 Df FanCurveAgent[656:1682] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:28.191 Df FanCurveAgent[656:1682] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:28.209 Df FanCurveAgent[656:1682] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:49:38.233 Df FanCurveAgent[657:16b6] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:38.233 Df FanCurveAgent[657:16b6] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:38.248 Df FanCurveAgent[657:16b6] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:49:48.276 Df FanCurveAgent[690:1862] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:48.276 Df FanCurveAgent[690:1862] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:48.291 Df FanCurveAgent[690:1862] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:49:50.067 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.started appPath=/Applications/Fan Curve.app connected=false runningHash=10869efeb8e2 bundledHash=10869efeb8e2
+2026-09-08 05:49:50.116 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.needed appPath=/Applications/Fan Curve.app developerManaged=false status=enabled runningHash=10869efeb8e2 bundledHash=10869efeb8e2 snapshotSchema=-1 expectedSchema=6 schemaMismatch=false
+2026-09-08 05:49:50.116 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.done appPath=/Applications/Fan Curve.app bundledHash=10869efeb8e2 registrationMismatch=false status=enabled
+2026-09-08 05:49:50.120 Df FanCurveAgent[691:1876] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:50.120 Df FanCurveAgent[691:1876] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:49:50.136 Df FanCurveAgent[691:1876] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:50:00.155 Df FanCurveAgent[712:1949] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:50:00.155 Df FanCurveAgent[712:1949] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:50:00.169 Df FanCurveAgent[712:1949] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:50:10.192 Df FanCurveAgent[713:1993] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:50:10.192 Df FanCurveAgent[713:1993] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:50:10.206 Df FanCurveAgent[713:1993] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:50:20.072 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.started appPath=/Applications/Fan Curve.app connected=false runningHash=10869efeb8e2 bundledHash=10869efeb8e2
+2026-09-08 05:50:20.117 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.needed appPath=/Applications/Fan Curve.app developerManaged=false status=enabled runningHash=10869efeb8e2 bundledHash=10869efeb8e2 snapshotSchema=-1 expectedSchema=6 schemaMismatch=false
+2026-09-08 05:50:20.117 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.done appPath=/Applications/Fan Curve.app bundledHash=10869efeb8e2 registrationMismatch=false status=enabled
+2026-09-08 05:50:20.120 Df FanCurveAgent[714:19f5] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:50:20.120 Df FanCurveAgent[714:19f5] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:50:20.136 Df FanCurveAgent[714:19f5] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:50:30.154 Df FanCurveAgent[734:1adf] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:50:30.154 Df FanCurveAgent[734:1adf] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:50:30.169 Df FanCurveAgent[734:1adf] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:50:40.188 Df FanCurveAgent[741:1b9a] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:50:40.188 Df FanCurveAgent[741:1b9a] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:50:40.204 Df FanCurveAgent[741:1b9a] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:50:50.074 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.started appPath=/Applications/Fan Curve.app connected=false runningHash=10869efeb8e2 bundledHash=10869efeb8e2
+2026-09-08 05:50:50.120 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.needed appPath=/Applications/Fan Curve.app developerManaged=false status=enabled runningHash=10869efeb8e2 bundledHash=10869efeb8e2 snapshotSchema=-1 expectedSchema=6 schemaMismatch=false
+2026-09-08 05:50:50.120 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.done appPath=/Applications/Fan Curve.app bundledHash=10869efeb8e2 registrationMismatch=false status=enabled
+2026-09-08 05:50:50.123 Df FanCurveAgent[744:1c24] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:50:50.123 Df FanCurveAgent[744:1c24] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:50:50.139 Df FanCurveAgent[744:1c24] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:51:00.156 Df FanCurveAgent[745:1c70] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:00.156 Df FanCurveAgent[745:1c70] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:00.171 Df FanCurveAgent[745:1c70] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:51:10.196 Df FanCurveAgent[758:1cd6] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:10.196 Df FanCurveAgent[758:1cd6] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:10.211 Df FanCurveAgent[758:1cd6] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:51:20.236 Df FanCurveAgent[759:1d0a] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:20.236 Df FanCurveAgent[759:1d0a] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:20.252 Df FanCurveAgent[759:1d0a] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:51:22.075 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.started appPath=/Applications/Fan Curve.app connected=false runningHash=10869efeb8e2 bundledHash=10869efeb8e2
+2026-09-08 05:51:22.119 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.needed appPath=/Applications/Fan Curve.app developerManaged=false status=enabled runningHash=10869efeb8e2 bundledHash=10869efeb8e2 snapshotSchema=-1 expectedSchema=6 schemaMismatch=false
+2026-09-08 05:51:22.119 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.done appPath=/Applications/Fan Curve.app bundledHash=10869efeb8e2 registrationMismatch=false status=enabled
+2026-09-08 05:51:22.122 Df FanCurveAgent[760:1d22] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:22.122 Df FanCurveAgent[760:1d22] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:22.136 Df FanCurveAgent[760:1d22] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:51:32.157 Df FanCurveAgent[766:1d71] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:32.157 Df FanCurveAgent[766:1d71] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:32.173 Df FanCurveAgent[766:1d71] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:51:42.201 Df FanCurveAgent[767:1da3] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:42.201 Df FanCurveAgent[767:1da3] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:42.215 Df FanCurveAgent[767:1da3] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:51:52.238 Df FanCurveAgent[768:1e0c] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:52.238 Df FanCurveAgent[768:1e0c] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:52.254 Df FanCurveAgent[768:1e0c] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:51:54.071 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.started appPath=/Applications/Fan Curve.app connected=false runningHash=10869efeb8e2 bundledHash=10869efeb8e2
+2026-09-08 05:51:54.117 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.needed appPath=/Applications/Fan Curve.app developerManaged=false status=enabled runningHash=10869efeb8e2 bundledHash=10869efeb8e2 snapshotSchema=-1 expectedSchema=6 schemaMismatch=false
+2026-09-08 05:51:54.117 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.done appPath=/Applications/Fan Curve.app bundledHash=10869efeb8e2 registrationMismatch=false status=enabled
+2026-09-08 05:51:54.120 Df FanCurveAgent[769:1e26] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:54.120 Df FanCurveAgent[769:1e26] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:51:54.134 Df FanCurveAgent[769:1e26] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:52:04.158 Df FanCurveAgent[774:1e77] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:04.158 Df FanCurveAgent[774:1e77] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:04.172 Df FanCurveAgent[774:1e77] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:52:14.195 Df FanCurveAgent[775:1ea4] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:14.195 Df FanCurveAgent[775:1ea4] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:14.209 Df FanCurveAgent[775:1ea4] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:52:24.232 Df FanCurveAgent[776:1ef7] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:24.232 Df FanCurveAgent[776:1ef7] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:24.246 Df FanCurveAgent[776:1ef7] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:52:26.071 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.started appPath=/Applications/Fan Curve.app connected=false runningHash=10869efeb8e2 bundledHash=10869efeb8e2
+2026-09-08 05:52:26.114 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.needed appPath=/Applications/Fan Curve.app developerManaged=false status=enabled runningHash=10869efeb8e2 bundledHash=10869efeb8e2 snapshotSchema=-1 expectedSchema=6 schemaMismatch=false
+2026-09-08 05:52:26.114 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.done appPath=/Applications/Fan Curve.app bundledHash=10869efeb8e2 registrationMismatch=false status=enabled
+2026-09-08 05:52:26.117 Df FanCurveAgent[785:1f88] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:26.117 Df FanCurveAgent[785:1f88] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:26.132 Df FanCurveAgent[785:1f88] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:52:36.151 Df FanCurveAgent[795:1feb] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:36.151 Df FanCurveAgent[795:1feb] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:36.166 Df FanCurveAgent[795:1feb] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:52:46.196 Df FanCurveAgent[804:2082] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:46.196 Df FanCurveAgent[804:2082] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:46.238 Df FanCurveAgent[804:2082] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:52:56.258 Df FanCurveAgent[805:20d4] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:56.258 Df FanCurveAgent[805:20d4] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:56.302 Df FanCurveAgent[805:20d4] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:52:58.076 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.started appPath=/Applications/Fan Curve.app connected=false runningHash=10869efeb8e2 bundledHash=10869efeb8e2
+2026-09-08 05:52:58.120 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.needed appPath=/Applications/Fan Curve.app developerManaged=false status=enabled runningHash=10869efeb8e2 bundledHash=10869efeb8e2 snapshotSchema=-1 expectedSchema=6 schemaMismatch=false
+2026-09-08 05:52:58.120 Df FanCurve[355:8a5] [io.goodkind.fan:InstallationState] agent.refresh.done appPath=/Applications/Fan Curve.app bundledHash=10869efeb8e2 registrationMismatch=false status=enabled
+2026-09-08 05:52:58.124 Df FanCurveAgent[806:20f9] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:58.124 Df FanCurveAgent[806:20f9] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:52:58.138 Df FanCurveAgent[806:20f9] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:53:08.160 Df FanCurveAgent[823:218c] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:53:08.160 Df FanCurveAgent[823:218c] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:53:08.172 Df FanCurveAgent[823:218c] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=b11271ab8a93
+2026-09-08 05:53:12.585 Df FanCurve[855:2265] [io.goodkind.fan:InstallationState] agent.refresh.started appPath=/Applications/Fan Curve.app connected=false runningHash=10869efeb8e2 bundledHash=b97b93eaf63d
+2026-09-08 05:53:12.666 Df FanCurve[855:2265] [io.goodkind.fan:InstallationState] agent.refresh.needed appPath=/Applications/Fan Curve.app developerManaged=false status=enabled runningHash=10869efeb8e2 bundledHash=b97b93eaf63d snapshotSchema=-1 expectedSchema=6 schemaMismatch=false
+2026-09-08 05:53:12.666 Df FanCurve[855:2265] [io.goodkind.fan:InstallationState] agent.refresh.done appPath=/Applications/Fan Curve.app bundledHash=b97b93eaf63d registrationMismatch=true status=enabled
+2026-09-08 05:53:12.707 Df FanCurveAgent[863:22dd] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:53:12.707 Df FanCurveAgent[863:22dd] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:53:12.727 Df FanCurveAgent[863:22dd] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=8454d3a7b01f
+2026-09-08 05:53:12.729 E  FanCurveAgent[863:22dd] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.failed operation=automatic_update stage=fan_reset reason=Failed to open AppleSMC recovery=Retry after fan communication recovers
+2026-09-08 05:53:44.541 Df FanCurve[855:2265] [io.goodkind.fan:InstallationState] agent.refresh.started appPath=/Applications/Fan Curve.app connected=true runningHash=10869efeb8e2 bundledHash=b97b93eaf63d
+2026-09-08 05:53:44.578 Df FanCurve[855:2265] [io.goodkind.fan:InstallationState] agent.refresh.needed appPath=/Applications/Fan Curve.app developerManaged=false status=enabled runningHash=10869efeb8e2 bundledHash=b97b93eaf63d snapshotSchema=-1 expectedSchema=6 schemaMismatch=false
+2026-09-08 05:53:44.578 Df FanCurve[855:2265] [io.goodkind.fan:InstallationState] agent.refresh.done appPath=/Applications/Fan Curve.app bundledHash=b97b93eaf63d registrationMismatch=false status=enabled
+2026-09-08 05:53:44.585 Df FanCurveAgent[880:2452] [io.goodkind.fan:FanCurveAgentXPC] agent.xpc.system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:53:44.585 Df FanCurveAgent[880:2452] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.started operation=automatic_update
+2026-09-08 05:53:44.598 Df FanCurveAgent[880:2452] [io.goodkind.fan:SystemHelperArtifactValidator] system_helper.preflight.completed version=0.0.0 build=0 hash=8454d3a7b01f
+2026-09-08 05:53:44.598 E  FanCurveAgent[880:2452] [io.goodkind.fan:SystemHelperLifecycleReconciler] system_helper.reconcile.failed operation=automatic_update stage=fan_reset reason=Failed to open AppleSMC recovery=Retry after fan communication recovers

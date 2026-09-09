@@ -36,8 +36,6 @@ private struct SetupStepContent {
   let iconName: String
   let title: String
   let message: String
-  let primaryActionTitle: String?
-  let pendingActionTitle: String?
   let approvalSteps: [String]
 
   static func make(step: InstallationState.Step) -> SetupStepContent {
@@ -62,8 +60,6 @@ private struct SetupStepContent {
       iconName: "hourglass",
       title: L10n.tr("Checking setup"),
       message: L10n.tr("Fan Curve is checking the system helper and background agent."),
-      primaryActionTitle: nil,
-      pendingActionTitle: nil,
       approvalSteps: []
     )
   }
@@ -77,8 +73,6 @@ private struct SetupStepContent {
           + "speed commands. macOS requires your approval before an app can install this "
           + "kind of helper."
       ),
-      primaryActionTitle: nil,
-      pendingActionTitle: nil,
       approvalSteps: []
     )
   }
@@ -91,8 +85,6 @@ private struct SetupStepContent {
         "System Settings is waiting for you to allow the Fan Curve helper. Open Login "
           + "Items & Extensions, turn on Fan Curve, then return here."
       ),
-      primaryActionTitle: nil,
-      pendingActionTitle: nil,
       approvalSteps: [
         L10n.tr("Click Open System Settings."),
         L10n.tr("In Login Items & Extensions, turn on Fan Curve."),
@@ -109,8 +101,6 @@ private struct SetupStepContent {
         "Fan Curve uses a background agent to keep applying your fan curve when the app "
           + "is closed."
       ),
-      primaryActionTitle: L10n.tr("Enable Background Control"),
-      pendingActionTitle: L10n.tr("Enabling Background Control"),
       approvalSteps: []
     )
   }
@@ -123,8 +113,6 @@ private struct SetupStepContent {
         "Allow Fan Curve to run in the background so your curve can stay active after "
           + "login."
       ),
-      primaryActionTitle: L10n.tr("Open System Settings"),
-      pendingActionTitle: L10n.tr("Opening System Settings"),
       approvalSteps: [
         L10n.tr("Click Open System Settings."),
         L10n.tr("In Login Items & Extensions, turn on Fan Curve."),
@@ -138,8 +126,6 @@ private struct SetupStepContent {
       iconName: "checkmark.circle",
       title: L10n.tr("All set"),
       message: L10n.tr("Fan Curve is ready."),
-      primaryActionTitle: nil,
-      pendingActionTitle: nil,
       approvalSteps: []
     )
   }
@@ -267,6 +253,12 @@ struct OnboardingView: View {
       .keyboardShortcut(.defaultAction)
       .disabled(isRegistering)
       .accessibilityIdentifier(AppAccessibilityIdentifier.Setup.action)
+    } else if let status = state.setupStatusText {
+      HStack {
+        ProgressView()
+          .controlSize(.small)
+        Text(status)
+      }
     } else if state.step == .checking {
       ProgressView()
         .controlSize(.small)
@@ -286,57 +278,22 @@ struct OnboardingView: View {
   }
 
   private var primaryAction: (String, () -> Void)? {
-    switch state.step {
-    case .helperMissing, .helperAwaitingApproval:
-      guard let actionTitle = helperPresentation.actionTitle else { return nil }
-      return (actionTitle, { performSystemHelperAction(helperPresentation.action) })
-    case .agentMissing:
-      return (
-        content.primaryActionTitle ?? L10n.tr("Enable Background Control"),
-        { state.registerAgent() }
-      )
-    case .agentAwaitingApproval:
-      return (
-        content.primaryActionTitle ?? L10n.tr("Open System Settings"),
-        { state.openAgentLoginItemsSettings() }
-      )
-    case .ready, .checking:
-      return nil
-    }
-  }
-
-  private func performSystemHelperAction(_ action: SystemHelperPresentation.Action?) {
-    switch action {
-    case .repair:
-      onboardingViewLog.notice("onboarding.helper_register.tapped owner=agent-xpc")
-      state.installOrRepairHelper(agentClient: agentClient)
-    case .openSystemSettings:
-      Task {
-        do {
-          try await agentClient.openSystemSettings()
-        } catch {
-          onboardingViewLog.notice(
-            "onboarding.login_items_settings.agent_command_failed error=\(error.localizedDescription, privacy: .public) recovery=show-agent-command-error"
-          )
-          await MainActor.run {
-            state.lastError = error.localizedDescription
-          }
-        }
+    guard let actionTitle = state.setupActionTitle else { return nil }
+    return (
+      actionTitle,
+      {
+        onboardingViewLog.notice("onboarding.setup.tapped")
+        state.performSetupAction(agentClient: agentClient)
       }
-    case nil:
-      return
-    }
+    )
   }
 
   private var isRegistering: Bool {
-    state.isRegisteringAgent || helperPresentation.isBusy
+    state.setupActionIsBusy
   }
 
   private var installingLabel: String {
-    if isHelperStep {
-      return helperPresentation.actionTitle ?? L10n.tr("Working")
-    }
-    return content.pendingActionTitle ?? L10n.tr("Working")
+    state.setupActionTitle ?? L10n.tr("Working")
   }
 
   private var displayTitle: String {
