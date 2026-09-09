@@ -65,7 +65,7 @@ extension InstallationState {
     case .connectingAgent, .installingHelper, .verifyingHelper, .failedHelper:
       return context.agentConnected
         && !context.runningHash.isEmpty
-        && context.runningHash != bundledHash
+        && (context.runningHash != bundledHash || context.snapshotSchemaMismatch)
         && !agentStartupGracePeriodIsActive()
     }
   }
@@ -177,7 +177,7 @@ extension InstallationState {
       let result = registerAgentService()
       isRegisteringAgent = false
       let observedStatus = currentAgentStatus()
-      if let error = result.errorDescription, observedStatus != .requiresApproval {
+      if let error = result.errorRequiringRetry(status: observedStatus) {
         failSetup(error)
         return
       }
@@ -351,7 +351,7 @@ extension InstallationState {
     agentDisconnectedSince = Date()
     let result = refreshRegisteredAgent()
     agentStatus = currentAgentStatus()
-    if let error = result.errorDescription, agentStatus != .requiresApproval {
+    if let error = result.errorRequiringRetry(status: agentStatus) {
       failSetup(error)
       guidedSetupLog.error(
         "agent.restart.failed reason=\(error, privacy: .public) recovery=explicit-retry")

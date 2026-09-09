@@ -195,7 +195,7 @@ final class InstallationState: ObservableObject {
     }
     let result = registerAgentService()
     agentStatus = currentAgentStatus()
-    if let errorDescription = result.errorDescription, agentStatus != .requiresApproval {
+    if let errorDescription = result.errorRequiringRetry(status: agentStatus) {
       failSetup(errorDescription)
       return
     }
@@ -419,7 +419,8 @@ extension InstallationState {
         statusBefore: statusBefore,
         statusAfterUnregister: nil,
         statusAfterRegister: nil,
-        errorDescription: error.localizedDescription
+        errorDescription: error.localizedDescription,
+        failureReason: ManagedServiceFailureReason(error: error)
       )
     }
   }
@@ -449,9 +450,10 @@ extension InstallationState {
 
   func refreshRegisteredAgent() -> AgentServiceMutationResult {
     let statusBefore = backgroundAgentService.status
+    var statusAfterUnregister: ManagedServiceStatus?
     do {
       try backgroundAgentService.unregister()
-      let statusAfterUnregister = backgroundAgentService.status
+      statusAfterUnregister = backgroundAgentService.status
       try backgroundAgentService.register()
       return AgentServiceMutationResult(
         statusBefore: statusBefore,
@@ -465,9 +467,10 @@ extension InstallationState {
       )
       return AgentServiceMutationResult(
         statusBefore: statusBefore,
-        statusAfterUnregister: nil,
+        statusAfterUnregister: statusAfterUnregister,
         statusAfterRegister: nil,
-        errorDescription: error.localizedDescription
+        errorDescription: error.localizedDescription,
+        failureReason: statusAfterUnregister.map { _ in ManagedServiceFailureReason(error: error) }
       )
     }
   }

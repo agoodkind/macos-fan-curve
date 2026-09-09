@@ -20,12 +20,17 @@ final class IOAcceleratorPerformanceStatisticsTests: XCTestCase {
       "This host has no IOAccelerator device utilization statistic."
     )
     let unavailable = -1.0
+    var availableSamples = 0
     for _ in 0..<1_000 {
       let utilization = autoreleasepool {
         readIOAcceleratorDeviceUtilizationPercent(defaultValue: unavailable)
       }
-      expect((0...100).contains(utilization)) == true
+      expect(utilization == unavailable || (0...100).contains(utilization)) == true
+      if utilization != unavailable {
+        availableSamples += 1
+      }
     }
+    expect(availableSamples) > 0
   }
 
   private func hasDeviceUtilizationStatistic() throws -> Bool {

@@ -65,7 +65,8 @@ enum GuidedSetupTestError: LocalizedError {
 final class GuidedBackgroundAgentService: BackgroundAgentServiceManaging {
   var status: ManagedServiceStatus = .notFound
   var registrationStatus: ManagedServiceStatus = .enabled
-  var registerError: GuidedSetupTestError?
+  var registerError: Error?
+  var unregisterError: Error?
   var registerCount = 0
   var settingsOpenCount = 0
   var operations: [String] = []
@@ -78,8 +79,9 @@ final class GuidedBackgroundAgentService: BackgroundAgentServiceManaging {
     if let registerError { throw registerError }
   }
 
-  func unregister() {
+  func unregister() throws {
     operations.append("unregister")
+    if let unregisterError { throw unregisterError }
     status = .notRegistered
     unregistrationFinished?.fulfill()
   }
