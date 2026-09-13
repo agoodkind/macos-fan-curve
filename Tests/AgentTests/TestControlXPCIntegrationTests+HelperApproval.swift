@@ -85,6 +85,7 @@ extension TestControlXPCIntegrationTests {
     let harness = try ControlledXPCHarness(lifecycleFixture: fixture)
     defer { harness.stop() }
     try await harness.startAndWaitUntilConnected()
+    expect(harness.client.runtimeStateGeneration) == harness.client.connectionGeneration
     _ = await harness.reconcile(.startup)
     try await harness.client.refreshCurrentState()
     expect(harness.client.runtimeState.systemHelper) == .approvalRequired
@@ -178,6 +179,7 @@ extension TestControlXPCIntegrationTests {
     harness.invalidateMostRecentClientConnection()
     try await harness.waitForReplacementConnection()
     expect(harness.client.connectionGeneration) > retiringGeneration
+    expect(harness.client.runtimeStateGeneration) == harness.client.connectionGeneration
     expect(harness.controllerIsPaused) == true
     let heartbeatIdentityExists =
       harness.defaults.object(forKey: SharedConfigKeys.agentExecutableHash) != nil

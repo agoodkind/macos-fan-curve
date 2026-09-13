@@ -22,6 +22,7 @@ enum AppAccessibilityIdentifier {
 
   enum Setup {
     static let root = "setup.root"
+    static let progress = "setup.progress"
     static let title = "setup.title"
     static let message = "setup.message"
     static let approvalGuide = "setup.approval-guide"

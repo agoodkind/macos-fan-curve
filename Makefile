@@ -152,6 +152,7 @@ app: build
 # runs that copy for debugging; the canonical install lives at /Applications.
 run:
 	env -u SWIFT_BUILD_CMD -u SWIFT_MK_FRESH_CONFIG_KEY $(MAKE) CONFIGURATION=Debug build
+	@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
 	@Scripts/DeployApp.swift \
 		"$(RUN_APP_SOURCE)" \
 		"$(INSTALL_APP_DEST)" \
@@ -159,7 +160,6 @@ run:
 		"$(CODE_SIGN_IDENTITY)" \
 		"$(DEVELOPMENT_TEAM)"
 	@Scripts/TerminateAgentInstances.swift "$(AGENT_LABEL)"
-	@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
 	@open "$(INSTALL_APP_DEST)"
 
 # Install the Release build to the canonical /Applications location.

@@ -231,9 +231,9 @@ do {
 
     let requiredRecipeTokenLists = [
         requiredDebugBuildTokens,
+        ["Scripts/TerminateAppInstances.swift", "$(APP_BUNDLE_ID)"],
         requiredDeploymentTokens,
         ["Scripts/TerminateAgentInstances.swift", "$(AGENT_LABEL)"],
-        ["Scripts/TerminateAppInstances.swift", "$(APP_BUNDLE_ID)"],
         ["open", "$(INSTALL_APP_DEST)"],
     ]
     guard recipeTokenLists == requiredRecipeTokenLists else {
