@@ -28,6 +28,7 @@ func fixture(
 
     run:
     \(runCommand)
+    \t@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
     \t@Scripts/DeployApp.swift \(continuation)
     \t\t"\(deploySource)" \(continuation)
     \t\t"$(INSTALL_APP_DEST)" \(continuation)
@@ -35,7 +36,6 @@ func fixture(
     \t\t"$(CODE_SIGN_IDENTITY)" \(continuation)
     \t\t"$(DEVELOPMENT_TEAM)"
     \(terminateAgentLine)
-    \t@Scripts/TerminateAppInstances.swift "$(APP_BUNDLE_ID)"
     \t@open "$(INSTALL_APP_DEST)"
 
     next-target:
