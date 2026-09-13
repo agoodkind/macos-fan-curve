@@ -19,13 +19,13 @@ extension SensorDashboardSidebar {
     var body: some View {
       VStack(spacing: SensorDashboardSidebarConstants.controlsVStackSpacing) {
         extendedRangeToggle(
-          title: "Enable Overdrive",
+          title: "Overdrive",
           warning: overdriveWarningText,
           isOn: overdriveBinding,
           accessibilityIdentifier: AppAccessibilityIdentifier.Dashboard.overdrive
         )
         extendedRangeToggle(
-          title: "Enable Underdrive",
+          title: "Underdrive",
           warning: underdriveWarningText,
           isOn: underdriveBinding,
           accessibilityIdentifier: AppAccessibilityIdentifier.Dashboard.underdrive

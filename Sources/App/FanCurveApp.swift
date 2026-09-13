@@ -21,7 +21,7 @@ private func terminateAfterPrintingReleaseVersionIfRequested() {
 
 private enum WindowConstants {
   static let mainWindowWidth: CGFloat = 980
-  static let mainWindowHeight: CGFloat = 560
+  static let mainWindowHeight: CGFloat = 576
 
   static let aboutWindowMinWidth: CGFloat = 560
   static let aboutWindowIdealWidth: CGFloat = 620
