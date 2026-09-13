@@ -44,7 +44,7 @@ extension InstallationState {
   private func resolveBackgroundControlProgress(
     agentClient: any InstallationAgentClient
   ) -> BackgroundControlProgress? {
-    guard canShowBackgroundControlProgress(agentClient: agentClient) else { return nil }
+    guard canShowBackgroundControlProgress() else { return nil }
     let expectedHash = bundledAgentHash()
     let hashKnown = !agentExecutableHash.isEmpty && agentExecutableHash != "n/a"
     let hashMismatch = hashKnown && agentExecutableHash != expectedHash
@@ -95,14 +95,11 @@ extension InstallationState {
     return nil
   }
 
-  private func canShowBackgroundControlProgress(
-    agentClient: any InstallationAgentClient
-  ) -> Bool {
+  private func canShowBackgroundControlProgress() -> Bool {
     guard lastError == nil, !setupProgress.isFailed, setupProgress != .cancelled else {
       return false
     }
     guard agentStatus == .enabled else { return false }
-    if case .failed = agentClient.connectionState { return false }
     switch systemHelperState {
     case .approvalRequired, .registrationNeedsRepair, .unavailable, .repairFailed:
       return false
