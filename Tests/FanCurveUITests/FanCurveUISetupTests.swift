@@ -188,7 +188,13 @@ final class FanCurveUISetupTests: XCTestCase {
         helperReachable: false
       )
     )
-    try verifySetup(driver, title: "Approval Required")
+    try verifySetup(driver, title: "Allow the System Helper")
+    try driver.waitForLabel(
+      AppAccessibilityIdentifier.Setup.message,
+      equals:
+        "System Settings is waiting for you to allow the Fan Curve helper. Open Login "
+        + "Items & Extensions, turn on Fan Curve, then return here."
+    )
     _ = try driver.waitForElement(AppAccessibilityIdentifier.Setup.approvalGuide)
     try driver.tap(AppAccessibilityIdentifier.Setup.action)
     _ = try driver.waitForPayload(

@@ -313,7 +313,7 @@ struct OnboardingView: View {
         return L10n.tr("Updating background control")
       }
     }
-    return isHelperStep ? helperPresentation.status : content.title
+    return usesHelperPresentation ? helperPresentation.status : content.title
   }
 
   private var displayMessage: String {
@@ -327,14 +327,14 @@ struct OnboardingView: View {
         )
       }
     }
-    if isHelperStep, let detail = helperPresentation.detail {
+    if usesHelperPresentation, let detail = helperPresentation.detail {
       return detail
     }
     return content.message
   }
 
-  private var isHelperStep: Bool {
-    state.step == .helperMissing || state.step == .helperAwaitingApproval
+  private var usesHelperPresentation: Bool {
+    state.step == .helperMissing
   }
 
   private var helperPresentation: SystemHelperPresentation {
