@@ -53,8 +53,13 @@ final class InstallationState: ObservableObject {
   @Published var isRegisteringHelper = false
   @Published var isOpeningSetupSettings = false
   @Published var setupProgress: GuidedSetupProgress
+  @Published var backgroundControlProgress: BackgroundControlProgress? = .connecting
   let setupDefaults: UserDefaults
   var setupTask: Task<Void, Never>?
+  var backgroundControlRetiringGeneration: UInt64?
+  var backgroundControlObservedGeneration: UInt64?
+  var backgroundControlSampleWaitStartedAt: Date?
+  var backgroundControlUpdateStartedAt: Date?
 
   private var timer: Timer?
   var isReadingApprovalState = false
@@ -106,50 +111,9 @@ final class InstallationState: ObservableObject {
     if setupProgress.isFailed {
       lastError = setupDefaults.string(forKey: SharedConfigKeys.guidedSetupFailure)
     }
-  }
-
-  /// Convenience computed helpers for the Settings UI.
-  var agentEnabled: Bool {
-    agentStatus == .enabled
-  }
-
-  /// One reading of every signal that speaks to the Agent answering.
-  var agentPresenceReading: AgentPresenceResolver.Reading {
-    AgentPresenceResolver.Reading(
-      registered: agentEnabled,
-      connected: agentConnected,
-      heartbeatAge: heartbeatAgeAtObservation
-    )
-  }
-
-  /// Age of the heartbeat measured at the moment it was read, never at render
-  /// time. A render-time measurement grows while the app is not polling, which
-  /// aged a healthy Agent into looking dead.
-  private var heartbeatAgeAtObservation: TimeInterval? {
-    guard agentLastTickEpoch > 0, let lastTickObservedAt else { return nil }
-    return lastTickObservedAt.timeIntervalSince(
-      Date(timeIntervalSince1970: agentLastTickEpoch)
-    )
-  }
-
-  var agentLivenessEvidence: AgentLivenessEvidence {
-    AgentPresenceResolver.evidence(for: agentPresenceReading)
-  }
-
-  var agentPresence: AgentPresence {
-    AgentPresenceResolver.presence(for: agentPresenceReading)
-  }
-
-  /// True when the Agent is registered and something proves it is answering.
-  /// "Registered but silent" means the process died or is hung, which is what
-  /// the user sees as "fan control stopped".
-  var agentLive: Bool {
-    agentLivenessEvidence != .unproven
-  }
-
-  var agentSnapshotCompatible: Bool {
-    guard let agentSnapshotSchemaVersion else { return true }
-    return agentSnapshotSchemaVersion == AgentSnapshot.currentSchemaVersion
+    if setupProgress.isFailed || setupProgress == .cancelled {
+      backgroundControlProgress = nil
+    }
   }
 
   func startMonitoring(agentClient: any InstallationAgentClient) {
@@ -195,6 +159,7 @@ final class InstallationState: ObservableObject {
     }
     let result = registerAgentService()
     agentStatus = currentAgentStatus()
+    if agentStatus == .requiresApproval { setBackgroundControlProgress(nil) }
     if let errorDescription = result.errorRequiringRetry(status: agentStatus) {
       failSetup(errorDescription)
       return
@@ -261,7 +226,10 @@ final class InstallationState: ObservableObject {
 
   /// Probes current installation status.
   func refresh(agentClient: any InstallationAgentClient) {
-    defer { continueSetup(agentClient: agentClient) }
+    defer {
+      continueSetup(agentClient: agentClient)
+      refreshBackgroundControlProgress(agentClient: agentClient)
+    }
     let currentAgentServiceStatus = currentAgentStatus()
     let suite = setupDefaults
     let helperOK = agentClient.helperReachable
@@ -341,6 +309,7 @@ final class InstallationState: ObservableObject {
     )
     guard refreshAgentIfNeeded(context) else { return }
     retiringAgentConnectionGeneration = agentClient.connectionGeneration
+    backgroundControlRetiringGeneration = agentClient.connectionGeneration
     log.notice(
       "agent.refresh.connection.retiring generation=\(agentClient.connectionGeneration, privacy: .public) recovery=wait-for-replacement-connection"
     )
@@ -395,6 +364,42 @@ final class InstallationState: ObservableObject {
 }
 
 extension InstallationState {
+  var agentEnabled: Bool {
+    agentStatus == .enabled
+  }
+
+  var agentPresenceReading: AgentPresenceResolver.Reading {
+    AgentPresenceResolver.Reading(
+      registered: agentEnabled,
+      connected: agentConnected,
+      heartbeatAge: heartbeatAgeAtObservation
+    )
+  }
+
+  private var heartbeatAgeAtObservation: TimeInterval? {
+    guard agentLastTickEpoch > 0, let lastTickObservedAt else { return nil }
+    return lastTickObservedAt.timeIntervalSince(
+      Date(timeIntervalSince1970: agentLastTickEpoch)
+    )
+  }
+
+  var agentLivenessEvidence: AgentLivenessEvidence {
+    AgentPresenceResolver.evidence(for: agentPresenceReading)
+  }
+
+  var agentPresence: AgentPresence {
+    AgentPresenceResolver.presence(for: agentPresenceReading)
+  }
+
+  var agentLive: Bool {
+    agentLivenessEvidence != .unproven
+  }
+
+  var agentSnapshotCompatible: Bool {
+    guard let agentSnapshotSchemaVersion else { return true }
+    return agentSnapshotSchemaVersion == AgentSnapshot.currentSchemaVersion
+  }
+
   func registerAgentService() -> AgentServiceMutationResult {
     let statusBefore = backgroundAgentService.status
     let legacyRepair = legacyLaunchAgentRepair()

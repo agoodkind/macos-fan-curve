@@ -38,6 +38,7 @@ enum GuidedSetupProgress: String {
 protocol InstallationAgentClient: Sendable {
   var connectionState: FanCurveAgentConnectionState { get }
   var connectionGeneration: UInt64 { get }
+  var runtimeStateGeneration: UInt64? { get }
   var runtimeState: RuntimeState { get }
   var helperReachable: Bool { get }
 
@@ -110,6 +111,7 @@ extension InstallationState {
     if agentConnected, systemHelperState == .approvalRequired {
       return "Open System Settings"
     }
+    if backgroundControlProgress != nil { return nil }
     switch setupProgress {
     case .connectingAgent, .installingHelper, .verifyingHelper:
       return nil
@@ -328,6 +330,11 @@ extension InstallationState {
     guard progress != setupProgress else { return }
     let previous = setupProgress
     setupProgress = progress
+    if progress.isFailed || progress == .cancelled {
+      setBackgroundControlProgress(nil)
+    } else if progress == .connectingAgent {
+      setBackgroundControlProgress(.connecting)
+    }
     setupDefaults.set(progress.rawValue, forKey: SharedConfigKeys.guidedSetupProgress)
     guidedSetupLog.notice(
       "setup.stage.changed from=\(previous.rawValue, privacy: .public) to=\(progress.rawValue, privacy: .public)"
@@ -351,6 +358,7 @@ extension InstallationState {
     agentDisconnectedSince = Date()
     let result = refreshRegisteredAgent()
     agentStatus = currentAgentStatus()
+    if agentStatus == .requiresApproval { setBackgroundControlProgress(nil) }
     if let error = result.errorRequiringRetry(status: agentStatus) {
       failSetup(error)
       guidedSetupLog.error(

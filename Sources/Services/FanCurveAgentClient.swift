@@ -19,6 +19,7 @@ enum FanCurveAgentClientConstants {
 final class FanCurveAgentClient: NSObject, ObservableObject, FanCurveAgentXPCEventProtocol {
   @Published private(set) var connectionState: FanCurveAgentConnectionState = .disconnected
   @Published private(set) var runtimeState: RuntimeState = .fromSharedDefaultsSnapshot(nil)
+  @Published private(set) var runtimeStateGeneration: UInt64?
   @Published private(set) var snapshot: AgentSnapshot?
   @Published private(set) var lastError: String?
 
@@ -200,6 +201,7 @@ extension FanCurveAgentClient {
   }
 
   func refreshCurrentState() async throws {
+    let requestedGeneration = connectionGeneration
     let stateData = try await performRequest(.currentState)
     guard let stateData else {
       throw FanCurveAgentClientError.invalidReply
@@ -214,7 +216,14 @@ extension FanCurveAgentClient {
       )
       throw error
     }
+    guard connectionGeneration == requestedGeneration, connection != nil else {
+      throw FanCurveAgentClientError.connectionUnavailable
+    }
     apply(runtimeState: state)
+    runtimeStateGeneration = requestedGeneration
+    fanCurveAgentClientLog.debug(
+      "agent_client.current_state.accepted generation=\(requestedGeneration, privacy: .public)"
+    )
   }
 
   func send(_ command: AgentCommand) async throws {

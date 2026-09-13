@@ -95,6 +95,8 @@ final class GuidedBackgroundAgentService: BackgroundAgentServiceManaging {
 final class GuidedAgentClient: InstallationAgentClient {
   var connectionState: FanCurveAgentConnectionState = .disconnected
   var connectionGeneration: UInt64 = 0
+  var runtimeStateGeneration: UInt64?
+  var snapshot: AgentSnapshot?
   var helperState: SystemHelperRuntimeState = .checking
   var installedState: SystemHelperRuntimeState = .approvalRequired
   var installError: GuidedSetupTestError?
@@ -110,7 +112,7 @@ final class GuidedAgentClient: InstallationAgentClient {
   private var installationContinuation: CheckedContinuation<Void, Never>?
 
   var runtimeState: RuntimeState {
-    .fromSharedDefaultsSnapshot(nil, systemHelper: helperState)
+    .fromSharedDefaultsSnapshot(snapshot, systemHelper: helperState)
   }
 
   var helperReachable: Bool { helperState.permitsFanControl }

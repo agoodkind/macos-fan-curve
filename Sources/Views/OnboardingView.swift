@@ -171,9 +171,15 @@ struct OnboardingView: View {
         .frame(
           width: OnboardingConstants.iconCircleSize,
           height: OnboardingConstants.iconCircleSize)
-      Image(systemName: content.iconName)
-        .font(.system(size: OnboardingConstants.iconFontSize, weight: .light))
-        .foregroundStyle(Color.accentColor)
+      if state.backgroundControlProgress != nil {
+        ProgressView()
+          .controlSize(.large)
+          .accessibilityIdentifier(AppAccessibilityIdentifier.Setup.progress)
+      } else {
+        Image(systemName: content.iconName)
+          .font(.system(size: OnboardingConstants.iconFontSize, weight: .light))
+          .foregroundStyle(Color.accentColor)
+      }
     }
   }
 
@@ -236,7 +242,9 @@ struct OnboardingView: View {
 
   @ViewBuilder
   private var action: some View {
-    if let (label, handler) = primaryAction {
+    if state.backgroundControlProgress != nil {
+      EmptyView()
+    } else if let (label, handler) = primaryAction {
       Button(action: handler) {
         HStack(spacing: OnboardingConstants.buttonLabelSpacing) {
           if isRegistering {
@@ -297,10 +305,28 @@ struct OnboardingView: View {
   }
 
   private var displayTitle: String {
-    isHelperStep ? helperPresentation.status : content.title
+    if let progress = state.backgroundControlProgress {
+      switch progress {
+      case .connecting:
+        return L10n.tr("Connecting to background control")
+      case .updating:
+        return L10n.tr("Updating background control")
+      }
+    }
+    return isHelperStep ? helperPresentation.status : content.title
   }
 
   private var displayMessage: String {
+    if let progress = state.backgroundControlProgress {
+      switch progress {
+      case .connecting:
+        return L10n.tr("Fan Curve is connecting to the background agent.")
+      case .updating:
+        return L10n.tr(
+          "Fan Curve is updating its background components. Control will resume automatically."
+        )
+      }
+    }
     if isHelperStep, let detail = helperPresentation.detail {
       return detail
     }

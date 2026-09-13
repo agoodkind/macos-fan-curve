@@ -305,6 +305,12 @@ extension FanCurveUISetupTests {
       )
     )
     try driver.launch()
+    _ = try driver.waitForElement(AppAccessibilityIdentifier.Setup.progress)
+    try driver.waitForLabel(
+      AppAccessibilityIdentifier.Setup.title,
+      equals: "Updating background control"
+    )
+    try driver.waitForElementToDisappear(AppAccessibilityIdentifier.Dashboard.root)
     try driver.tapApplicationMenuCommand(
       AppAccessibilityIdentifier.Application.settingsCommand
     )
@@ -354,5 +360,6 @@ extension FanCurveUISetupTests {
     try driver.waitForElementToDisappear(
       AppAccessibilityIdentifier.Settings.helperProgress
     )
+    _ = try driver.waitForElement(AppAccessibilityIdentifier.Dashboard.root)
   }
 }

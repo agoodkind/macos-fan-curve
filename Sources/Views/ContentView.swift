@@ -185,6 +185,7 @@ struct ContentView: View {
   }
 
   private var showsDashboardArea: Bool {
+    guard installState.backgroundControlProgress == nil else { return false }
     switch installState.step {
     case .checking, .agentMissing, .agentAwaitingApproval, .helperAwaitingApproval:
       return false
