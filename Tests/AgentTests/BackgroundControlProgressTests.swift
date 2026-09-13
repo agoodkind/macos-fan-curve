@@ -138,6 +138,21 @@ final class BackgroundControlProgressTests: XCTestCase {
     expect(state.setupProgress) == .cancelled
   }
 
+  func testRetryingAgentConnectionKeepsStartupProgressVisible() throws {
+    let fixture = try GuidedSetupFixture()
+    defer { fixture.cleanUp() }
+    fixture.service.status = .enabled
+    fixture.client.connectionState = .failed("Agent is starting")
+    fixture.client.helperState = .running(active: fixture.identity)
+    let state = fixture.makeState()
+    state.transitionSetup(to: .connectingAgent)
+
+    state.refreshOnce(agentClient: fixture.client)
+
+    expect(state.backgroundControlProgress) == .connecting
+    expect(state.setupActionTitle) == nil
+  }
+
   func testMissingFirstSampleStopsConnectingAfterExistingStartupGrace() throws {
     let fixture = try readyServiceFixture()
     defer { fixture.cleanUp() }
