@@ -391,10 +391,12 @@ extension FanCurveAgentClient {
     }
   }
 
+  // The agent can send runtime-state events before the initial current-state reply.
+  // Only the connection task sets `connectionState` to `.connected`, after it accepts
+  // that reply.
   private func apply(runtimeState state: RuntimeState) {
     runtimeState = state
     snapshot = state.snapshot
-    connectionState = .connected
     lastError = nil
     fanCurveAgentClientLog.debug("agent_client.state.updated")
   }
