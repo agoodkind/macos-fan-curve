@@ -103,6 +103,27 @@ extension TestControlXPCIntegrationTests {
       == ControlledXPCTestValues.initialConnectionCount
   }
 
+  func testRuntimeEventBeforeInitialStateKeepsClientConnecting() async throws {
+    let harness = try ControlledXPCHarness()
+    defer { harness.stop() }
+    harness.suspendRequestDispatch()
+    harness.start()
+    try await harness.waitForPendingRequestDispatch()
+    harness.resumeNextRequestDispatch()
+    try await harness.waitForAcceptedRuntimeEventCount(
+      ControlledXPCTestValues.initialRuntimeEventCount
+    )
+    try await harness.waitForPendingRequestDispatch()
+
+    expect(harness.client.connectionState) == .connecting
+    expect(harness.client.runtimeStateGeneration).to(beNil())
+
+    harness.resumeNextRequestDispatch()
+    try await harness.waitUntilConnected()
+
+    expect(harness.client.runtimeStateGeneration) == harness.client.connectionGeneration
+  }
+
   func testCancelledCommandBeforeDispatchDoesNotReachAgentHardware() async throws {
     let harness = try ControlledXPCHarness()
     defer { harness.stop() }

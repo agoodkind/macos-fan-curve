@@ -25,6 +25,7 @@ enum ControlledXPCTestValues {
   static let replacementConnectionCount = 2
   static let registeredClientCount = 2
   static let eventCountIncrement = 1
+  static let initialRuntimeEventCount = 1
   static let leftActualRPM: Float = 2_100
   static let leftTargetRPM: Float = 2_200
   static let leftMinimumRPM: Float = 1_200
