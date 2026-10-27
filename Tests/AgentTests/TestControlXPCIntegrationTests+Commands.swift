@@ -116,7 +116,7 @@ extension TestControlXPCIntegrationTests {
     try await harness.waitForPendingRequestDispatch()
 
     expect(harness.client.connectionState) == .connecting
-    expect(harness.client.runtimeStateGeneration).to(beNil())
+    expect(harness.client.runtimeStateGeneration) == nil
 
     harness.resumeNextRequestDispatch()
     try await harness.waitUntilConnected()
