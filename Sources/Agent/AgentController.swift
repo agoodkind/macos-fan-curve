@@ -34,6 +34,8 @@ final class AgentController: @unchecked Sendable {
   let loadSampler = CPULoadSampler()
   let eventWriter = EventArtifactWriter()
   let tickCoordinator = TickCoordinator()
+  let tickTaskLock = NSLock()
+  var tickTasks: [UUID: Task<Void, Never>] = [:]
   private let lifecycleLock = NSLock()
   private let systemHelperStateLock = NSLock()
   lazy var heartbeatScheduler = TickHeartbeatScheduler(interval: heartbeatInterval) { [weak self] in
@@ -278,11 +280,18 @@ final class AgentController: @unchecked Sendable {
   }
 
   func requestTickIfRunning() {
-    guard lifecycleLock.withLock({ lifecycleRunning }) else {
+    // Under lifecycleLock, the caller either stores its task in tickTasks before
+    // pause() returns or reads lifecycleRunning as false and does not start a tick.
+    // waitUntilTickIdle() awaits any task stored before pause() returns.
+    let requested = lifecycleLock.withLock {
+      guard lifecycleRunning else { return false }
+      requestTick()
+      return true
+    }
+    guard requested else {
       agentControllerLog.debug("agent.tick.skipped reason=lifecycle-paused")
       return
     }
-    requestTick()
   }
 
   private func performOnMainThread(_ operation: @escaping @Sendable () -> Void) {

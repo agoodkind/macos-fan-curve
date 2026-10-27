@@ -14,9 +14,9 @@ import XCTest
 final class AgentUpgradeRefreshTests: XCTestCase {
   func testConnectedOutdatedAgentRefreshesRegistration() throws {
     let service = RecordingBackgroundAgentService()
-    let suiteName = "AgentUpgradeRefreshTests.\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let scratch = try ScratchDefaults(label: "AgentUpgradeRefreshTests")
+    defer { scratch.remove() }
+    let defaults = scratch.defaults
     let bundledHash = { "bundled-agent" }
     let state = InstallationState(
       backgroundAgentService: service,
@@ -43,9 +43,9 @@ final class AgentUpgradeRefreshTests: XCTestCase {
 
   func testUnresponsiveAgentWithMatchingHashRefreshesRegistration() throws {
     let service = RecordingBackgroundAgentService()
-    let suiteName = "AgentUpgradeRefreshTests.\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let scratch = try ScratchDefaults(label: "AgentUpgradeRefreshTests")
+    defer { scratch.remove() }
+    let defaults = scratch.defaults
     let bundledHash = { "bundled-agent" }
     let state = InstallationState(
       backgroundAgentService: service,
@@ -71,9 +71,9 @@ final class AgentUpgradeRefreshTests: XCTestCase {
 
   func testConnectedAgentWithoutHeartbeatHashKeepsRegistration() throws {
     let service = RecordingBackgroundAgentService()
-    let suiteName = "AgentUpgradeRefreshTests.\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let scratch = try ScratchDefaults(label: "AgentUpgradeRefreshTests")
+    defer { scratch.remove() }
+    let defaults = scratch.defaults
     let bundledHash = { "bundled-agent" }
     let state = InstallationState(
       backgroundAgentService: service,
@@ -98,9 +98,9 @@ final class AgentUpgradeRefreshTests: XCTestCase {
 
   func testDisconnectedAgentInsideGraceKeepsRegistration() throws {
     let service = RecordingBackgroundAgentService()
-    let suiteName = "AgentUpgradeRefreshTests.\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let scratch = try ScratchDefaults(label: "AgentUpgradeRefreshTests")
+    defer { scratch.remove() }
+    let defaults = scratch.defaults
     let bundledHash = { "bundled-agent" }
     let state = InstallationState(
       backgroundAgentService: service,
@@ -129,9 +129,9 @@ final class AgentUpgradeRefreshTests: XCTestCase {
     ]
     for progress in pendingStages {
       let service = RecordingBackgroundAgentService()
-      let suiteName = "AgentUpgradeRefreshTests.\(UUID().uuidString)"
-      let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-      defer { defaults.removePersistentDomain(forName: suiteName) }
+      let scratch = try ScratchDefaults(label: "AgentUpgradeRefreshTests")
+      defer { scratch.remove() }
+      let defaults = scratch.defaults
       defaults.set(progress.rawValue, forKey: SharedConfigKeys.guidedSetupProgress)
       let bundledHash = { "bundled-agent" }
       let state = InstallationState(
@@ -163,9 +163,9 @@ final class AgentUpgradeRefreshTests: XCTestCase {
     let stages: [GuidedSetupProgress] = [.installingHelper, .cancelled]
     for progress in stages {
       let service = RecordingBackgroundAgentService()
-      let suiteName = "AgentUpgradeRefreshTests.\(UUID().uuidString)"
-      let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-      defer { defaults.removePersistentDomain(forName: suiteName) }
+      let scratch = try ScratchDefaults(label: "AgentUpgradeRefreshTests")
+      defer { scratch.remove() }
+      let defaults = scratch.defaults
       defaults.set(progress.rawValue, forKey: SharedConfigKeys.guidedSetupProgress)
       let bundledHash = { "bundled-agent" }
       let state = InstallationState(
@@ -198,9 +198,9 @@ extension AgentUpgradeRefreshTests {
   func testFailedPendingUpgradeDoesNotAutomaticallyRetry() throws {
     let service = RecordingBackgroundAgentService()
     service.unregisterError = NSError(domain: "GuidedUpgradeTests", code: 1)
-    let suiteName = "AgentUpgradeRefreshTests.\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let scratch = try ScratchDefaults(label: "AgentUpgradeRefreshTests")
+    defer { scratch.remove() }
+    let defaults = scratch.defaults
     defaults.set("verifyingHelper", forKey: SharedConfigKeys.guidedSetupProgress)
     let bundledHash = { "bundled-agent" }
     let state = InstallationState(

@@ -74,7 +74,7 @@ final class TestControlXPCIntegrationTests: XCTestCase {
 
   func testMissingAgentGatePreventsConnectionConstructionUntilEnabled() async throws {
     let harness = try ControlledXPCHarness(backgroundAgentStatus: .notRegistered)
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
 
     harness.start()
     expect(harness.connectionFactoryCount) == 0
@@ -105,7 +105,7 @@ final class TestControlXPCIntegrationTests: XCTestCase {
 
   private func verifyStartupFault(_ fault: TestXPCFault) async throws {
     let harness = try ControlledXPCHarness(fault: fault)
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
 
     let participant: TestControlParticipant = fault == .reconnect ? .app : .agent
@@ -168,8 +168,8 @@ final class ControlledXPCHarness {
   private(set) lazy var client = makeClient()
 
   let sessionID = UUID()
-  let defaultsSuiteName = "io.goodkind.fancurve.xpc-tests.\(UUID().uuidString)"
-  let defaults: UserDefaults
+  let scratchDefaults: ScratchDefaults
+  var defaults: UserDefaults { scratchDefaults.defaults }
   let listener: NSXPCListener
   lazy var service = makeService()
   let appMode: TestControlRuntimeMode
@@ -242,9 +242,9 @@ final class ControlledXPCHarness {
     )
     self.appMode = runtimeModes.app
     self.agentMode = runtimeModes.agent
-    self.defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuiteName))
-    defaults.removePersistentDomain(forName: defaultsSuiteName)
-    let sharedConfig = SharedConfig(defaults: defaults)
+    let scratch = try ScratchDefaults(label: "FanCurveControlledXPCDefaults")
+    self.scratchDefaults = scratch
+    let sharedConfig = SharedConfig(defaults: scratch.defaults)
     let lifecycleDependencies = try Self.makeLifecycleDependencies(
       directory: directory,
       agentMode: agentMode,
@@ -271,7 +271,7 @@ final class ControlledXPCHarness {
       verificationPollInterval: lifecycleFixture?.verificationPollInterval
         ?? ControlledXPCTestValues.systemHelperVerificationPollInterval,
       replacementJournal: lifecycleFixture?.replacementJournal
-        ?? SystemHelperReplacementJournal(defaults: defaults)
+        ?? SystemHelperReplacementJournal(defaults: scratch.defaults)
     ) { [controller] state in
       controller.updateSystemHelperRuntimeState(state)
     }

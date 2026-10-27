@@ -13,7 +13,7 @@ import XCTest
 
 @MainActor
 final class GuidedSetupFixture {
-  let suiteName = "GuidedSetupTests.\(UUID().uuidString)"
+  private let scratchDefaults: ScratchDefaults
   let defaults: UserDefaults
   let service = GuidedBackgroundAgentService()
   let client = GuidedAgentClient()
@@ -26,7 +26,8 @@ final class GuidedSetupFixture {
   )
 
   init() throws {
-    defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    scratchDefaults = try ScratchDefaults(label: "GuidedSetupTests")
+    defaults = scratchDefaults.defaults
   }
 
   func makeState() -> InstallationState {
@@ -48,7 +49,7 @@ final class GuidedSetupFixture {
   }
 
   func cleanUp() {
-    defaults.removePersistentDomain(forName: suiteName)
+    scratchDefaults.remove()
   }
 }
 

@@ -12,22 +12,21 @@ import XCTest
 @testable import FanCurveModels
 
 final class ExpandedRangeConfigurationStoreTests: XCTestCase {
+  private var scratchDefaults: ScratchDefaults?
   private var defaults: UserDefaults?
-  private var suiteName: String?
 
-  override func setUp() {
-    super.setUp()
-    suiteName = "ExpandedRangeConfigurationStoreTests.\(UUID().uuidString)"
-    defaults = UserDefaults(suiteName: suiteName)
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    let scratch = try ScratchDefaults(label: "ExpandedRangeConfigurationStoreTests")
+    scratchDefaults = scratch
+    defaults = scratch.defaults
   }
 
-  override func tearDown() {
-    if let defaults, let suiteName {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+  override func tearDownWithError() throws {
+    scratchDefaults?.remove()
+    scratchDefaults = nil
     defaults = nil
-    suiteName = nil
-    super.tearDown()
+    try super.tearDownWithError()
   }
 
   func testMigrationDisablesAccessForFreshInstall() throws {

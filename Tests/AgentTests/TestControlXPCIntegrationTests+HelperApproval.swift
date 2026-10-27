@@ -21,7 +21,7 @@ extension TestControlXPCIntegrationTests {
       registerBehavior: .requiresApproval
     )
     let harness = try ControlledXPCHarness(lifecycleFixture: fixture)
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
 
     let error = await captureError {
@@ -56,7 +56,7 @@ extension TestControlXPCIntegrationTests {
       registerBehavior: .requiresApproval
     )
     let harness = try ControlledXPCHarness(lifecycleFixture: fixture)
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
 
     let initialState = await harness.reconcile(.startup)
@@ -83,7 +83,7 @@ extension TestControlXPCIntegrationTests {
       serviceStatus: .requiresApproval
     )
     let harness = try ControlledXPCHarness(lifecycleFixture: fixture)
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
     expect(harness.client.runtimeStateGeneration) == harness.client.connectionGeneration
     _ = await harness.reconcile(.startup)
@@ -109,7 +109,7 @@ extension TestControlXPCIntegrationTests {
       serviceStatus: .requiresApproval
     )
     let harness = try ControlledXPCHarness(lifecycleFixture: fixture)
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
     _ = await harness.reconcile(.startup)
     try await harness.client.refreshCurrentState()
@@ -135,7 +135,7 @@ extension TestControlXPCIntegrationTests {
     )
     fixture.replacementJournal.recordPendingReplacement()
     let harness = try ControlledXPCHarness(lifecycleFixture: fixture)
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
 
     let initialState = await harness.reconcile(.startup)
@@ -159,7 +159,7 @@ extension TestControlXPCIntegrationTests {
       serviceStatus: .requiresApproval
     )
     let harness = try ControlledXPCHarness(lifecycleFixture: fixture)
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
     _ = await harness.reconcile(.startup)
     try await harness.client.refreshCurrentState()

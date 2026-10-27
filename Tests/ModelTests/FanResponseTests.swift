@@ -19,8 +19,9 @@ final class FanResponseTests: XCTestCase {
   }
 
   func testDefaultsPreserveBalancedManualResponseAndInferenceOn() throws {
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: "FanResponseTests.defaults"))
-    defaults.removePersistentDomain(forName: "FanResponseTests.defaults")
+    let scratch = try ScratchDefaults(label: "FanResponseTests")
+    defer { scratch.remove() }
+    let defaults = scratch.defaults
 
     let response = FanResponse.loadValue(defaults: defaults)
     let inferFromGraph = FanResponse.loadInferFromGraph(defaults: defaults)
@@ -31,8 +32,9 @@ final class FanResponseTests: XCTestCase {
   }
 
   func testStoredResponseAndInferenceSettingsAreLoaded() throws {
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: "FanResponseTests.stored"))
-    defaults.removePersistentDomain(forName: "FanResponseTests.stored")
+    let scratch = try ScratchDefaults(label: "FanResponseTests")
+    defer { scratch.remove() }
+    let defaults = scratch.defaults
     defaults.set(0.25, forKey: SharedConfigKeys.fanResponseValue)
     defaults.set(false, forKey: SharedConfigKeys.inferFanResponseFromGraph)
 

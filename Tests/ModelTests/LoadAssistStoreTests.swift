@@ -12,22 +12,21 @@ import XCTest
 @testable import FanCurveModels
 
 final class LoadAssistStoreTests: XCTestCase {
+  private var scratchDefaults: ScratchDefaults?
   private var defaults: UserDefaults?
-  private var suiteName: String?
 
-  override func setUp() {
-    super.setUp()
-    suiteName = "LoadAssistStoreTests.\(UUID().uuidString)"
-    defaults = UserDefaults(suiteName: suiteName)
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    let scratch = try ScratchDefaults(label: "LoadAssistStoreTests")
+    scratchDefaults = scratch
+    defaults = scratch.defaults
   }
 
-  override func tearDown() {
-    if let defaults, let suiteName {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+  override func tearDownWithError() throws {
+    scratchDefaults?.remove()
+    scratchDefaults = nil
     defaults = nil
-    suiteName = nil
-    super.tearDown()
+    try super.tearDownWithError()
   }
 
   func testDefaultPointsUseApprovedDefaultShape() {

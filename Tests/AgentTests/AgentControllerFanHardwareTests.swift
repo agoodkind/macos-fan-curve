@@ -12,24 +12,21 @@ import OSLog
 import XCTest
 
 final class AgentControllerFanHardwareTests: XCTestCase {
-  private var defaultsSuiteName = ""
-  private var isolatedDefaults: UserDefaults?
+  private var scratchDefaults: ScratchDefaults?
+  private var isolatedDefaults: UserDefaults? { scratchDefaults?.defaults }
   private var isolatedSharedConfig: SharedConfig?
 
   override func setUpWithError() throws {
     try super.setUpWithError()
-    defaultsSuiteName = "io.goodkind.fancurve.agent-tests.\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuiteName))
-    defaults.removePersistentDomain(forName: defaultsSuiteName)
-    isolatedDefaults = defaults
-    isolatedSharedConfig = SharedConfig(defaults: defaults)
+    let scratch = try ScratchDefaults(label: "AgentControllerFanHardwareTests")
+    scratchDefaults = scratch
+    isolatedSharedConfig = SharedConfig(defaults: scratch.defaults)
   }
 
   override func tearDownWithError() throws {
-    isolatedDefaults?.removePersistentDomain(forName: defaultsSuiteName)
     isolatedSharedConfig = nil
-    isolatedDefaults = nil
-    defaultsSuiteName = ""
+    scratchDefaults?.remove()
+    scratchDefaults = nil
     try super.tearDownWithError()
   }
 
