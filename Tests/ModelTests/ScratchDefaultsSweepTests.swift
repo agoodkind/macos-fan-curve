@@ -24,20 +24,27 @@ private enum ScratchDefaultsSweepTestValues {
   static let recordedValue = "exited-process"
 }
 
+// MARK: - ScratchDefaultsSweepSetupError
+
+private enum ScratchDefaultsSweepSetupError: Error {
+  case childProcessExitedWithFailure(pid_t, Int32)
+  case exitedProcessStillReported(pid_t, Int32, Int32)
+  case stalePlistMissing(String)
+}
+
 // MARK: - ScratchDefaultsSweepTests
 
 final class ScratchDefaultsSweepTests: XCTestCase {
   func testCreatingScratchDefaultsRemovesFolderOfExitedProcess() throws {
     let exitedProcessID = try Self.runProcessToCompletion()
-    let probeResult = kill(exitedProcessID, ScratchDefaultsSweepTestValues.existenceProbeSignal)
-    let probeError = errno
-    expect(probeResult) == ScratchDefaultsSweepTestValues.failedProbeResult
-    expect(probeError) == ESRCH
+    try Self.requireProcessExited(exitedProcessID)
 
     let staleProcessDirectory = ScratchDefaults.rootDirectory
       .appendingPathComponent(String(exitedProcessID), isDirectory: true)
     let stalePlist = try Self.writeStaleDefaults(in: staleProcessDirectory)
-    expect(FileManager.default.fileExists(atPath: stalePlist.path)) == true
+    guard FileManager.default.fileExists(atPath: stalePlist.path) else {
+      throw ScratchDefaultsSweepSetupError.stalePlistMissing(stalePlist.path)
+    }
 
     let scratch = try ScratchDefaults(label: ScratchDefaultsSweepTestValues.label)
     defer { scratch.remove() }
@@ -55,8 +62,30 @@ final class ScratchDefaultsSweepTests: XCTestCase {
     process.executableURL = URL(fileURLWithPath: ScratchDefaultsSweepTestValues.exitedProcessPath)
     try process.run()
     process.waitUntilExit()
-    expect(process.terminationStatus) == ScratchDefaultsSweepTestValues.successfulExitStatus
-    return process.processIdentifier
+    let processID = process.processIdentifier
+    let terminationStatus = process.terminationStatus
+    guard terminationStatus == ScratchDefaultsSweepTestValues.successfulExitStatus else {
+      throw ScratchDefaultsSweepSetupError.childProcessExitedWithFailure(
+        processID,
+        terminationStatus
+      )
+    }
+    return processID
+  }
+
+  private static func requireProcessExited(_ processID: pid_t) throws {
+    let probeResult = kill(processID, ScratchDefaultsSweepTestValues.existenceProbeSignal)
+    let probeError = errno
+    guard
+      probeResult == ScratchDefaultsSweepTestValues.failedProbeResult,
+      probeError == ESRCH
+    else {
+      throw ScratchDefaultsSweepSetupError.exitedProcessStillReported(
+        processID,
+        probeResult,
+        probeError
+      )
+    }
   }
 
   private static func writeStaleDefaults(in processDirectory: URL) throws -> URL {

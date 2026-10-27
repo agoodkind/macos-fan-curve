@@ -194,13 +194,18 @@ extension TestControlXPCIntegrationTests {
   func testCommandFaultsAreOneShotAndRecordedBeforeTheirReplyEffect() async throws {
     for fault in [TestXPCFault.rejectedCommand, .malformedReply] {
       let harness = try ControlledXPCHarness(fault: fault)
+      let observation: OneShotCommandFaultObservation
       do {
-        try await harness.verifyOneShotCommandFault(fault)
+        observation = try await harness.observeOneShotCommandFault(fault)
       } catch {
         await harness.stop()
         throw error
       }
       await harness.stop()
+
+      expect(observation.firstError) != nil
+      expect(observation.evidenceObservedBeforeEffect) == true
+      expect(observation.consumedFaultCount) == 1
     }
   }
 
@@ -307,6 +312,14 @@ extension TestControlXPCIntegrationTests {
   }
 }
 
+// MARK: - OneShotCommandFaultObservation
+
+struct OneShotCommandFaultObservation {
+  let firstError: Error?
+  let evidenceObservedBeforeEffect: Bool
+  let consumedFaultCount: Int
+}
+
 // MARK: - Controlled System Helper lifecycle evidence
 
 @MainActor
@@ -315,19 +328,23 @@ extension ControlledXPCHarness {
     try store.loadEvents(for: .agent).map(\.payload)
   }
 
-  func verifyOneShotCommandFault(_ fault: TestXPCFault) async throws {
+  func observeOneShotCommandFault(
+    _ fault: TestXPCFault
+  ) async throws -> OneShotCommandFaultObservation {
     try await startAndWaitUntilConnected()
 
     let firstError = await captureError {
       try await self.client.setBoostEnabled(true)
     }
-    expect(firstError) != nil
     try await client.setBoostEnabled(true)
 
-    expect(self.faultEvidenceObservedBeforeEffect[fault]) == true
     let consumedFaults = try store.loadEvents(for: .agent)
       .filter { $0.payload == .xpcFault(fault) }
-    expect(consumedFaults).to(haveCount(1))
+    return OneShotCommandFaultObservation(
+      firstError: firstError,
+      evidenceObservedBeforeEffect: faultEvidenceObservedBeforeEffect[fault] == true,
+      consumedFaultCount: consumedFaults.count
+    )
   }
 
   func assertSuccessfulHelperReplacement(
