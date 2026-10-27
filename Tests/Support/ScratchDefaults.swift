@@ -166,9 +166,73 @@ final class ScratchDefaults {
     do {
       try FileManager.default.removeItem(at: directory)
     } catch {
-      return error.localizedDescription
+      let report = ScratchDefaultsRemovalReport(error: error, directory: directory)
+      scratchDefaultsLog.error(
+        "scratch_defaults.remove_failed path=\(directory.path, privacy: .public) \(report.description, privacy: .public) recovery=fail-test"
+      )
+      return report.description
     }
     return nil
+  }
+}
+
+// MARK: - ScratchDefaultsRemovalReport
+
+/// After `removeItem` fails, `description` includes errors and `lstat` ownership,
+/// mode, and flags for the failing path and each remaining entry.
+/// These details help distinguish a concurrent writer from `UF_IMMUTABLE`
+/// when both produce `NSCocoaErrorDomain` 513 with underlying POSIX `EPERM`.
+private struct ScratchDefaultsRemovalReport: CustomStringConvertible {
+  private static let octalRadix = 8
+  private static let hexadecimalRadix = 16
+
+  let description: String
+
+  init(error: Error, directory: URL) {
+    let fileError = error as NSError
+    let failingPath = fileError.userInfo[NSFilePathErrorKey] as? String ?? directory.path
+    var parts = [
+      "message=\(fileError.localizedDescription)",
+      "error=\(Self.describe(fileError))",
+    ]
+    if let underlyingError = fileError.userInfo[NSUnderlyingErrorKey] as? NSError {
+      parts.append("underlying=\(Self.describe(underlyingError))")
+    }
+    parts.append("failingPath=\(Self.fileStatus(atPath: failingPath))")
+    parts.append("remaining=\(Self.remainingEntries(in: directory))")
+    description = parts.joined(separator: " ")
+  }
+
+  private static func describe(_ error: NSError) -> String {
+    guard error.domain == NSPOSIXErrorDomain else {
+      return "\(error.domain):\(error.code)"
+    }
+    let reason = String(cString: strerror(Int32(error.code)))
+    return "\(error.domain):\(error.code)(\(reason))"
+  }
+
+  private static func fileStatus(atPath path: String) -> String {
+    var status = stat()
+    guard lstat(path, &status) == 0 else {
+      let reason = String(cString: strerror(errno))
+      return "\(path)(lstat failed: \(reason))"
+    }
+    let mode = String(status.st_mode, radix: octalRadix)
+    let flags = String(status.st_flags, radix: hexadecimalRadix)
+    return "\(path)(uid=\(status.st_uid) gid=\(status.st_gid) mode=\(mode) flags=0x\(flags))"
+  }
+
+  private static func remainingEntries(in directory: URL) -> String {
+    let names: [String]
+    do {
+      names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+    } catch {
+      return "unreadable(\(describe(error as NSError)))"
+    }
+    let statuses = names.sorted().map { name in
+      fileStatus(atPath: directory.appendingPathComponent(name).path)
+    }
+    return "[\(statuses.joined(separator: ", "))]"
   }
 }
 
