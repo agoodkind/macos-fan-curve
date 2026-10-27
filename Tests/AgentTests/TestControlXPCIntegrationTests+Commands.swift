@@ -194,6 +194,7 @@ extension TestControlXPCIntegrationTests {
   func testCommandFaultsAreOneShotAndRecordedBeforeTheirReplyEffect() async throws {
     for fault in [TestXPCFault.rejectedCommand, .malformedReply] {
       let harness = try ControlledXPCHarness(fault: fault)
+      defer { harness.stop() }
       try await harness.startAndWaitUntilConnected()
 
       let firstError = await captureError {
@@ -206,7 +207,6 @@ extension TestControlXPCIntegrationTests {
       let consumedFaults = try harness.store.loadEvents(for: .agent)
         .filter { $0.payload == .xpcFault(fault) }
       expect(consumedFaults).to(haveCount(1))
-      harness.stop()
     }
   }
 

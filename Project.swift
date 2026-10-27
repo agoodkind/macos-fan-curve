@@ -290,7 +290,8 @@ let project = Project(
         .glob(
           "Tests/ModelTests/**",
           excluding: ["Tests/ModelTests/TestControl*Tests.swift"]
-        )
+        ),
+        "Tests/Support/ScratchDefaults.swift",
       ],
       dependencies: [
         .target(name: "FanCurveModels"),
@@ -338,6 +339,7 @@ let project = Project(
           excluding: ["Sources/TestControl/CLI/**"]
         ),
         "Tests/AgentTests/**",
+        "Tests/Support/ScratchDefaults.swift",
         .generated("Generated/FanCurveAgent/Config.generated.swift"),
       ],
       dependencies: externalDependencies + [

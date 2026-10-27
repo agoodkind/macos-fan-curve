@@ -12,9 +12,9 @@ import XCTest
 
 final class SharedConfigProcessIdentityTests: XCTestCase {
   func testHeartbeatKeepsHashCapturedForRunningProcess() throws {
-    let suiteName = "SharedConfigProcessIdentityTests.\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let scratch = try ScratchDefaults(label: "SharedConfigProcessIdentityTests")
+    defer { scratch.remove() }
+    let defaults = scratch.defaults
     let config = SharedConfig(defaults: defaults, runningExecutableHash: "original-agent")
 
     config.writeAgentStatus(pid: 1, lastTick: Date())

@@ -157,7 +157,7 @@ extension ControlledXPCHarness {
     if case .controlled(let runtime) = agentMode {
       runtime.stopMonitoring()
     }
-    defaults.removePersistentDomain(forName: defaultsSuiteName)
+    scratchDefaults.remove()
     removeSessionDirectory()
     withExtendedLifetime((appMode, agentMode, service)) {
       _ = service
