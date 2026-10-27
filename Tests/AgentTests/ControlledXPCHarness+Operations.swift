@@ -146,7 +146,7 @@ extension ControlledXPCHarness {
     service.publishRuntimeState(controller.currentRuntimeStateForXPC())
   }
 
-  func stop() {
+  func stop() async {
     controller.pause()
     client.stop()
     listener.invalidate()
@@ -157,6 +157,7 @@ extension ControlledXPCHarness {
     if case .controlled(let runtime) = agentMode {
       runtime.stopMonitoring()
     }
+    await controller.waitUntilTickIdle()
     scratchDefaults.remove()
     removeSessionDirectory()
     withExtendedLifetime((appMode, agentMode, service)) {

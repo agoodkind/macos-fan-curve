@@ -34,6 +34,8 @@ final class AgentController: @unchecked Sendable {
   let loadSampler = CPULoadSampler()
   let eventWriter = EventArtifactWriter()
   let tickCoordinator = TickCoordinator()
+  let tickTaskLock = NSLock()
+  var tickTasks: [UUID: Task<Void, Never>] = [:]
   private let lifecycleLock = NSLock()
   private let systemHelperStateLock = NSLock()
   lazy var heartbeatScheduler = TickHeartbeatScheduler(interval: heartbeatInterval) { [weak self] in

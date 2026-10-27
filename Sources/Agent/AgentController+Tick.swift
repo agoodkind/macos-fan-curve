@@ -20,14 +20,6 @@ private enum AgentControllerTickConstants {
 // MARK: - AgentController
 
 extension AgentController {
-  func requestTick() {
-    Task { [weak self] in
-      guard let self else { return }
-      guard await tickCoordinator.requestTick() else { return }
-      await runTickLoop()
-    }
-  }
-
   func runTickLoop() async {
     while true {
       await tick()

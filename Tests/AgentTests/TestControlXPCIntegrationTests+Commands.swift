@@ -29,7 +29,7 @@ extension TestControlXPCIntegrationTests {
       verificationBlocked: true
     )
     let harness = try ControlledXPCHarness(helperLifecycle: outdatedLifecycle)
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
     let completion = TestControlBooleanObservation()
     let reconciliation = Task { @MainActor in
@@ -74,7 +74,7 @@ extension TestControlXPCIntegrationTests {
 
   func testControlledCommandsTraverseRealXPCAndWriteParticipantEvidence() async throws {
     let harness = try ControlledXPCHarness()
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
 
     try await harness.client.setFanRPM(
@@ -105,7 +105,7 @@ extension TestControlXPCIntegrationTests {
 
   func testRuntimeEventBeforeInitialStateKeepsClientConnecting() async throws {
     let harness = try ControlledXPCHarness()
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     harness.suspendRequestDispatch()
     harness.start()
     try await harness.waitForPendingRequestDispatch()
@@ -126,7 +126,7 @@ extension TestControlXPCIntegrationTests {
 
   func testCancelledCommandBeforeDispatchDoesNotReachAgentHardware() async throws {
     let harness = try ControlledXPCHarness()
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
     harness.suspendRequestDispatch()
 
@@ -159,7 +159,7 @@ extension TestControlXPCIntegrationTests {
 
   func testDelayedProxyErrorFromReplacedConnectionPreservesCurrentCommand() async throws {
     let harness = try ControlledXPCHarness(recordsProxyErrorHandlers: true)
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
     expect(harness.retainMostRecentProxyErrorHandler()) == true
     harness.restartClient()
@@ -194,25 +194,19 @@ extension TestControlXPCIntegrationTests {
   func testCommandFaultsAreOneShotAndRecordedBeforeTheirReplyEffect() async throws {
     for fault in [TestXPCFault.rejectedCommand, .malformedReply] {
       let harness = try ControlledXPCHarness(fault: fault)
-      defer { harness.stop() }
-      try await harness.startAndWaitUntilConnected()
-
-      let firstError = await captureError {
-        try await harness.client.setBoostEnabled(true)
+      do {
+        try await harness.verifyOneShotCommandFault(fault)
+      } catch {
+        await harness.stop()
+        throw error
       }
-      expect(firstError) != nil
-      try await harness.client.setBoostEnabled(true)
-
-      expect(harness.faultEvidenceObservedBeforeEffect[fault]) == true
-      let consumedFaults = try harness.store.loadEvents(for: .agent)
-        .filter { $0.payload == .xpcFault(fault) }
-      expect(consumedFaults).to(haveCount(1))
+      await harness.stop()
     }
   }
 
   func testCommandCompletesWhenAgentInvalidatesWithoutReply() async throws {
     let harness = try ControlledXPCHarness()
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
     try harness.applyState(
       revision: ControlledXPCTestValues.controlledRevision,
@@ -229,7 +223,7 @@ extension TestControlXPCIntegrationTests {
 
   func testOwnershipCompletesWhenAgentInvalidatesWithoutReply() async throws {
     let harness = try ControlledXPCHarness()
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
     try harness.applyState(
       revision: ControlledXPCTestValues.controlledRevision,
@@ -246,7 +240,7 @@ extension TestControlXPCIntegrationTests {
 
   func testAutomaticReconnectRechecksMissingAgentGate() async throws {
     let harness = try ControlledXPCHarness()
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
     try harness.applyState(
       revision: ControlledXPCTestValues.controlledRevision,
@@ -267,7 +261,7 @@ extension TestControlXPCIntegrationTests {
 
   func testStaleInvalidationPreservesReplacementConnectionCallback() async throws {
     let harness = try ControlledXPCHarness()
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
     let replacementClient = harness.makeAdditionalClient()
     defer { replacementClient.stop() }
@@ -319,6 +313,21 @@ extension TestControlXPCIntegrationTests {
 extension ControlledXPCHarness {
   func agentEvidence() throws -> [TestControlEventPayload] {
     try store.loadEvents(for: .agent).map(\.payload)
+  }
+
+  func verifyOneShotCommandFault(_ fault: TestXPCFault) async throws {
+    try await startAndWaitUntilConnected()
+
+    let firstError = await captureError {
+      try await self.client.setBoostEnabled(true)
+    }
+    expect(firstError) != nil
+    try await client.setBoostEnabled(true)
+
+    expect(self.faultEvidenceObservedBeforeEffect[fault]) == true
+    let consumedFaults = try store.loadEvents(for: .agent)
+      .filter { $0.payload == .xpcFault(fault) }
+    expect(consumedFaults).to(haveCount(1))
   }
 
   func assertSuccessfulHelperReplacement(

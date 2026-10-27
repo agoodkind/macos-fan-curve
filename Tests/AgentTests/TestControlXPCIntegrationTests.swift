@@ -74,7 +74,7 @@ final class TestControlXPCIntegrationTests: XCTestCase {
 
   func testMissingAgentGatePreventsConnectionConstructionUntilEnabled() async throws {
     let harness = try ControlledXPCHarness(backgroundAgentStatus: .notRegistered)
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
 
     harness.start()
     expect(harness.connectionFactoryCount) == 0
@@ -105,7 +105,7 @@ final class TestControlXPCIntegrationTests: XCTestCase {
 
   private func verifyStartupFault(_ fault: TestXPCFault) async throws {
     let harness = try ControlledXPCHarness(fault: fault)
-    defer { harness.stop() }
+    addTeardownBlock { await harness.stop() }
     try await harness.startAndWaitUntilConnected()
 
     let participant: TestControlParticipant = fault == .reconnect ? .app : .agent
