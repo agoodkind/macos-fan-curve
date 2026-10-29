@@ -1,5 +1,5 @@
 {
-  "originHash" : "d46d5efee7527b12d8ec3ad4daf2e7ad68e729d875529dd73db06a8dbeef7ce6",
+  "originHash" : "fd67d78d24bff7eeff1bb32ded6c1b886d0044ce67fd12824708c1491a764ccf",
   "pins" : [
     {
       "identity" : "cwlcatchexception",
@@ -41,8 +41,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sparkle-project/Sparkle",
       "state" : {
-        "revision" : "ac2def288cbff5cfc7df3ffef6abdf45b72bcb0a",
-        "version" : "2.9.6"
+        "revision" : "ab7d71291238df6e0492143b120c9b696a35f603",
+        "version" : "2.10.1"
       }
     },
     {
